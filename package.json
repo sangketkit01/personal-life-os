@@ -1,0 +1,12 @@
+{
+  "name": "personal-life-os",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Personal Life OS - Personal Command Center for Finance & Workspace",
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "backend\\venv\\Scripts\\python backend/manage.py runserver",
+    "bot": "backend\\venv\\Scripts\\python backend/manage.py run_bot",
+    "build:frontend": "npm --prefix frontend run build"
+  }
+}

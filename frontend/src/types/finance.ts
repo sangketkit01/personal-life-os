@@ -1,0 +1,95 @@
+export type ObligationType = 'INSTALLMENT' | 'SUBSCRIPTION' | 'FREE_TRIAL' | 'DEBT'
+export type ObligationStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'CANCELLED'
+
+export interface PaymentHistoryItem {
+  id: string
+  paid_amount: string
+  paid_at: string
+  term_number: number | null
+  note: string
+}
+
+export interface InstallmentSummary {
+  total_terms: number
+  current_term: number
+  remaining_terms: number
+  remaining_balance: string | number
+  progress_pct: number
+  is_finished: boolean
+  lender: string
+}
+
+export interface DebtSummary {
+  counterparty: string
+  is_flexible: boolean
+  initial_amount: string | number
+  remaining_balance: string | number
+  total_paid: string | number
+  progress_pct: number
+  is_settled: boolean
+}
+
+export interface FreeTrialSummary {
+  account_email: string
+  linked_card: string
+  cancel_url: string
+  auto_renew_cost: string | number
+  days_remaining: number | null
+  urgency: 'CRITICAL' | 'WARNING' | 'SAFE' | 'EXPIRED'
+  is_cancelled: boolean
+}
+
+export interface SubscriptionSummary {
+  billing_cycle: 'MONTHLY' | 'YEARLY'
+  is_yearly: boolean
+  account_email: string
+  payment_method: string
+  category: string
+  amount_per_period: string | number
+}
+
+export type ObligationSummary = Record<string, any>
+
+export interface FinancialObligation {
+  id: string
+  title: string
+  type: ObligationType
+  direction: 'OUTFLOW' | 'INFLOW'
+  amount: string
+  currency: string
+  status: ObligationStatus
+  due_date: string | null
+  billing_day: number | null
+  metadata: Record<string, any>
+  summary: Record<string, any>
+  payment_histories?: PaymentHistoryItem[]
+  created_at: string
+  updated_at: string
+}
+
+export interface UpcomingBill {
+  id: string
+  title: string
+  type: ObligationType
+  amount: string
+  due_date: string
+  days_left: number
+  is_trial: boolean
+  summary: ObligationSummary
+}
+
+export interface FinancialOverview {
+  target_month: string
+  confirmed_burn_rate: string | number
+  potential_risk_amount: string | number
+  active_trials_count: number
+  critical_trials_count: number
+  upcoming_7_days_count: number
+  upcoming_7_days: UpcomingBill[]
+  items_by_type: {
+    INSTALLMENT: FinancialObligation[]
+    SUBSCRIPTION: FinancialObligation[]
+    FREE_TRIAL: FinancialObligation[]
+    DEBT: FinancialObligation[]
+  }
+}

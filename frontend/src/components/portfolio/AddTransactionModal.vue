@@ -70,15 +70,21 @@
       </div>
 
       <form @submit.prevent="handleSubmit" class="space-y-3.5">
-        <!-- Target Portfolio Selector (Dime-style) -->
+        <!-- Target Portfolio Selector (Dime-style) (F05) -->
         <div v-if="!editingTransaction && portfolioStore.portfolios.length > 0">
-          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">
-            Target Portfolio
-          </label>
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400">
+              Target Portfolio
+            </label>
+            <span v-if="prefillHoldingId" class="text-[10px] text-zinc-500 font-sans">
+              (Locked to Holding)
+            </span>
+          </div>
           <div class="relative">
             <select
               v-model="form.portfolio"
-              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-sans focus:outline-none focus:border-zinc-600 transition-colors appearance-none cursor-pointer pr-8"
+              :disabled="!!prefillHoldingId"
+              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-sans focus:outline-none focus:border-zinc-600 transition-colors appearance-none cursor-pointer pr-8 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <option
                 v-for="p in portfolioStore.portfolios"
@@ -88,12 +94,12 @@
                 {{ p.name }} ({{ p.currency }}) {{ p.is_default ? '• Default' : '' }}
               </option>
             </select>
-            <ChevronDown class="w-3.5 h-3.5 text-zinc-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <ChevronDown v-if="!prefillHoldingId" class="w-3.5 h-3.5 text-zinc-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
         </div>
 
-        <!-- Asset Search & Strict Autocomplete Selection (For new trades) -->
-        <div v-if="!prefillHoldingId && !editingTransaction">
+        <!-- Asset Search & Strict Autocomplete Selection (For new trades without prefilled asset) (F09) -->
+        <div v-if="!prefillHoldingId && !editingTransaction && !prefillTicker">
           <!-- Asset Class Filter Pills -->
           <div class="flex items-center justify-between mb-1.5">
             <label class="text-[11px] font-mono uppercase tracking-wider text-zinc-400">
@@ -245,8 +251,8 @@
           </div>
         </div>
 
-        <!-- Currency Selector (Dual THB vs USD) -->
-        <div v-if="!prefillHoldingId && !editingTransaction">
+        <!-- Currency Selector (Dual THB vs USD) - Only editable if creating new holding without existing denomination (F03) -->
+        <div v-if="!prefillHoldingId && !editingTransaction && !currentHolding">
           <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">
             Trade Currency
           </label>
@@ -270,13 +276,13 @@
           </div>
         </div>
 
-        <!-- Position Context Warning on SELL -->
+        <!-- Position Context Warning on SELL (F08) -->
         <div
-          v-if="form.transaction_type === 'SELL' && currentHolding"
+          v-if="form.transaction_type === 'SELL'"
           class="p-2.5 rounded bg-zinc-900/80 border border-zinc-800 flex items-center justify-between text-xs font-mono"
         >
           <span class="text-zinc-400 text-[11px]">Holding Position:</span>
-          <div class="flex items-center gap-2">
+          <div v-if="currentHolding" class="flex items-center gap-2">
             <span class="text-zinc-200 font-semibold">{{ formatShares(currentHolding.position.shares) }} shares available</span>
             <button
               type="button"
@@ -285,6 +291,9 @@
             >
               Max
             </button>
+          </div>
+          <div v-else class="text-rose-400 text-[11px]">
+            No shares held in selected portfolio
           </div>
         </div>
 
@@ -338,7 +347,10 @@
           </div>
 
           <div>
-            <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Execution Date</label>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400">Execution Date & Time</label>
+              <span class="text-[10px] text-zinc-500 font-sans">{{ localTzLabel }}</span>
+            </div>
             <input
               v-model="form.executed_at"
               type="datetime-local"
@@ -380,10 +392,10 @@
           </button>
           <button
             type="submit"
-            :disabled="portfolioStore.isLoading || isSubmitDisabled"
+            :disabled="portfolioStore.isSubmitting || isSubmitDisabled"
             class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors disabled:opacity-50"
           >
-            {{ portfolioStore.isLoading ? 'Posting...' : (editingTransaction ? 'Save Changes' : 'Save Trade') }}
+            {{ portfolioStore.isSubmitting ? 'Posting...' : (editingTransaction ? 'Save Changes' : 'Save Trade') }}
           </button>
         </div>
       </form>
@@ -395,6 +407,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { usePortfolioStore } from '../../stores/portfolio'
 import type {
+  AssetType,
   TransactionType,
   StockTransaction,
   MarketAssetSearchResult
@@ -464,6 +477,29 @@ const getNowLocalDateTime = () => {
   return d.toISOString().slice(0, 16)
 }
 
+// F07: แปลงเวลา UTC จากฐานข้อมูลเป็นเวลาท้องถิ่นสำหรับ input datetime-local อย่างถูกต้อง โดยเวลาไม่เลื่อน
+function toLocalInputDateTime(dateInput?: string | Date): string {
+  if (!dateInput) return getNowLocalDateTime()
+  const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput
+  const tzOffset = d.getTimezoneOffset() * 60000
+  const localTime = new Date(d.getTime() - tzOffset)
+  return localTime.toISOString().slice(0, 16)
+}
+
+const localTzLabel = computed(() => {
+  try {
+    const offsetMin = new Date().getTimezoneOffset()
+    const sign = offsetMin <= 0 ? '+' : '-'
+    const hours = Math.floor(Math.abs(offsetMin) / 60)
+    const mins = Math.abs(offsetMin) % 60
+    const offsetStr = `GMT${sign}${hours}${mins > 0 ? `:${mins}` : ''}`
+    const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone
+    return `${tzName} (${offsetStr})`
+  } catch {
+    return 'Local Time'
+  }
+})
+
 const form = ref({
   portfolio: '',
   ticker: '',
@@ -479,9 +515,21 @@ const form = ref({
 const currencySymbol = computed(() => (form.value.currency === 'USD' ? '$' : '฿'))
 
 const isSubmitDisabled = computed(() => {
-  // If not editing and not prefilled, must have selected a verified asset
-  if (!props.editingTransaction && !props.prefillHoldingId) {
+  if (portfolioStore.isSubmitting) return true
+  // F09: If not editing and not prefilled, must have selected a verified asset or prefilled ticker
+  if (!props.editingTransaction && !props.prefillHoldingId && !props.prefillTicker) {
     if (!selectedAsset.value || !form.value.ticker) return true
+  }
+  // Validate shares and price
+  if (!form.value.shares || form.value.shares <= 0) return true
+  if (form.value.price_per_share === null || form.value.price_per_share < 0) return true
+
+  // F08: Validate oversell on UI
+  if (form.value.transaction_type === 'SELL') {
+    const available = Number(currentHolding.value?.position?.shares || 0) + (props.editingTransaction?.transaction_type === 'SELL' ? Number(props.editingTransaction.shares) : 0)
+    if (!currentHolding.value || Number(form.value.shares || 0) > available || available <= 0) {
+      return true
+    }
   }
   return false
 })
@@ -496,6 +544,7 @@ const pricePlaceholder = computed(() => {
   return form.value.currency === 'USD' ? 'e.g. 182.50' : 'e.g. 35.50'
 })
 
+// F05 & F08: ค้นหา holding ให้ตรงทั้ง ticker และ portfolio ที่เลือก
 const currentHolding = computed(() => {
   if (props.prefillHoldingId) {
     return portfolioStore.holdings.find(h => h.id === props.prefillHoldingId)
@@ -503,9 +552,10 @@ const currentHolding = computed(() => {
   const t = form.value.ticker.trim().toUpperCase()
   if (!t) return null
   return portfolioStore.holdings.find(h =>
-    h.ticker.toUpperCase() === t ||
-    h.ticker.toUpperCase() === `${t}.BK` ||
-    h.ticker.toUpperCase() === `${t}-USD`
+    (!form.value.portfolio || h.portfolio === form.value.portfolio) &&
+    (h.ticker.toUpperCase() === t ||
+     h.ticker.toUpperCase() === `${t}.BK` ||
+     h.ticker.toUpperCase() === `${t}-USD`)
   )
 })
 
@@ -611,7 +661,8 @@ watch(
         form.value.shares = Number(tx.shares)
         form.value.price_per_share = Number(tx.price_per_share)
         form.value.fee = Number(tx.fee || 0)
-        form.value.executed_at = tx.executed_at ? new Date(tx.executed_at).toISOString().slice(0, 16) : getNowLocalDateTime()
+        // F07: ใช้ toLocalInputDateTime เพื่อคงเวลาตาม Timezone ท้องถิ่นเดิม ไม่เลื่อน 7 ชั่วโมง
+        form.value.executed_at = toLocalInputDateTime(tx.executed_at)
         form.value.notes = tx.notes || ''
         manualCurrency.value = true
       } else {
@@ -623,14 +674,65 @@ watch(
         form.value.executed_at = getNowLocalDateTime()
         form.value.notes = ''
 
-        // Check prefill holding currency & auto-fill current market price
-        if (currentHolding.value) {
+        // F05 & F09: จัดการค่าเริ่มต้นเมื่อเปิดมาจาก Holding หรือ Watchlist
+        if (props.prefillHoldingId && currentHolding.value) {
           form.value.currency = (currentHolding.value.currency || 'THB').toUpperCase() as 'THB' | 'USD'
           if (currentHolding.value.portfolio) {
             form.value.portfolio = currentHolding.value.portfolio
           }
           if (currentHolding.value.position?.current_price) {
             form.value.price_per_share = Number(currentHolding.value.position.current_price)
+          }
+          selectedAsset.value = {
+            ticker: currentHolding.value.ticker,
+            name: currentHolding.value.name || currentHolding.value.ticker,
+            currency: (currentHolding.value.currency === 'USD' ? 'USD' : 'THB'),
+            asset_type: (currentHolding.value.asset_type || 'STOCK') as AssetType,
+            exchange: currentHolding.value.ticker.endsWith('.BK') ? 'SET' : 'US'
+          }
+        } else if (props.prefillTicker) {
+          const t = props.prefillTicker.trim().toUpperCase()
+          form.value.ticker = t
+
+          // หาว่ามีถืออยู่ในพอร์ตนี้อยู่แล้วหรือไม่
+          const held = currentHolding.value
+          if (held) {
+            form.value.currency = (held.currency || 'THB').toUpperCase() as 'THB' | 'USD'
+            if (held.position?.current_price) {
+              form.value.price_per_share = Number(held.position.current_price)
+            }
+            selectedAsset.value = {
+              ticker: held.ticker,
+              name: held.name || held.ticker,
+              currency: (held.currency === 'USD' ? 'USD' : 'THB'),
+              asset_type: (held.asset_type || 'STOCK') as AssetType,
+              exchange: held.ticker.endsWith('.BK') ? 'SET' : 'US'
+            }
+          } else {
+            // ค้นจาก watchlist
+            const watch = portfolioStore.watchlist.find(w => w.ticker.toUpperCase() === t)
+            if (watch) {
+              selectedAsset.value = {
+                ticker: watch.ticker,
+                name: watch.name || watch.ticker,
+                currency: (watch.currency === 'USD' ? 'USD' : 'THB'),
+                asset_type: (watch.asset_type || 'STOCK') as AssetType,
+                exchange: watch.ticker.endsWith('.BK') ? 'SET' : 'US'
+              }
+              form.value.currency = (watch.currency === 'USD' ? 'USD' : 'THB')
+              if (watch.current_price) {
+                form.value.price_per_share = Number(watch.current_price)
+              }
+            } else {
+              selectedAsset.value = {
+                ticker: t,
+                name: t,
+                currency: t.endsWith('.BK') ? 'THB' : 'USD',
+                asset_type: t.includes('-USD') ? 'CRYPTO' : 'STOCK',
+                exchange: t.endsWith('.BK') ? 'SET' : (t.includes('-USD') ? 'CRYPTO' : 'US')
+              }
+              form.value.currency = t.endsWith('.BK') ? 'THB' : 'USD'
+            }
           }
         } else {
           form.value.currency = portfolioStore.displayCurrency

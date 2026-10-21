@@ -33,6 +33,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   const marketStatus = ref<MarketStatusResponse | null>(null)
   const lastPriceSyncTime = ref<Date | null>(null)
   const isLoading = ref<boolean>(false)
+  const isSubmitting = ref<boolean>(false)
   const isRefreshing = ref<boolean>(false)
   const isLoadingNews = ref<boolean>(false)
   const isSyncingNews = ref<boolean>(false)
@@ -203,8 +204,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     }
   }
 
-  async function fetchHoldingByTicker(ticker: string): Promise<StockHolding> {
-    const res = await apiClient.get<StockHolding>(`/portfolio/holdings/by-ticker/${encodeURIComponent(ticker)}/`)
+  async function fetchHoldingByTicker(ticker: string, options?: { holdingId?: string; portfolioId?: string }): Promise<StockHolding> {
+    const params: Record<string, string> = {}
+    if (options?.holdingId) params.holding_id = options.holdingId
+    if (options?.portfolioId && options.portfolioId !== 'ALL') params.portfolio_id = options.portfolioId
+
+    const res = await apiClient.get<StockHolding>(`/portfolio/holdings/by-ticker/${encodeURIComponent(ticker)}/`, { params })
     return res.data
   }
 
@@ -220,13 +225,14 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     return res.data
   }
 
-  async function fetchNews(options?: { ticker?: string; today_only?: boolean; held_only?: boolean; page?: number }) {
+  async function fetchNews(options?: { ticker?: string; today_only?: boolean; held_only?: boolean; watchlist_only?: boolean; page?: number }) {
     isLoadingNews.value = true
     try {
       const params: Record<string, any> = {}
       if (options?.ticker) params.ticker = options.ticker
       if (options?.today_only) params.today_only = 'true'
       if (options?.held_only) params.held_only = 'true'
+      if (options?.watchlist_only) params.watchlist_only = 'true'
       if (options?.page) params.page = options.page
 
       const res = await apiClient.get<{ count: number; results: StockNewsArticle[] } | StockNewsArticle[]>('/portfolio/news/', { params })
@@ -319,11 +325,29 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
   async function refreshMarketPrices(force = false) {
     isRefreshing.value = true
+    const requestedPf = selectedPortfolioId.value
+    const requestedType = selectedAssetType.value
+    const requestedCurr = displayCurrency.value
+
+    const payload: Record<string, any> = { force }
+    if (requestedPf && requestedPf !== 'ALL') {
+      payload.portfolio_id = requestedPf
+    }
+    if (requestedType && requestedType !== 'ALL') {
+      payload.asset_type = requestedType
+    }
+    if (requestedCurr) {
+      payload.currency = requestedCurr
+    }
+
     try {
-      const res = await apiClient.post<PortfolioOverview>('/portfolio/refresh/', { force })
-      overview.value = res.data
-      lastPriceSyncTime.value = new Date()
-      await fetchHoldings()
+      const res = await apiClient.post<PortfolioOverview>('/portfolio/refresh/', payload)
+      // F02: อัปเดตเฉพาะเมื่อตัวกรองยังตรงกับตอนส่งคำขอ (ป้องกัน race condition สลับตัวกรองเร็ว)
+      if (selectedPortfolioId.value === requestedPf && selectedAssetType.value === requestedType) {
+        overview.value = res.data
+        lastPriceSyncTime.value = new Date()
+      }
+      await fetchHoldings({ portfolioId: requestedPf, assetType: requestedType })
       return res.data
     } catch (err: any) {
       error.value = err?.response?.data?.detail || 'Failed to refresh market prices'
@@ -334,36 +358,41 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   }
 
   async function addTransaction(payload: CreateTransactionPayload) {
-    isLoading.value = true
+    isSubmitting.value = true
     try {
       const res = await apiClient.post<StockTransaction>('/portfolio/transactions/', payload)
-      // Auto-sync: update overview, holdings, transactions and news
-      await Promise.all([
+      // F06: POST สำเร็จแล้ว! ดึงข้อมูลอัปเดตแบบ background โดยไม่โยน error หาก news หรือ GET อื่นล้มเหลว
+      Promise.allSettled([
         fetchOverview(),
         fetchHoldings(),
         fetchTransactions(),
         fetchNews()
-      ])
+      ]).catch(syncErr => console.warn('Background sync after trade encountered warning:', syncErr))
       return res.data
     } catch (err: any) {
       error.value = err?.response?.data?.detail || 'Failed to save transaction'
       throw err
     } finally {
-      isLoading.value = false
+      isSubmitting.value = false
     }
   }
 
   async function updateTransaction(id: string, payload: UpdateTransactionPayload) {
-    isLoading.value = true
+    isSubmitting.value = true
     try {
       const res = await apiClient.patch<StockTransaction>(`/portfolio/transactions/${id}/`, payload)
-      await Promise.all([fetchOverview(), fetchHoldings(), fetchTransactions()])
+      // F06: PATCH สำเร็จแล้ว! ดึงข้อมูลอัปเดตแบบ background
+      Promise.allSettled([
+        fetchOverview(),
+        fetchHoldings(),
+        fetchTransactions()
+      ]).catch(syncErr => console.warn('Background sync after update encountered warning:', syncErr))
       return res.data
     } catch (err: any) {
       error.value = err?.response?.data?.detail || 'Failed to update transaction'
       throw err
     } finally {
-      isLoading.value = false
+      isSubmitting.value = false
     }
   }
 
@@ -433,6 +462,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     marketStatus,
     lastPriceSyncTime,
     isLoading,
+    isSubmitting,
     isRefreshing,
     isLoadingNews,
     isSyncingNews,

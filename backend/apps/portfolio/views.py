@@ -193,9 +193,22 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
         """
         Universal Asset Profile:
         รองรับทั้งสินทรัพย์ที่มีในพอร์ต (is_held=True) และสินทรัพย์ใหม่ที่ยังไม่ได้ซื้อ (is_held=False)
+        F04: รองรับ holding_id หรือ portfolio_id ใน query params เพื่อให้เจาะจง holding ในพอร์ตที่ถูกต้อง
         """
         clean_ticker = normalize_ticker(ticker)
-        holding = StockHolding.objects.filter(user=request.user, ticker__iexact=clean_ticker).first()
+        holding_id = request.query_params.get('holding_id')
+        portfolio_id = request.query_params.get('portfolio_id')
+
+        holding_qs = StockHolding.objects.filter(user=request.user, ticker__iexact=clean_ticker).select_related('portfolio')
+        holding = None
+        if holding_id:
+            holding = holding_qs.filter(id=holding_id).first()
+        elif portfolio_id and str(portfolio_id).upper() != 'ALL':
+            holding = holding_qs.filter(portfolio_id=portfolio_id).first()
+
+        if not holding:
+            holding = holding_qs.first()
+
         is_watchlisted = StockWatchlist.objects.filter(user=request.user, ticker__iexact=clean_ticker).exists()
 
         if holding:
@@ -208,6 +221,15 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
             data = self.get_serializer(holding, context=context).data
             data['is_held'] = True
             data['is_watchlisted'] = is_watchlisted
+            # รายการพอร์ตทั้งหมดที่ถือหุ้นตัวนี้ (สำหรับสลับพอร์ตในหน้ารายละเอียด)
+            data['all_holdings'] = [
+                {
+                    'id': str(h.id),
+                    'portfolio_id': str(h.portfolio_id),
+                    'portfolio_name': h.portfolio.name,
+                }
+                for h in holding_qs
+            ]
             return response.Response(data)
 
         # Universal Mode: ตรวจสอบและดึงข้อมูลตลาดของสินทรัพย์ใหม่
@@ -504,6 +526,18 @@ class StockNewsViewSet(viewsets.ReadOnlyModelViewSet):
                 from .news_service import ingest_news_for_ticker
                 ingest_news_for_ticker(clean_ticker, limit_per_source=3)
                 qs = StockNewsArticle.objects.filter(ticker__iexact=clean_ticker)
+            else:
+                # ตรวจสอบและซ่อมแซมข่าวที่ยังไม่ได้แปลภาษาไทยแบบ On-the-fly
+                import re
+                from .news_service import enrich_article_if_empty
+                untranslated = [a for a in qs[:3] if not bool(re.search(r'[\u0e00-\u0e7f]', a.title_th or ''))]
+                for art in untranslated:
+                    try:
+                        enrich_article_if_empty(art, force=True)
+                    except Exception:
+                        pass
+                if untranslated:
+                    qs = StockNewsArticle.objects.filter(ticker__iexact=clean_ticker)
         elif watchlist_only and watchlist_only.lower() == 'true':
             watch_tickers = StockWatchlist.objects.filter(user=self.request.user).values_list('ticker', flat=True)
             qs = qs.filter(ticker__in=watch_tickers)
@@ -520,12 +554,15 @@ class StockNewsViewSet(viewsets.ReadOnlyModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         """ดึงรายละเอียดข่าว พร้อม Lazy Backfill เนื้อหาฉบับเต็มหากยังไม่มีหรือแปลไม่ครบ 100%"""
+        import re
         instance = self.get_object()
+        has_thai_title = bool(re.search(r'[\u0e00-\u0e7f]', instance.title_th or ''))
+        has_thai_content = bool(re.search(r'[\u0e00-\u0e7f]', instance.content_th or ''))
         eng_paras = len([p for p in (instance.content or '').split('\n\n') if p.strip()])
         th_paras = len([p for p in (instance.content_th or '').split('\n\n') if p.strip()])
-        if not instance.content or not instance.content_th or eng_paras > th_paras + 1:
+        if not instance.content or not instance.content_th or not has_thai_title or not has_thai_content or eng_paras > th_paras + 1:
             from .news_service import enrich_article_if_empty
-            instance = enrich_article_if_empty(instance)
+            instance = enrich_article_if_empty(instance, force=(not has_thai_title or not has_thai_content))
         serializer = self.get_serializer(instance)
         return response.Response(serializer.data)
 

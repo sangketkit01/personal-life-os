@@ -70,6 +70,9 @@ export interface MarketAssetSearchResult {
   asset_type: AssetType
   currency: 'THB' | 'USD'
   exchange: string
+  price?: number | null
+  change_amount?: number | null
+  change_pct?: number | null
 }
 
 export interface StockHolding {
@@ -83,6 +86,11 @@ export interface StockHolding {
   notes: string
   is_held?: boolean
   is_watchlisted?: boolean
+  all_holdings?: Array<{
+    id: string
+    portfolio_id: string
+    portfolio_name: string
+  }>
   position: PositionSummary
   recent_transactions: StockTransaction[]
   created_at: string

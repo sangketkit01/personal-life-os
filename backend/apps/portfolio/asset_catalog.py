@@ -190,7 +190,27 @@ def search_market_assets(query: str, asset_type: Optional[str] = None, limit: in
         except Exception:
             pass
 
-    return matched_results
+    # ดึงราคาตลาดล่าสุดจาก StockPriceSnapshot มาเติมในผลการค้นหา
+    try:
+        from .models import StockPriceSnapshot
+        tickers_list = [r['ticker'] for r in matched_results]
+        snapshots = {s.ticker: s for s in StockPriceSnapshot.objects.filter(ticker__in=tickers_list)}
+        enriched = []
+        for r in matched_results:
+            item = dict(r)
+            snap = snapshots.get(item['ticker'])
+            if snap and snap.price:
+                item['price'] = float(snap.price)
+                item['change_amount'] = float(snap.change_amount) if snap.change_amount else 0.0
+                item['change_pct'] = float(snap.change_pct) if snap.change_pct else 0.0
+            else:
+                item['price'] = None
+                item['change_amount'] = None
+                item['change_pct'] = None
+            enriched.append(item)
+        return enriched
+    except Exception:
+        return matched_results
 
 
 def verify_ticker_exists(ticker_str: str) -> Optional[Dict[str, Any]]:

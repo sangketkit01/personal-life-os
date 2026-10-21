@@ -103,12 +103,51 @@ class StockTransactionSerializer(serializers.ModelSerializer):
         if fee < Decimal('0'):
             raise serializers.ValidationError({'fee': 'Fee cannot be negative.'})
 
-        # Validate SELL volume against current holding
-        if tx_type == TransactionType.SELL and holding:
-            pos = calculate_detailed_position(holding)
-            if shares > pos['shares']:
+        # F05: ตรวจสอบความสอดคล้องระหว่าง Target Portfolio กับ Holding
+        target_portfolio_id = self.initial_data.get('portfolio')
+        if holding and target_portfolio_id and str(holding.portfolio_id) != str(target_portfolio_id):
+            # หาก Holding ปัจจุบันไม่ได้อยู่ในพอร์ตที่เลือก ให้ค้นหา Holding ของ ticker นี้ในพอร์ตเป้าหมาย
+            matched_holding = StockHolding.objects.filter(
+                user=user,
+                portfolio_id=target_portfolio_id,
+                ticker=holding.ticker
+            ).first()
+            if matched_holding:
+                attrs['holding'] = matched_holding
+                holding = matched_holding
+            else:
                 raise serializers.ValidationError({
-                    'shares': f'Cannot sell {shares} shares; holding only has {pos["shares"]} shares available.'
+                    'portfolio': f'สินทรัพย์ที่เลือกผูกกับพอร์ต "{holding.portfolio.name}" ซึ่งไม่ตรงกับพอร์ตปลายทางที่เลือก'
+                })
+
+        # F08: Validate SELL volume against current holding (รองรับทั้งส่ง holding และส่ง ticker)
+        if tx_type == TransactionType.SELL:
+            if not holding and user:
+                ticker_input = self.initial_data.get('ticker')
+                portfolio_id = self.initial_data.get('portfolio')
+                if ticker_input:
+                    clean_ticker = normalize_ticker(ticker_input)
+                    holding_qs = StockHolding.objects.filter(user=user)
+                    if portfolio_id and str(portfolio_id).upper() != 'ALL':
+                        holding_qs = holding_qs.filter(portfolio_id=portfolio_id)
+                    holding = holding_qs.filter(ticker__iexact=clean_ticker).first()
+                    if not holding and not clean_ticker.endswith('.BK'):
+                        holding = holding_qs.filter(ticker__iexact=f"{clean_ticker}.BK").first()
+
+            if not holding:
+                raise serializers.ValidationError({
+                    'shares': f'ไม่สามารถขายได้เนื่องจากคุณยังไม่มีสินทรัพย์นี้ในพอร์ตที่เลือก'
+                })
+
+            pos = calculate_detailed_position(holding)
+            available_shares = pos['shares']
+            # หากเป็นการแก้ไขรายการขายเดิม ให้นำจำนวนหุ้นของรายการเดิมกลับมาคำนวณด้วย
+            if self.instance and self.instance.transaction_type == TransactionType.SELL and self.instance.holding_id == holding.id:
+                available_shares += self.instance.shares
+
+            if shares > available_shares:
+                raise serializers.ValidationError({
+                    'shares': f'Cannot sell {shares} shares; holding only has {available_shares} shares available.'
                 })
 
         return attrs
@@ -174,16 +213,9 @@ class StockTransactionSerializer(serializers.ModelSerializer):
         if not validated_data.get('holding'):
             raise serializers.ValidationError({'holding': 'จำเป็นต้องระบุ holding หรือ ticker'})
 
-        # ซิงค์ currency ของ transaction กับ holding
+        # F03: ล็อก currency ของ transaction ให้ตรงกับ holding เสมอ เพื่อไม่ให้เปลี่ยน denomination ของข้อมูลเดิม
         target_holding = validated_data['holding']
-        if currency_input:
-            clean_curr = currency_input.upper()
-            validated_data['currency'] = clean_curr
-            if target_holding.currency != clean_curr:
-                target_holding.currency = clean_curr
-                target_holding.save(update_fields=['currency'])
-        else:
-            validated_data['currency'] = target_holding.currency or 'THB'
+        validated_data['currency'] = target_holding.currency or 'THB'
 
         validated_data['user'] = user
         tx = super().create(validated_data)
@@ -216,13 +248,9 @@ class StockTransactionSerializer(serializers.ModelSerializer):
         return tx
 
     def update(self, instance, validated_data):
-        currency_input = validated_data.get('currency')
-        if currency_input:
-            clean_curr = currency_input.upper()
-            validated_data['currency'] = clean_curr
-            if instance.holding and instance.holding.currency != clean_curr:
-                instance.holding.currency = clean_curr
-                instance.holding.save(update_fields=['currency'])
+        # F03: ล็อก currency ไม่ให้เปลี่ยน denomination ของ Holding เดิม
+        if instance.holding:
+            validated_data['currency'] = instance.holding.currency or 'THB'
         return super().update(instance, validated_data)
 
 

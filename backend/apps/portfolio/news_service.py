@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import requests
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -242,31 +243,124 @@ def fetch_from_google_news(ticker: str, limit: int = 3) -> List[Dict[str, Any]]:
     return articles
 
 
+def translate_edge_batch(texts: List[str]) -> List[Optional[str]]:
+    """
+    แปลชุดข้อความหรือย่อหน้าพร้อมกันด้วย Microsoft Edge AI Translation Endpoint
+    คืนค่า list ของข้อความที่แปลเป็นภาษาไทย หรือ None สำหรับรายการที่ล้มเหลว
+    """
+    if not texts:
+        return []
+
+    url = "https://edge.microsoft.com/translate/translatetext"
+    params = {"from": "", "to": "th", "isEnterpriseClient": "false"}
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0"
+    }
+
+    results = []
+    chunk_size = 12
+    for i in range(0, len(texts), chunk_size):
+        sub_list = texts[i:i+chunk_size]
+        try:
+            r = requests.post(url, params=params, headers=headers, json=sub_list, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                for item in data:
+                    t_text = item.get('translations', [{}])[0].get('text', '')
+                    if t_text:
+                        results.append(t_text)
+                    else:
+                        results.append(None)
+            else:
+                results.extend([None] * len(sub_list))
+        except Exception as e:
+            results.extend([None] * len(sub_list))
+
+    return results
+
+
 def translate_rpc(text: str) -> str:
-    """แปลข้อความสั้นหรือย่อหน้าผ่าน Google Translate RPC (POST)"""
+    """แปลข้อความหรือพาดหัวข่าวผ่าน Microsoft Edge Translation Engine (Tier 1) พร้อม Google & MyMemory Fallback"""
     if not text or not text.strip():
         return ''
+
+    clean_text = text.strip()
+    # หากเป็นภาษาไทยอยู่แล้ว คืนค่าเดิมได้ทันที
+    if bool(re.search(r'[\u0e00-\u0e7f]', clean_text)):
+        return clean_text
+
+    # 1. Tier 1: Microsoft Edge AI Translator (เร็ว แม่นยำสูง ไร้ปัญหา Rate Limit)
     try:
-        url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=th&dt=t"
-        data = urllib.parse.urlencode({'q': text[:2500]}).encode('utf-8')
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'}
-        )
-        with urllib.request.urlopen(req, timeout=8) as res:
-            res_data = json.loads(res.read().decode('utf-8'))
-            if res_data and res_data[0]:
-                return ''.join([part[0] for part in res_data[0] if part and part[0]]).strip()
+        edge_res = translate_edge_batch([clean_text[:3000]])
+        if edge_res and edge_res[0]:
+            if bool(re.search(r'[\u0e00-\u0e7f]', edge_res[0])) or not bool(re.search(r'[a-zA-Z]', clean_text)):
+                return edge_res[0]
     except Exception:
         pass
-    return text.strip()
+
+    # 2. Tier 2: Google Translate RPC (curl_cffi พร้อม client rotation)
+    clients = ['it', 'at', 'dict-chrome-ex']
+    try:
+        from curl_cffi import requests as cffi_requests
+        for client in clients:
+            try:
+                url = f"https://translate.googleapis.com/translate_a/single?client={client}&sl=auto&tl=th&dt=t"
+                r = cffi_requests.post(url, data={'q': clean_text[:2800]}, impersonate='chrome124', timeout=5)
+                if r.status_code == 200:
+                    res_data = r.json()
+                    if res_data and res_data[0]:
+                        translated = ''.join([part[0] for part in res_data[0] if part and part[0]]).strip()
+                        if bool(re.search(r'[\u0e00-\u0e7f]', translated)):
+                            return translated
+            except Exception:
+                continue
+    except ImportError:
+        pass
+
+    # 3. Tier 3: Google Translate ผ่าน urllib
+    for client in clients:
+        try:
+            url = f"https://translate.googleapis.com/translate_a/single?client={client}&sl=auto&tl=th&dt=t"
+            data = urllib.parse.urlencode({'q': clean_text[:2500]}).encode('utf-8')
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'}
+            )
+            with urllib.request.urlopen(req, timeout=5) as res:
+                res_data = json.loads(res.read().decode('utf-8'))
+                if res_data and res_data[0]:
+                    translated = ''.join([part[0] for part in res_data[0] if part and part[0]]).strip()
+                    if bool(re.search(r'[\u0e00-\u0e7f]', translated)):
+                        return translated
+        except Exception:
+            continue
+
+    # 4. Tier 4: MyMemory API Fallback
+    try:
+        sub_chunks = [clean_text[i:i+450] for i in range(0, min(len(clean_text), 1500), 450)]
+        trans_parts = []
+        for chunk in sub_chunks:
+            mm_url = f"https://api.mymemory.translated.net/get?q={urllib.parse.quote(chunk)}&langpair=en|th"
+            req = urllib.request.Request(mm_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+            with urllib.request.urlopen(req, timeout=5) as res:
+                mm_data = json.loads(res.read().decode('utf-8'))
+                part = mm_data.get('responseData', {}).get('translatedText', '')
+                if part and bool(re.search(r'[\u0e00-\u0e7f]', part)):
+                    trans_parts.append(part)
+        if trans_parts:
+            return ' '.join(trans_parts)
+    except Exception:
+        pass
+
+    return clean_text
 
 
 def translate_full_text(text: str) -> str:
     """
     แปลเนื้อหาข่าวฉบับเต็ม 100% ทุกย่อหน้าแบบไม่ตัดทอน
-    จัดกลุ่มย่อหน้าเป็นก้อนไม่เกิน 2,800 ตัวอักษรเพื่อรักษาโครงสร้างย่อหน้าครบถ้วน
+    ใช้ Edge Batch Translation แปลทั้งบทความพร้อมกันอย่างรวดเร็ว พร้อม Fallback ย่อหน้าต่อย่อหน้า
     """
     if not text or not text.strip():
         return ''
@@ -275,44 +369,19 @@ def translate_full_text(text: str) -> str:
     if not paragraphs:
         return ''
 
-    chunks = []
-    current_chunk = []
-    current_len = 0
+    # 1. แปลชุดย่อหน้าทั้งหมดด้วย Microsoft Edge Batch Translator
+    edge_results = translate_edge_batch(paragraphs)
 
-    for p in paragraphs:
-        if current_len + len(p) > 2800 and current_chunk:
-            chunks.append('\n\n'.join(current_chunk))
-            current_chunk = [p]
-            current_len = len(p)
+    final_paras = []
+    for idx, orig_p in enumerate(paragraphs):
+        translated = edge_results[idx] if idx < len(edge_results) else None
+        if translated and (bool(re.search(r'[\u0e00-\u0e7f]', translated)) or not bool(re.search(r'[a-zA-Z]', orig_p))):
+            final_paras.append(translated)
         else:
-            current_chunk.append(p)
-            current_len += len(p) + 2
+            fallback_res = translate_rpc(orig_p)
+            final_paras.append(fallback_res if fallback_res else orig_p)
 
-    if current_chunk:
-        chunks.append('\n\n'.join(current_chunk))
-
-    translated_chunks = []
-    url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=th&dt=t"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-    }
-
-    for c in chunks:
-        try:
-            data = urllib.parse.urlencode({'q': c}).encode('utf-8')
-            req = urllib.request.Request(url, data=data, headers=headers)
-            with urllib.request.urlopen(req, timeout=12) as res:
-                res_data = json.loads(res.read().decode('utf-8'))
-                t = ''.join([part[0] for part in res_data[0] if part and part[0]])
-                translated_chunks.append(t.strip())
-        except Exception:
-            # Fallback หากก้อนข้อความมีข้อผิดพลาด ให้แปลทีละย่อหน้า
-            sub_translated = []
-            for p in c.split('\n\n'):
-                sub_translated.append(translate_rpc(p))
-            translated_chunks.append('\n\n'.join(sub_translated))
-
-    return '\n\n'.join(translated_chunks)
+    return '\n\n'.join(final_paras)
 
 
 def translate_with_gemini(
@@ -400,11 +469,9 @@ def translate_with_fallback(
     - แปลเนื้อหาหลักเป็นย่อหน้าภาษาไทย (Full Content Reader)
     - วิเคราะห์ Sentiment จากเนื้อหาและพาดหัวข่าว
     """
-    # ตรวจสอบว่าเป็นภาษาไทยอยู่แล้วหรือไม่
-    has_thai = bool(re.search(r'[\u0e00-\u0e7f]', title or content))
-
     # 1. พาดหัวข่าว
-    title_th = title if has_thai else translate_rpc(title)
+    has_thai_title = bool(re.search(r'[\u0e00-\u0e7f]', title or ''))
+    title_th = title if has_thai_title else translate_rpc(title)
 
     # 2. วิเคราะห์ Sentiment
     combined_text = f"{title} {lead} {content[:500]}".lower()
@@ -425,7 +492,8 @@ def translate_with_fallback(
 
     # 3. สร้าง Executive Summary ในรูปแบบข้อ 3-4 ประเด็น
     lead_source = lead or (content.split('\n\n')[0] if content else title)
-    translated_lead = lead_source if has_thai else translate_rpc(lead_source)
+    has_thai_lead = bool(re.search(r'[\u0e00-\u0e7f]', lead_source or ''))
+    translated_lead = lead_source if has_thai_lead else translate_rpc(lead_source)
 
     if sentiment == 'BULLISH':
         sentiment_summary = f"สัญญาณเชิงบวก: มีปัจจัยหนุนที่อาจส่งผลดีต่อแนวโน้มราคาและโมเมนตัมของหุ้น {ticker}"
@@ -442,7 +510,8 @@ def translate_with_fallback(
     summary_th = '\n'.join(summary_bullets)
 
     # 4. แปลเนื้อหาฉบับเต็มเป็นย่อหน้าภาษาไทยครบ 100% ทุกย่อหน้า
-    if has_thai:
+    has_thai_content = bool(re.search(r'[\u0e00-\u0e7f]', content or ''))
+    if has_thai_content:
         content_th = content or lead
     else:
         if content:
@@ -542,18 +611,22 @@ def enrich_article_if_empty(article: StockNewsArticle, force: bool = False) -> S
     """
     เติมเต็มเนื้อหาข่าวและบทสรุปไทยให้ข่าวที่มีอยู่แล้วหากยังว่างเปล่า หรือยังแปลไม่ครบทั้งบทความ
     """
+    has_thai_title = bool(re.search(r'[\u0e00-\u0e7f]', article.title_th or ''))
+    has_thai_summary = bool(re.search(r'[\u0e00-\u0e7f]', article.summary_th or ''))
+    has_thai_content = bool(re.search(r'[\u0e00-\u0e7f]', article.content_th or ''))
+
     eng_paras = [p.strip() for p in (article.content or '').split('\n\n') if p.strip()]
     th_paras = [p.strip() for p in (article.content_th or '').split('\n\n') if p.strip()]
 
-    # ถ้ามีเนื้อหาครบทั้งสองภาษาและจำนวนย่อหน้าไทยใกล้เคียงกับอังกฤษแล้ว ไม่ต้องแปลซ้ำ (เว้นแต่ force=True)
-    if not force and article.content and article.content_th and len(article.summary_th) > 30:
+    # ถ้ามีเนื้อหาครบทั้งสองภาษาและแปลเป็นภาษาไทยอย่างสมบูรณ์แล้ว ไม่ต้องแปลซ้ำ (เว้นแต่ force=True)
+    if not force and article.content and has_thai_content and has_thai_title and has_thai_summary and len(article.summary_th) > 30:
         if len(eng_paras) <= len(th_paras) + 1:
             return article
 
-    # หากไม่มีเนื้อหาภาษาอังกฤษ ให้ดึงจากเว็บต้นฉบับก่อน
+    # หากไม่มีเนื้อหาภาษาอังกฤษ หรือถูกบังคับ ให้ดึงจากเว็บต้นฉบับก่อน
     content = article.content
     lead = article.summary
-    if not content or force:
+    if not content or force or not has_thai_content:
         scraped = scrape_article_content(article.url, timeout=8)
         scraped_content = scraped.get('full_text', '')
         if scraped_content:
@@ -569,10 +642,14 @@ def enrich_article_if_empty(article: StockNewsArticle, force: bool = False) -> S
 
     article.summary = lead
     article.content = content
-    article.title_th = trans_data.get('title_th') or article.title_th or article.title
-    article.summary_th = trans_data.get('summary_th') or article.summary_th
-    article.content_th = trans_data.get('content_th') or article.content_th or ''
-    article.sentiment = trans_data.get('sentiment') or article.sentiment
+    if trans_data.get('title_th'):
+        article.title_th = trans_data['title_th']
+    if trans_data.get('summary_th'):
+        article.summary_th = trans_data['summary_th']
+    if trans_data.get('content_th'):
+        article.content_th = trans_data['content_th']
+    if trans_data.get('sentiment'):
+        article.sentiment = trans_data['sentiment']
 
     try:
         article.save(update_fields=['summary', 'content', 'title_th', 'summary_th', 'content_th', 'sentiment'])

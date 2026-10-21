@@ -669,3 +669,112 @@ class PortfolioEngineTestCase(TestCase):
         self.assertIsNotNone(holding)
         self.assertEqual(holding.currency, 'USD')
         self.assertNotEqual(holding.ticker, 'GOOG.BK')
+
+    def test_f03_trade_currency_does_not_mutate_holding_currency(self):
+        """F03: ตรวจสอบว่าการบันทึกรายการเทรดไม่เปลี่ยน currency ของ Holding เดิมโดยไม่ตั้งใจ"""
+        holding = StockHolding.objects.create(
+            user=self.user,
+            ticker='NVDA',
+            name='Nvidia',
+            currency='USD',
+            asset_type=AssetType.STOCK
+        )
+        StockTransaction.objects.create(
+            user=self.user,
+            holding=holding,
+            transaction_type=TransactionType.BUY,
+            shares=Decimal('10'),
+            price_per_share=Decimal('100.00'),
+            fee=Decimal('0'),
+            currency='USD',
+            executed_at=timezone.now()
+        )
+        # ส่ง transaction ใหม่โดยระบุ currency='THB' (ผู้ใช้อาจเลือกผิดหรือ dropdown เพี้ยน)
+        res = self.client.post('/api/portfolio/transactions/', {
+            'holding': str(holding.id),
+            'transaction_type': 'BUY',
+            'shares': '5',
+            'price_per_share': '110.00',
+            'fee': '0',
+            'currency': 'THB',
+            'executed_at': timezone.now().isoformat()
+        })
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        holding.refresh_from_db()
+        # Holding ต้องยังคงเป็น USD เสมอ ไม่ถูกเขียนทับเป็น THB
+        self.assertEqual(holding.currency, 'USD')
+        # Transaction ใหม่ต้องถูกปรับให้ตรงกับ currency ของ Holding (USD)
+        self.assertEqual(res.data['currency'], 'USD')
+
+    def test_f04_by_ticker_with_portfolio_id_and_holding_id(self):
+        """F04: ถือ Ticker เดียวกันใน 2 พอร์ต เปิด by-ticker พร้อมระบุ portfolio_id หรือ holding_id ต้องได้ตรงพอร์ต"""
+        p_a = InvestmentPortfolio.objects.create(user=self.user, name='Port A', currency='USD')
+        p_b = InvestmentPortfolio.objects.create(user=self.user, name='Port B', currency='USD')
+
+        h_a = StockHolding.objects.create(user=self.user, portfolio=p_a, ticker='MSFT', currency='USD')
+        h_b = StockHolding.objects.create(user=self.user, portfolio=p_b, ticker='MSFT', currency='USD')
+
+        # เรียก by-ticker โดยระบุ portfolio_id ของ Port B
+        res_b = self.client.get(f'/api/portfolio/holdings/by-ticker/MSFT/?portfolio_id={p_b.id}')
+        self.assertEqual(res_b.status_code, status.HTTP_200_OK)
+        self.assertEqual(str(res_b.data['id']), str(h_b.id))
+        self.assertEqual(str(res_b.data['portfolio']), str(p_b.id))
+
+        # เรียก by-ticker โดยระบุ holding_id ของ Port A
+        res_a = self.client.get(f'/api/portfolio/holdings/by-ticker/MSFT/?holding_id={h_a.id}')
+        self.assertEqual(res_a.status_code, status.HTTP_200_OK)
+        self.assertEqual(str(res_a.data['id']), str(h_a.id))
+        self.assertEqual(str(res_a.data['portfolio']), str(p_a.id))
+
+    def test_f05_target_portfolio_mismatch_rejected(self):
+        """F05: ถ้าระบุ holding ของพอร์ต A แต่ส่ง portfolio id ของพอร์ต B ที่ไม่มี holding นี้ ต้องปฏิเสธ"""
+        p_a = InvestmentPortfolio.objects.create(user=self.user, name='Port Alpha', currency='USD')
+        p_b = InvestmentPortfolio.objects.create(user=self.user, name='Port Beta', currency='USD')
+        h_a = StockHolding.objects.create(user=self.user, portfolio=p_a, ticker='TSLA', currency='USD')
+
+        res = self.client.post('/api/portfolio/transactions/', {
+            'holding': str(h_a.id),
+            'portfolio': str(p_b.id),
+            'transaction_type': 'BUY',
+            'shares': '1',
+            'price_per_share': '200.00',
+            'fee': '0',
+            'executed_at': timezone.now().isoformat()
+        })
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('portfolio', res.data)
+
+    def test_f08_oversell_validation_via_ticker(self):
+        """F08: การขายผ่าน ticker ต้องตรวจ oversell เหมือนการขายผ่าน holding id"""
+        # 1. ขายหุ้นที่ยังไม่มีเลย -> ต้อง 400
+        res_no_holding = self.client.post('/api/portfolio/transactions/', {
+            'ticker': 'AMZN',
+            'transaction_type': 'SELL',
+            'shares': '5',
+            'price_per_share': '180.00',
+            'fee': '0',
+            'executed_at': timezone.now().isoformat()
+        })
+        self.assertEqual(res_no_holding.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('shares', res_no_holding.data)
+
+        # 2. ซื้อ 10 หุ้น แล้วลองขาย 15 หุ้นผ่าน ticker -> ต้อง 400
+        self.client.post('/api/portfolio/transactions/', {
+            'ticker': 'AMZN',
+            'transaction_type': 'BUY',
+            'shares': '10',
+            'price_per_share': '180.00',
+            'fee': '0',
+            'executed_at': timezone.now().isoformat()
+        })
+
+        res_oversell = self.client.post('/api/portfolio/transactions/', {
+            'ticker': 'AMZN',
+            'transaction_type': 'SELL',
+            'shares': '15',
+            'price_per_share': '185.00',
+            'fee': '0',
+            'executed_at': timezone.now().isoformat()
+        })
+        self.assertEqual(res_oversell.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('shares', res_oversell.data)

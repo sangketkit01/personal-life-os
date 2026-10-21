@@ -1,18 +1,188 @@
 <template>
   <div class="space-y-6 max-w-7xl mx-auto font-sans">
-    <!-- Header -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
-      <div>
+    <!-- Header & Universal Search Bar -->
+    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 pb-4 border-b border-zinc-800/80">
+      <div class="flex-shrink-0">
         <div class="flex items-center gap-2.5">
           <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">Portfolio Snapshot</h1>
           <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-zinc-900 text-zinc-400 border border-zinc-800">
             MARKET DATA
           </span>
         </div>
-        <p class="text-xs text-zinc-500 mt-1">Multi-asset bookkeeping (SET, US, Crypto) with weighted DCA cost basis and dual THB/USD conversion</p>
+        <p class="text-xs text-zinc-500 mt-0.5">Multi-asset bookkeeping (SET, US, Crypto) with weighted DCA cost basis and dual THB/USD conversion</p>
       </div>
 
-      <div class="flex flex-wrap items-center gap-2.5">
+      <!-- Universal Ticker & Asset Search Bar (Always visible & accessible from ANY tab) -->
+      <div ref="universalSearchContainerRef" class="relative w-full lg:max-w-md">
+        <div class="relative flex items-center">
+          <Search class="w-4 h-4 text-zinc-500 absolute left-3 pointer-events-none" />
+          <input
+            ref="universalSearchInputRef"
+            v-model="universalSearchQuery"
+            @input="handleUniversalSearchInput"
+            @keydown.down.prevent="navigateSearchResults(1)"
+            @keydown.up.prevent="navigateSearchResults(-1)"
+            @keydown.enter.prevent="handleUniversalSearchEnter"
+            @keydown.esc="closeUniversalSearch"
+            @focus="handleUniversalSearchFocus"
+            type="text"
+            placeholder="Search any ticker (e.g. NVDA, PTT, BTC, TSLA)..."
+            class="w-full pl-9 pr-14 py-2 rounded-lg bg-zinc-900/90 hover:bg-zinc-900 border border-zinc-800 focus:border-blue-500/60 focus:bg-zinc-950 text-xs text-zinc-100 placeholder-zinc-500 font-mono transition-all shadow-inner outline-none"
+          />
+          <div class="absolute right-2.5 flex items-center gap-1.5">
+            <Loader2 v-if="isUniversalSearching" class="w-3.5 h-3.5 text-blue-400 animate-spin" />
+            <button
+              v-else-if="universalSearchQuery"
+              @click="universalSearchQuery = ''; universalSearchResults = []; closeUniversalSearch()"
+              type="button"
+              class="text-zinc-500 hover:text-zinc-300"
+            >
+              <X class="w-3.5 h-3.5" />
+            </button>
+            <span v-else class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/60 shadow-sm pointer-events-none" title="Press / anywhere to search">
+              /
+            </span>
+          </div>
+        </div>
+
+        <!-- Autocomplete Dropdown Flyout -->
+        <div
+          v-if="showUniversalSearchResults && universalSearchQuery.trim()"
+          class="absolute left-0 right-0 mt-1.5 max-h-[380px] overflow-y-auto rounded-xl bg-zinc-950/95 backdrop-blur-md border border-zinc-800 shadow-2xl z-50 divide-y divide-zinc-800/80"
+        >
+          <!-- Results Header -->
+          <div class="px-3 py-2 bg-zinc-900/60 text-[10px] font-mono text-zinc-400 flex items-center justify-between">
+            <span v-if="universalSearchResults.length > 0">
+              Found {{ universalSearchResults.length }} asset{{ universalSearchResults.length > 1 ? 's' : '' }} for "{{ universalSearchQuery }}"
+            </span>
+            <span v-else>
+              Market Asset Search
+            </span>
+            <span class="text-zinc-500">Press Enter ↵ to inspect</span>
+          </div>
+
+          <!-- Result Items -->
+          <div v-if="universalSearchResults.length > 0" class="divide-y divide-zinc-800/50">
+            <div
+              v-for="(item, idx) in universalSearchResults"
+              :key="item.ticker"
+              @click="selectSearchAsset(item.ticker)"
+              class="p-2.5 px-3 hover:bg-zinc-900/80 cursor-pointer transition-colors flex items-center justify-between gap-3 group"
+              :class="{ 'bg-zinc-900/90 border-l-2 border-blue-500': selectedResultIndex === idx }"
+            >
+              <!-- Left: Ticker, Name, Badges -->
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="font-mono font-bold text-xs text-zinc-100 group-hover:text-blue-400 transition-colors">
+                    {{ item.ticker }}
+                  </span>
+                  <span
+                    class="text-[9px] font-mono px-1.5 py-0.2 rounded border font-semibold"
+                    :class="item.asset_type === 'CRYPTO' ? 'bg-purple-950/40 text-purple-400 border-purple-500/30' : (item.ticker.endsWith('.BK') ? 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30' : 'bg-blue-950/40 text-blue-400 border-blue-500/30')"
+                  >
+                    {{ item.asset_type }}
+                  </span>
+                  <span class="text-[9px] font-mono text-zinc-500 uppercase">
+                    {{ item.exchange || (item.ticker.endsWith('.BK') ? 'SET' : 'US') }}
+                  </span>
+
+                  <!-- Status Badges: Held or Watchlist -->
+                  <span
+                    v-if="isTickerHeld(item.ticker)"
+                    class="text-[9px] font-sans px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium flex items-center gap-1"
+                  >
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    <span>Held</span>
+                  </span>
+                  <span
+                    v-if="portfolioStore.isWatchlisted(item.ticker)"
+                    class="text-[9px] font-sans px-1.5 py-0.2 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium flex items-center gap-0.5"
+                  >
+                    <Star class="w-2.5 h-2.5 fill-amber-400" />
+                    <span>Watchlist</span>
+                  </span>
+                </div>
+                <div class="text-[11px] text-zinc-400 font-sans truncate mt-0.5">
+                  {{ item.name }}
+                </div>
+              </div>
+
+              <!-- Right: Price and Quick Actions -->
+              <div class="flex items-center gap-3 shrink-0">
+                <div v-if="item.price" class="text-right font-mono">
+                  <div class="text-xs font-semibold text-zinc-200">
+                    {{ item.currency === 'USD' ? '$' : '฿' }}{{ formatPrice(item.price) }}
+                  </div>
+                  <div
+                    v-if="item.change_pct !== undefined && item.change_pct !== null"
+                    class="text-[10px] font-semibold"
+                    :class="item.change_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'"
+                  >
+                    {{ item.change_pct >= 0 ? '+' : '' }}{{ item.change_pct.toFixed(2) }}%
+                  </div>
+                </div>
+
+                <!-- Quick Action Buttons -->
+                <div class="flex items-center gap-1" @click.stop>
+                  <!-- Quick Watchlist Toggle -->
+                  <button
+                    @click="portfolioStore.toggleWatchlist(item.ticker)"
+                    type="button"
+                    class="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-amber-400 transition-colors"
+                    :title="portfolioStore.isWatchlisted(item.ticker) ? 'Remove from Watchlist' : 'Add to Watchlist'"
+                  >
+                    <Star
+                      class="w-3.5 h-3.5"
+                      :class="portfolioStore.isWatchlisted(item.ticker) ? 'text-amber-400 fill-amber-400' : 'text-zinc-500'"
+                    />
+                  </button>
+
+                  <!-- Quick Buy Button -->
+                  <button
+                    @click="openBuyModalForTicker(item.ticker); closeUniversalSearch()"
+                    type="button"
+                    class="px-2 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[10px] font-mono text-zinc-300 hover:text-zinc-100 transition-colors"
+                    title="Record Trade for this ticker"
+                  >
+                    + Buy
+                  </button>
+
+                  <!-- View Asset Details -->
+                  <button
+                    @click="selectSearchAsset(item.ticker)"
+                    type="button"
+                    class="px-2 py-1 rounded bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-[10px] font-mono text-blue-400 hover:text-blue-300 font-semibold transition-colors flex items-center gap-1"
+                  >
+                    <span>View</span>
+                    <ArrowRight class="w-2.5 h-2.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fallback direct inspect card if no catalog match -->
+          <div
+            v-else-if="!isUniversalSearching"
+            @click="selectSearchAsset(universalSearchQuery.trim())"
+            class="p-4 hover:bg-zinc-900/80 cursor-pointer transition-colors flex items-center justify-between text-xs font-mono group"
+          >
+            <div>
+              <div class="text-zinc-300 font-semibold flex items-center gap-2">
+                <span>Inspect "{{ universalSearchQuery.toUpperCase() }}" in Universal Mode</span>
+                <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">Live Market</span>
+              </div>
+              <div class="text-[11px] text-zinc-500 font-sans mt-0.5">
+                Query live stock quotes, charts and AI translated news for this ticker directly
+              </div>
+            </div>
+            <ArrowRight class="w-4 h-4 text-zinc-500 group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Action Buttons -->
+      <div class="flex flex-wrap items-center gap-2.5 flex-shrink-0">
         <!-- Dual Currency View Switcher [฿ THB | $ USD] -->
         <div class="flex items-center p-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono">
           <button
@@ -502,7 +672,7 @@
               <td class="py-2.5 pl-4 sticky left-0 bg-zinc-950/90 backdrop-blur z-10">
                 <div class="flex items-center gap-2">
                   <button
-                    @click="goToAssetDetail(holding.ticker)"
+                    @click="goToAssetDetail(holding.ticker, holding.portfolio, holding.id)"
                     class="font-bold text-zinc-100 tracking-wide hover:underline hover:text-blue-400 text-left transition-colors font-mono"
                     title="View asset details, performance & news"
                   >
@@ -598,7 +768,7 @@
               <td class="py-2.5 text-right pr-4">
                 <div class="flex items-center justify-end gap-1.5">
                   <button
-                    @click="goToAssetDetail(holding.ticker)"
+                    @click="goToAssetDetail(holding.ticker, holding.portfolio, holding.id)"
                     class="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[10px] text-blue-400 hover:text-blue-300 font-semibold transition-colors"
                     title="View asset details, executions & news"
                   >
@@ -654,24 +824,58 @@
             </p>
           </div>
 
-          <!-- Quick Add to Watchlist -->
-          <div class="flex items-center gap-2">
-            <div class="relative">
-              <input
-                v-model="watchlistSearchQuery"
-                @keyup.enter="handleQuickAddWatchlist"
-                placeholder="เพิ่ม Ticker (เช่น NVDA, PLTR, CPALL)..."
-                class="px-3 py-1.5 rounded-md bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600 w-64 font-mono"
-              />
+          <!-- Quick Add to Watchlist with Autocomplete -->
+          <div ref="watchlistSearchContainerRef" class="relative">
+            <div class="flex items-center gap-2">
+              <div class="relative">
+                <Search class="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  v-model="watchlistSearchQuery"
+                  @input="handleWatchlistSearchInput"
+                  @keyup.enter="handleQuickAddWatchlist"
+                  @focus="showWatchlistAutocomplete = true"
+                  placeholder="ค้นหาหรือเพิ่ม Ticker (NVDA, PTT)..."
+                  class="pl-8 pr-3 py-1.5 rounded-md bg-zinc-950 border border-zinc-800 focus:border-zinc-600 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none w-72 font-mono"
+                />
+              </div>
+              <button
+                @click="handleQuickAddWatchlist"
+                :disabled="isAddingToWatchlist || !watchlistSearchQuery.trim()"
+                class="px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50 shadow"
+              >
+                <Plus class="w-3.5 h-3.5" />
+                <span>เพิ่ม Watchlist</span>
+              </button>
             </div>
-            <button
-              @click="handleQuickAddWatchlist"
-              :disabled="isAddingToWatchlist || !watchlistSearchQuery.trim()"
-              class="px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1 disabled:opacity-50 shadow"
+
+            <!-- Autocomplete Dropdown for Watchlist Quick Add -->
+            <div
+              v-if="showWatchlistAutocomplete && watchlistSearchResults.length > 0 && watchlistSearchQuery.trim()"
+              class="absolute right-0 left-0 mt-1.5 max-h-56 overflow-y-auto rounded-lg bg-zinc-950/95 border border-zinc-800 shadow-xl z-50 divide-y divide-zinc-800/60"
             >
-              <Plus class="w-3.5 h-3.5" />
-              <span>เพิ่ม Watchlist</span>
-            </button>
+              <div
+                v-for="res in watchlistSearchResults"
+                :key="res.ticker"
+                @click="addTickerToWatchlistFromSearch(res.ticker)"
+                class="p-2 px-3 hover:bg-zinc-900 cursor-pointer transition-colors flex items-center justify-between text-xs font-mono"
+              >
+                <div>
+                  <span class="font-bold text-zinc-200">{{ res.ticker }}</span>
+                  <span class="text-[10px] text-zinc-400 font-sans ml-1.5 truncate max-w-[140px]">{{ res.name }}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span v-if="res.price" class="text-zinc-400 text-[11px]">
+                    {{ res.currency === 'USD' ? '$' : '฿' }}{{ formatPrice(res.price) }}
+                  </span>
+                  <span
+                    class="text-[9px] px-1.5 py-0.5 rounded border"
+                    :class="portfolioStore.isWatchlisted(res.ticker) ? 'bg-amber-950/40 text-amber-400 border-amber-500/30' : 'bg-zinc-900 text-zinc-300 border-zinc-700'"
+                  >
+                    {{ portfolioStore.isWatchlisted(res.ticker) ? 'Added' : '+ Add' }}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1074,7 +1278,7 @@
             </span>
             <div class="text-right min-w-[90px]">
               <div class="text-zinc-100 font-medium">
-                {{ getTxCurrencySymbol(tx) }}{{ ((Number(tx.shares) * Number(tx.price_per_share)) + Number(tx.fee || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                {{ getTxCurrencySymbol(tx) }}{{ getTxNetAmount(tx).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
               </div>
             </div>
             <div class="flex items-center gap-1">
@@ -1164,7 +1368,7 @@ import EditPortfolioModal from '../components/portfolio/EditPortfolioModal.vue'
 import MoveHoldingModal from '../components/portfolio/MoveHoldingModal.vue'
 import ConfirmModal from '../components/common/ConfirmModal.vue'
 import AssetAllocationChart from '../components/portfolio/AssetAllocationChart.vue'
-import type { StockHolding, StockTransaction, StockNewsArticle, InvestmentPortfolio } from '../types/portfolio'
+import type { StockHolding, StockTransaction, StockNewsArticle, InvestmentPortfolio, MarketAssetSearchResult } from '../types/portfolio'
 import {
   TrendingUp,
   RefreshCw,
@@ -1179,21 +1383,177 @@ import {
   FolderPlus,
   FolderInput,
   Star,
-  Search
+  Search,
+  Loader2,
+  ArrowRight
 } from 'lucide-vue-next'
 
 const portfolioStore = usePortfolioStore()
 const toast = useToastStore()
 const router = useRouter()
 
-function goToAssetDetail(ticker: string) {
+function goToAssetDetail(ticker: string, portfolioId?: string, holdingId?: string) {
   if (!ticker) return
-  router.push(`/portfolio/asset/${encodeURIComponent(ticker)}`)
+  const query: Record<string, string> = {}
+  if (holdingId) query.holding_id = holdingId
+  if (portfolioId && portfolioId !== 'ALL') query.portfolio_id = portfolioId
+  router.push({
+    path: `/portfolio/asset/${encodeURIComponent(ticker)}`,
+    query
+  })
+}
+
+function getTxNetAmount(tx: StockTransaction): number {
+  const subtotal = Number(tx.shares || 0) * Number(tx.price_per_share || 0)
+  const fee = Number(tx.fee || 0)
+  if (tx.transaction_type === 'BUY') {
+    return subtotal + fee
+  } else {
+    return Math.max(0, subtotal - fee)
+  }
 }
 
 function goToNewsDetail(articleId: string) {
   if (!articleId) return
   router.push(`/portfolio/news/${articleId}`)
+}
+
+// Universal Market Asset Search Bar State (ค้นหา Ticker ได้จากทุก Tab ทุกเวลา)
+const universalSearchQuery = ref('')
+const universalSearchResults = ref<MarketAssetSearchResult[]>([])
+const isUniversalSearching = ref(false)
+const showUniversalSearchResults = ref(false)
+const selectedResultIndex = ref(-1)
+const universalSearchContainerRef = ref<HTMLElement | null>(null)
+const universalSearchInputRef = ref<HTMLInputElement | null>(null)
+let universalSearchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+// Watchlist Quick Add Autocomplete State
+const watchlistSearchResults = ref<MarketAssetSearchResult[]>([])
+const showWatchlistAutocomplete = ref(false)
+const watchlistSearchContainerRef = ref<HTMLElement | null>(null)
+let watchlistSearchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+function handleUniversalSearchInput() {
+  if (universalSearchDebounceTimer) clearTimeout(universalSearchDebounceTimer)
+  const q = universalSearchQuery.value.trim()
+  if (!q) {
+    universalSearchResults.value = []
+    isUniversalSearching.value = false
+    selectedResultIndex.value = -1
+    return
+  }
+
+  isUniversalSearching.value = true
+  universalSearchDebounceTimer = setTimeout(async () => {
+    try {
+      const results = await portfolioStore.searchAssets(q)
+      universalSearchResults.value = results
+      showUniversalSearchResults.value = true
+      selectedResultIndex.value = -1
+    } catch {
+      universalSearchResults.value = []
+    } finally {
+      isUniversalSearching.value = false
+    }
+  }, 160)
+}
+
+function handleUniversalSearchFocus() {
+  showUniversalSearchResults.value = true
+  if (universalSearchQuery.value.trim() && universalSearchResults.value.length === 0) {
+    handleUniversalSearchInput()
+  }
+}
+
+function navigateSearchResults(direction: number) {
+  if (!universalSearchResults.value.length) return
+  const max = universalSearchResults.value.length - 1
+  selectedResultIndex.value = Math.max(-1, Math.min(max, selectedResultIndex.value + direction))
+}
+
+function handleUniversalSearchEnter() {
+  if (selectedResultIndex.value >= 0 && universalSearchResults.value[selectedResultIndex.value]) {
+    const item = universalSearchResults.value[selectedResultIndex.value]
+    selectSearchAsset(item.ticker)
+  } else if (universalSearchQuery.value.trim()) {
+    selectSearchAsset(universalSearchQuery.value.trim())
+  }
+}
+
+function selectSearchAsset(ticker: string) {
+  if (!ticker) return
+  showUniversalSearchResults.value = false
+  universalSearchQuery.value = ''
+  goToAssetDetail(ticker)
+}
+
+function closeUniversalSearch() {
+  showUniversalSearchResults.value = false
+  selectedResultIndex.value = -1
+}
+
+function handleWatchlistSearchInput() {
+  if (watchlistSearchDebounceTimer) clearTimeout(watchlistSearchDebounceTimer)
+  const q = watchlistSearchQuery.value.trim()
+  if (!q) {
+    watchlistSearchResults.value = []
+    showWatchlistAutocomplete.value = false
+    return
+  }
+  watchlistSearchDebounceTimer = setTimeout(async () => {
+    try {
+      const results = await portfolioStore.searchAssets(q)
+      watchlistSearchResults.value = results
+      showWatchlistAutocomplete.value = true
+    } catch {
+      watchlistSearchResults.value = []
+    }
+  }, 180)
+}
+
+async function addTickerToWatchlistFromSearch(ticker: string) {
+  watchlistSearchQuery.value = ''
+  showWatchlistAutocomplete.value = false
+  if (portfolioStore.isWatchlisted(ticker)) {
+    toast.info(`${ticker} อยู่ใน Watchlist แล้ว`)
+    return
+  }
+  try {
+    const added = await portfolioStore.toggleWatchlist(ticker)
+    if (added) {
+      toast.success(`เพิ่ม ${ticker} เข้าสู่ Watchlist เรียบร้อยแล้ว`)
+    }
+  } catch (err: any) {
+    toast.error(err?.response?.data?.ticker || `ไม่สามารถเพิ่ม ${ticker} ได้`)
+  }
+}
+
+function isTickerHeld(ticker: string): StockHolding | undefined {
+  const clean = ticker.trim().toUpperCase()
+  return portfolioStore.holdings.find(h =>
+    h.ticker.toUpperCase() === clean ||
+    h.ticker.toUpperCase() === `${clean}.BK` ||
+    h.ticker.toUpperCase() === `${clean}-USD`
+  )
+}
+
+function handleGlobalKeydown(e: KeyboardEvent) {
+  // '/' or 'Ctrl+K' focuses universal search
+  if ((e.key === '/' || (e.ctrlKey && e.key.toLowerCase() === 'k')) && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
+    e.preventDefault()
+    universalSearchInputRef.value?.focus()
+    showUniversalSearchResults.value = true
+  }
+}
+
+function handleClickOutside(e: MouseEvent) {
+  if (universalSearchContainerRef.value && !universalSearchContainerRef.value.contains(e.target as Node)) {
+    closeUniversalSearch()
+  }
+  if (watchlistSearchContainerRef.value && !watchlistSearchContainerRef.value.contains(e.target as Node)) {
+    showWatchlistAutocomplete.value = false
+  }
 }
 
 const activeTab = ref<'holdings' | 'watchlist' | 'news' | 'transactions'>('holdings')
@@ -1371,10 +1731,16 @@ onMounted(async () => {
       // Graceful catch for background polling
     }
   }, 60000)
+
+  // Universal Search Global Keyboard & Click Outside listeners
+  window.addEventListener('keydown', handleGlobalKeydown)
+  document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
   if (realtimeSyncTimer) clearInterval(realtimeSyncTimer)
+  window.removeEventListener('keydown', handleGlobalKeydown)
+  document.removeEventListener('click', handleClickOutside)
 })
 
 function formatNumber(val: any, minFrac = 2, maxFrac = 2): string {
@@ -1451,11 +1817,21 @@ function switchTab(tab: 'holdings' | 'watchlist' | 'news' | 'transactions') {
 async function handleQuickAddWatchlist() {
   const t = watchlistSearchQuery.value.trim().toUpperCase()
   if (!t) return
+  // F10: ตรวจสอบก่อนว่ามีใน Watchlist แล้วหรือไม่ เพื่อไม่ให้กดซ้ำแล้วกลายเป็นการลบ
+  if (portfolioStore.isWatchlisted(t)) {
+    toast.info(`${t} อยู่ใน Watchlist แล้ว`)
+    watchlistSearchQuery.value = ''
+    return
+  }
   isAddingToWatchlist.value = true
   try {
-    await portfolioStore.toggleWatchlist(t)
+    const isAdded = await portfolioStore.toggleWatchlist(t)
     watchlistSearchQuery.value = ''
-    toast.success(`เพิ่ม ${t} เข้าสู่ Watchlist เรียบร้อยแล้ว`)
+    if (isAdded) {
+      toast.success(`เพิ่ม ${t} เข้าสู่ Watchlist เรียบร้อยแล้ว`)
+    } else {
+      toast.info(`นำ ${t} ออกจาก Watchlist เรียบร้อยแล้ว`)
+    }
   } catch (err: any) {
     toast.error(err?.response?.data?.ticker || `ไม่สามารถเพิ่ม ${t} ใน Watchlist ได้`)
   } finally {
@@ -1465,8 +1841,12 @@ async function handleQuickAddWatchlist() {
 
 async function handleRemoveWatchlist(ticker: string) {
   try {
-    await portfolioStore.toggleWatchlist(ticker)
-    toast.success(`นำ ${ticker} ออกจาก Watchlist เรียบร้อยแล้ว`)
+    const isAdded = await portfolioStore.toggleWatchlist(ticker)
+    if (!isAdded) {
+      toast.success(`นำ ${ticker} ออกจาก Watchlist เรียบร้อยแล้ว`)
+    } else {
+      toast.info(`เพิ่ม ${ticker} ใน Watchlist แล้ว`)
+    }
   } catch (err) {
     toast.error(`ไม่สามารถนำ ${ticker} ออกจาก Watchlist ได้`)
   }
@@ -1524,9 +1904,9 @@ async function loadNews() {
   if (selectedTicker.value) {
     params.ticker = selectedTicker.value
   } else if (newsScope.value === 'WATCHLIST') {
-    params.watchlist_only = 'true'
+    params.watchlist_only = true
   } else if (newsScope.value === 'HELD') {
-    params.held_only = 'true'
+    params.held_only = true
   }
 
   await portfolioStore.fetchNews(params)

@@ -92,8 +92,23 @@
               >
                 {{ holding?.currency || 'THB' }}
               </span>
+              <!-- Holding's Portfolio Badge with Multi-portfolio Switcher (F04) -->
+              <div v-if="holding?.all_holdings && holding.all_holdings.length > 1" class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-[10px] text-zinc-500 font-sans">Portfolios:</span>
+                <button
+                  v-for="h in holding.all_holdings"
+                  :key="h.id"
+                  @click="switchHolding(h.id, h.portfolio_id)"
+                  type="button"
+                  class="text-[11px] font-sans px-2.5 py-0.5 rounded-full border transition-colors flex items-center gap-1.5"
+                  :class="h.id === holding.id ? 'bg-zinc-800 text-zinc-100 border-zinc-600 font-semibold shadow-sm' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:bg-zinc-800/60'"
+                >
+                  <FolderKanban class="w-3 h-3 text-zinc-400" />
+                  <span>{{ h.portfolio_name }}</span>
+                </button>
+              </div>
               <span
-                v-if="holding?.portfolio_name && holding?.is_held"
+                v-else-if="holding?.portfolio_name && holding?.is_held"
                 class="text-[11px] font-sans px-2.5 py-0.5 rounded-full bg-zinc-900 text-zinc-400 border border-zinc-800 flex items-center gap-1.5"
               >
                 <FolderKanban class="w-3 h-3 text-zinc-500" />
@@ -141,61 +156,70 @@
             <div class="text-[10px] text-zinc-500 font-sans mt-0.5">8-decimal shares</div>
           </div>
 
-          <!-- Avg Cost Basis -->
+          <!-- Avg Cost Basis (F01: Dual-currency consistency) -->
           <div class="p-3 rounded-lg bg-zinc-900/40 border border-zinc-800/60">
             <div class="text-[10px] uppercase text-zinc-500">Average Cost</div>
             <div class="text-sm font-semibold text-zinc-200 mt-1 tabular-nums">
-              {{ nativeSymbol }}{{ formatPrice(holding?.position?.avg_cost || 0) }}
+              {{ currSymbol }}{{ formatPrice(displayAvgCost) }}
             </div>
-            <div class="text-[10px] text-zinc-500 font-sans mt-0.5">per unit</div>
+            <div v-if="holding?.currency !== portfolioStore.displayCurrency" class="text-[9px] text-zinc-500 font-sans mt-0.5">
+              ({{ nativeSymbol }}{{ formatPrice(holding?.position?.avg_cost || 0) }})
+            </div>
+            <div v-else class="text-[10px] text-zinc-500 font-sans mt-0.5">per unit</div>
           </div>
 
-          <!-- Total Cost Basis (Invested) -->
+          <!-- Total Cost Basis (Invested) (F01: Dual-currency consistency) -->
           <div class="p-3 rounded-lg bg-zinc-900/40 border border-zinc-800/60">
             <div class="text-[10px] uppercase text-zinc-500">Total Invested</div>
             <div class="text-sm font-semibold text-zinc-300 mt-1 tabular-nums">
-              {{ currSymbol }}{{ formatPrice(holding?.position?.total_invested || 0) }}
+              {{ currSymbol }}{{ formatPrice(displayInvested) }}
             </div>
-            <div class="text-[10px] text-zinc-500 font-sans mt-0.5">Cost Basis</div>
+            <div v-if="holding?.currency !== portfolioStore.displayCurrency" class="text-[9px] text-zinc-500 font-sans mt-0.5">
+              ({{ nativeSymbol }}{{ formatPrice(holding?.position?.total_invested || 0) }})
+            </div>
+            <div v-else class="text-[10px] text-zinc-500 font-sans mt-0.5">Cost Basis</div>
           </div>
 
-          <!-- Market Value -->
+          <!-- Market Value (F01: Dual-currency consistency) -->
           <div class="p-3 rounded-lg bg-zinc-900/40 border border-zinc-800/60">
             <div class="text-[10px] uppercase text-zinc-500">Market Value</div>
             <div class="text-sm font-bold text-zinc-100 mt-1 tabular-nums">
-              {{ currSymbol }}{{ formatPrice(holding?.position?.market_value || 0) }}
+              {{ currSymbol }}{{ formatPrice(displayMarketValue) }}
             </div>
-            <div class="text-[10px] text-zinc-500 font-sans mt-0.5">Current Value</div>
+            <div v-if="holding?.currency !== portfolioStore.displayCurrency" class="text-[9px] text-zinc-500 font-sans mt-0.5">
+              ({{ nativeSymbol }}{{ formatPrice(holding?.position?.market_value || 0) }})
+            </div>
+            <div v-else class="text-[10px] text-zinc-500 font-sans mt-0.5">Current Value</div>
           </div>
 
-          <!-- Unrealized PnL -->
+          <!-- Unrealized PnL (F01: Dual-currency consistency) -->
           <div class="p-3 rounded-lg bg-zinc-900/40 border border-zinc-800/60">
             <div class="text-[10px] uppercase text-zinc-500">Unrealized PnL</div>
             <div
               class="text-sm font-bold mt-1 tabular-nums"
-              :class="getPnlClass(holding?.position?.unrealized_pnl || 0)"
+              :class="getPnlClass(displayUnrealizedPnl)"
             >
-              {{ (holding?.position?.unrealized_pnl || 0) >= 0 ? '+' : '' }}{{ currSymbol }}{{ formatPrice(holding?.position?.unrealized_pnl || 0) }}
+              {{ displayUnrealizedPnl >= 0 ? '+' : '' }}{{ currSymbol }}{{ formatPrice(displayUnrealizedPnl) }}
             </div>
             <div
               class="text-[10px] font-semibold mt-0.5"
-              :class="getPnlClass(holding?.position?.unrealized_pnl || 0)"
+              :class="getPnlClass(displayUnrealizedPnl)"
             >
               {{ (holding?.position?.unrealized_pnl_pct || 0) >= 0 ? '+' : '' }}{{ Number(holding?.position?.unrealized_pnl_pct || 0).toFixed(2) }}%
             </div>
           </div>
 
-          <!-- Realized PnL & Dividends -->
+          <!-- Realized PnL & Dividends (F01: Dual-currency consistency) -->
           <div class="p-3 rounded-lg bg-zinc-900/40 border border-zinc-800/60">
             <div class="text-[10px] uppercase text-zinc-500">Realized / Divs</div>
             <div
               class="text-sm font-semibold mt-1 tabular-nums"
-              :class="getPnlClass(holding?.position?.total_realized_pnl || 0)"
+              :class="getPnlClass(displayRealizedPnl)"
             >
-              {{ currSymbol }}{{ formatPrice(holding?.position?.total_realized_pnl || 0) }}
+              {{ currSymbol }}{{ formatPrice(displayRealizedPnl) }}
             </div>
             <div class="text-[10px] text-amber-400 font-sans mt-0.5">
-              +{{ currSymbol }}{{ formatPrice(holding?.position?.total_dividends || 0) }} Divs
+              +{{ currSymbol }}{{ formatPrice(displayDividends) }} Divs
             </div>
           </div>
         </div>
@@ -514,7 +538,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePortfolioStore } from '../stores/portfolio'
 import type { StockHolding, StockTransaction, StockNewsArticle } from '../types/portfolio'
@@ -584,6 +608,56 @@ const nativeSymbol = computed(() => {
 const currSymbol = computed(() => {
   return portfolioStore.displayCurrency === 'USD' ? '$' : '฿'
 })
+
+// F01: คำนวณมูลค่าใน Display Currency ที่เลือก (THB / USD) เพื่อให้สัญลักษณ์ตรงกับตัวเลขเสมอ
+const displayMarketValue = computed(() => {
+  if (portfolioStore.displayCurrency === 'USD') {
+    return Number(holding.value?.position?.market_value_usd ?? holding.value?.position?.market_value ?? 0)
+  }
+  return Number(holding.value?.position?.market_value_thb ?? holding.value?.position?.market_value ?? 0)
+})
+
+const displayInvested = computed(() => {
+  if (portfolioStore.displayCurrency === 'USD') {
+    return Number(holding.value?.position?.total_invested_usd ?? holding.value?.position?.total_invested ?? 0)
+  }
+  return Number(holding.value?.position?.total_invested_thb ?? holding.value?.position?.total_invested ?? 0)
+})
+
+const displayUnrealizedPnl = computed(() => {
+  if (portfolioStore.displayCurrency === 'USD') {
+    return Number(holding.value?.position?.unrealized_pnl_usd ?? holding.value?.position?.unrealized_pnl ?? 0)
+  }
+  return Number(holding.value?.position?.unrealized_pnl_thb ?? holding.value?.position?.unrealized_pnl ?? 0)
+})
+
+const displayRealizedPnl = computed(() => {
+  if (portfolioStore.displayCurrency === 'USD') {
+    return Number(holding.value?.position?.total_realized_pnl_usd ?? holding.value?.position?.total_realized_pnl ?? 0)
+  }
+  return Number(holding.value?.position?.total_realized_pnl_thb ?? holding.value?.position?.total_realized_pnl ?? 0)
+})
+
+const displayDividends = computed(() => {
+  if (portfolioStore.displayCurrency === 'USD') {
+    return Number(holding.value?.position?.total_dividends_usd ?? holding.value?.position?.total_dividends ?? 0)
+  }
+  return Number(holding.value?.position?.total_dividends_thb ?? holding.value?.position?.total_dividends ?? 0)
+})
+
+const displayAvgCost = computed(() => {
+  if (portfolioStore.displayCurrency === 'USD') {
+    return Number(holding.value?.position?.avg_cost_usd ?? holding.value?.position?.avg_cost ?? 0)
+  }
+  return Number(holding.value?.position?.avg_cost_thb ?? holding.value?.position?.avg_cost ?? 0)
+})
+
+function switchHolding(holdingId: string, portfolioId: string) {
+  router.replace({
+    path: route.path,
+    query: { ...route.query, holding_id: holdingId, portfolio_id: portfolioId }
+  })
+}
 
 function formatPrice(val: number | string): string {
   const n = Number(val || 0)
@@ -719,9 +793,12 @@ async function loadAssetData() {
   const ticker = tickerParam.value
   if (!ticker) return
 
+  const portfolioId = (route.query.portfolio_id as string) || (portfolioStore.selectedPortfolioId !== 'ALL' ? portfolioStore.selectedPortfolioId : undefined)
+  const holdingId = (route.query.holding_id as string) || undefined
+
   try {
-    // 1. Fetch holding info (Universal: works whether held or in research mode)
-    const fetchedHolding = await portfolioStore.fetchHoldingByTicker(ticker)
+    // 1. Fetch holding info พร้อมระบุ holdingId/portfolioId เพื่อให้ตรงพอร์ต (F04)
+    const fetchedHolding = await portfolioStore.fetchHoldingByTicker(ticker, { holdingId, portfolioId })
     holding.value = fetchedHolding
 
     // If not held yet and no transactions, default tab to news
@@ -729,9 +806,13 @@ async function loadAssetData() {
       activeTab.value = 'news'
     }
 
-    // 2. Fetch transactions for this ticker
-    if (fetchedHolding.is_held) {
-      const txList = await portfolioStore.fetchTransactions({ ticker })
+    // 2. Fetch transactions สำหรับ Holding และ Portfolio เจาะจงนี้
+    if (fetchedHolding.is_held && fetchedHolding.id) {
+      const txList = await portfolioStore.fetchTransactions({
+        ticker,
+        holdingId: fetchedHolding.id,
+        portfolioId: fetchedHolding.portfolio
+      })
       assetTransactions.value = txList
     } else {
       assetTransactions.value = []
@@ -744,6 +825,13 @@ async function loadAssetData() {
     errorMessage.value = err?.response?.data?.detail || `ไม่พบข้อมูลสินทรัพย์ ${ticker} ในตลาดการเงิน`
   }
 }
+
+watch(
+  () => [route.query.holding_id, route.query.portfolio_id],
+  () => {
+    loadAssetData()
+  }
+)
 
 onMounted(async () => {
   isLoading.value = true

@@ -111,7 +111,7 @@
               <div class="flex items-center gap-3 shrink-0">
                 <div v-if="item.price" class="text-right font-mono">
                   <div class="text-xs font-semibold text-zinc-200">
-                    {{ item.currency === 'USD' ? '$' : '฿' }}{{ formatPrice(item.price) }}
+                    {{ (item.currency || '').toUpperCase() === 'USD' ? '$' : '฿' }}{{ formatPrice(item.price) }}
                   </div>
                   <div
                     v-if="item.change_pct !== undefined && item.change_pct !== null"
@@ -474,7 +474,7 @@
     <!-- Navigation Tabs (Holdings | Market News | Executions) -->
     <div class="flex items-center gap-2 border-b border-zinc-800/80 pb-2">
       <button
-        @click="activeTab = 'holdings'"
+        @click="switchTab('holdings')"
         class="px-3 py-1.5 rounded-md text-xs font-mono uppercase tracking-wider transition-colors flex items-center gap-2"
         :class="activeTab === 'holdings' ? 'bg-zinc-800 text-zinc-100 font-semibold' : 'text-zinc-400 hover:text-zinc-200'"
       >
@@ -513,7 +513,7 @@
       </button>
 
       <button
-        @click="activeTab = 'transactions'"
+        @click="switchTab('transactions')"
         class="px-3 py-1.5 rounded-md text-xs font-mono uppercase tracking-wider transition-colors flex items-center gap-2"
         :class="activeTab === 'transactions' ? 'bg-zinc-800 text-zinc-100 font-semibold' : 'text-zinc-400 hover:text-zinc-200'"
       >
@@ -692,49 +692,69 @@
                 {{ formatShares(holding.position.shares) }}
               </td>
 
-              <!-- Avg Cost (Converted to active view currency + native preview) -->
+              <!-- Avg Cost (Native quote with active view currency preview) -->
               <td class="py-2.5 text-right text-zinc-400 tabular-nums">
                 <div>
-                  {{ currSymbol }}{{ formatHoldingPrice(holding, 'avg_cost') }}
+                  {{ getHoldingNativeSymbol(holding) }}{{ formatPrice(holding.position.avg_cost) }}
                 </div>
                 <div
-                  v-if="holding.currency !== portfolioStore.displayCurrency"
+                  v-if="(holding.currency || 'THB').toUpperCase() !== portfolioStore.displayCurrency"
                   class="text-[9px] text-zinc-600"
                 >
-                  ({{ getHoldingNativeSymbol(holding) }}{{ formatPrice(holding.position.avg_cost) }})
+                  (≈ {{ currSymbol }}{{ formatHoldingPrice(holding, 'avg_cost') }})
                 </div>
               </td>
 
-              <!-- Market Price (Converted to active view currency + native preview) -->
+              <!-- Market Price (Native quote with active view currency preview + Dime/Webull Extended Session) -->
               <td class="py-2.5 text-right text-zinc-200 font-semibold tabular-nums">
-                <div class="flex items-center justify-end gap-1.5">
-                  <span
-                    v-if="holding.position.market_session === 'PRE'"
-                    class="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold"
-                    title="Pre-Market Live Price"
-                  >
-                    PRE
-                  </span>
-                  <span
-                    v-else-if="holding.position.market_session === 'POST'"
-                    class="text-[9px] font-mono px-1 py-0.2 rounded bg-purple-500/10 text-purple-400 border border-purple-500/30 font-bold"
-                    title="Post-Market / Extended Hours Price"
-                  >
-                    POST
-                  </span>
-                  <span>{{ currSymbol }}{{ formatHoldingPrice(holding, 'current_price') }}</span>
+                <div>
+                  <span>{{ getHoldingNativeSymbol(holding) }}{{ formatPrice(holding.position.current_price) }}</span>
                 </div>
                 <div
-                  v-if="holding.currency !== portfolioStore.displayCurrency"
+                  v-if="(holding.currency || 'THB').toUpperCase() !== portfolioStore.displayCurrency"
                   class="text-[9px] text-zinc-500 font-normal"
                 >
-                  ({{ getHoldingNativeSymbol(holding) }}{{ formatPrice(holding.position.current_price) }})
+                  (≈ {{ currSymbol }}{{ formatHoldingPrice(holding, 'current_price') }})
+                </div>
+
+                <!-- Secondary Dime/Webull Row: Pre-market / Post-market Price & Change -->
+                <div
+                  v-if="holding.position.extended_price && (holding.position.market_session === 'PRE' || holding.position.market_session === 'POST' || holding.position.market_session === 'POSTPOST')"
+                  class="text-[10px] tabular-nums font-mono flex items-center justify-end gap-1 mt-0.5"
+                  :title="holding.position.market_session === 'PRE' ? 'Pre-Market Quote' : 'Post-Market / Night Market Quote'"
+                >
+                  <span
+                    class="text-[8px] font-semibold px-1 py-0.2 rounded border uppercase tracking-wider"
+                    :class="holding.position.market_session === 'PRE'
+                      ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                      : 'bg-purple-500/10 text-purple-400 border-purple-500/30'"
+                  >
+                    {{ holding.position.market_session === 'PRE' ? 'Pre' : 'Post' }}
+                  </span>
+                  <span class="text-zinc-300 font-medium text-[10px]">
+                    {{ getHoldingNativeSymbol(holding) }}{{ formatPrice(holding.position.extended_price) }}
+                  </span>
+                  <span
+                    v-if="holding.position.extended_change_pct !== undefined && holding.position.extended_change_pct !== null"
+                    :class="(holding.position.extended_change_pct || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'"
+                    class="text-[9px] font-semibold"
+                  >
+                    ({{ (holding.position.extended_change_pct || 0) >= 0 ? '+' : '' }}{{ Number(holding.position.extended_change_pct || 0).toFixed(2) }}%)
+                  </span>
                 </div>
               </td>
 
-              <!-- Market Value (in active view currency) -->
+              <!-- Market Value (in active view currency + native preview) -->
               <td class="py-2.5 text-right text-zinc-100 font-semibold tabular-nums">
-                {{ currSymbol }}{{ formatHoldingValue(holding, 'market_value') }}
+                <div>
+                  {{ currSymbol }}{{ formatHoldingValue(holding, 'market_value') }}
+                </div>
+                <div
+                  v-if="(holding.currency || 'THB').toUpperCase() !== portfolioStore.displayCurrency"
+                  class="text-[9px] text-zinc-500 font-normal"
+                >
+                  ({{ getHoldingNativeSymbol(holding) }}{{ formatPrice(holding.position.market_value) }})
+                </div>
               </td>
 
               <!-- Unrealized PnL -->
@@ -861,7 +881,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                   <span v-if="res.price" class="text-zinc-400 text-[11px]">
-                    {{ res.currency === 'USD' ? '$' : '฿' }}{{ formatPrice(res.price) }}
+                    {{ (res.currency || '').toUpperCase() === 'USD' ? '$' : '฿' }}{{ formatPrice(res.price) }}
                   </span>
                   <span
                     class="text-[9px] px-1.5 py-0.5 rounded border"
@@ -924,7 +944,7 @@
               <div>
                 <div class="text-[10px] font-mono uppercase text-zinc-500">Market Price</div>
                 <div class="text-base font-bold font-mono text-zinc-100 tabular-nums">
-                  {{ item.currency === 'USD' ? '$' : '฿' }}{{ formatNumber(item.current_price || 0) }}
+                  {{ (item.currency || '').toUpperCase() === 'USD' ? '$' : '฿' }}{{ formatPrice(item.current_price || 0) }}
                 </div>
               </div>
 
@@ -1353,8 +1373,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { usePortfolioStore } from '../stores/portfolio'
 import { useToastStore } from '../stores/toast'
 import AddTransactionModal from '../components/portfolio/AddTransactionModal.vue'
@@ -1387,6 +1407,7 @@ import {
 const portfolioStore = usePortfolioStore()
 const toast = useToastStore()
 const router = useRouter()
+const route = useRoute()
 
 function goToAssetDetail(ticker: string, portfolioId?: string, holdingId?: string) {
   if (!ticker) return
@@ -1687,13 +1708,18 @@ const formattedLastSyncTime = computed(() => {
 })
 
 const activeSummary = computed(() => {
-  if (portfolioStore.displayCurrency === 'USD' && portfolioStore.overview?.summary_usd) {
-    return portfolioStore.overview.summary_usd
+  if (portfolioStore.displayCurrency === 'USD') {
+    return portfolioStore.overview?.summary_usd || {
+      total_market_value: 0,
+      total_cost_basis: 0,
+      total_unrealized_pnl: 0,
+      total_unrealized_pnl_pct: 0,
+      total_realized_pnl: 0,
+      total_dividends: 0,
+      asset_allocation: []
+    }
   }
-  if (portfolioStore.overview?.summary_thb) {
-    return portfolioStore.overview.summary_thb
-  }
-  return portfolioStore.overview || {
+  return portfolioStore.overview?.summary_thb || {
     total_market_value: 0,
     total_cost_basis: 0,
     total_unrealized_pnl: 0,
@@ -1705,6 +1731,10 @@ const activeSummary = computed(() => {
 })
 
 onMounted(async () => {
+  if (route.query.tab && ['holdings', 'watchlist', 'news', 'transactions'].includes(route.query.tab as string)) {
+    activeTab.value = route.query.tab as any
+  }
+
   await Promise.all([
     portfolioStore.fetchPortfolios(),
     portfolioStore.fetchOverview({ currency: portfolioStore.displayCurrency }),
@@ -1803,12 +1833,28 @@ function getHoldingRealizedPnL(holding: StockHolding): number {
 
 function switchTab(tab: 'holdings' | 'watchlist' | 'news' | 'transactions') {
   activeTab.value = tab
+  if (route.query.tab !== tab) {
+    router.replace({ query: { ...route.query, tab } }).catch(() => {})
+  }
   if (tab === 'watchlist') {
     portfolioStore.fetchWatchlist()
   } else if (tab === 'news' && portfolioStore.news.length === 0) {
     loadNews()
   }
 }
+
+watch(() => route.query.tab, (newTab) => {
+  if (newTab && ['holdings', 'watchlist', 'news', 'transactions'].includes(newTab as string)) {
+    if (activeTab.value !== newTab) {
+      activeTab.value = newTab as any
+      if (newTab === 'watchlist') {
+        portfolioStore.fetchWatchlist()
+      } else if (newTab === 'news' && portfolioStore.news.length === 0) {
+        loadNews()
+      }
+    }
+  }
+})
 
 async function handleQuickAddWatchlist() {
   const t = watchlistSearchQuery.value.trim().toUpperCase()

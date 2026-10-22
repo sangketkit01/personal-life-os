@@ -512,7 +512,7 @@ const form = ref({
   notes: ''
 })
 
-const currencySymbol = computed(() => (form.value.currency === 'USD' ? '$' : '฿'))
+const currencySymbol = computed(() => ((form.value.currency || '').toUpperCase() === 'USD' ? '$' : '฿'))
 
 const isSubmitDisabled = computed(() => {
   if (portfolioStore.isSubmitting) return true

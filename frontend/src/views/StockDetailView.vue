@@ -15,6 +15,24 @@
 
       <!-- Quick Actions -->
       <div class="flex items-center gap-2">
+        <!-- Currency View Toggle (F01) -->
+        <div class="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-md p-0.5">
+          <button
+            @click="portfolioStore.setDisplayCurrency('THB')"
+            class="px-2 py-1 rounded text-[11px] font-semibold transition-colors"
+            :class="portfolioStore.displayCurrency === 'THB' ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'"
+          >
+            ฿ THB
+          </button>
+          <button
+            @click="portfolioStore.setDisplayCurrency('USD')"
+            class="px-2 py-1 rounded text-[11px] font-semibold transition-colors"
+            :class="portfolioStore.displayCurrency === 'USD' ? 'bg-blue-950/60 text-blue-400 border border-blue-500/30 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'"
+          >
+            $ USD
+          </button>
+        </div>
+
         <button
           @click="handleToggleWatchlist"
           :disabled="isTogglingWatchlist"
@@ -124,7 +142,7 @@
                 <span>Pre-Market Live</span>
               </span>
               <span
-                v-else-if="holding?.position?.market_session === 'POST'"
+                v-else-if="holding?.position?.market_session === 'POST' || holding?.position?.market_session === 'POSTPOST'"
                 class="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/30 font-semibold flex items-center gap-1.5"
               >
                 <span class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
@@ -153,13 +171,20 @@
         :ticker="holding?.ticker || tickerParam"
         :currency="holding?.currency"
         :current-price="holding?.position?.current_price"
+        :extended-price="holding?.position?.extended_price"
+        :extended-change="holding?.position?.extended_change"
+        :extended-change-pct="holding?.position?.extended_change_pct"
+        :market-session="holding?.position?.market_session"
       />
 
       <!-- Position & Performance Metrics Grid (When Held) -->
       <div v-if="holding?.is_held" class="p-6 rounded-xl bg-zinc-950 border border-zinc-800 shadow-xl space-y-4">
-        <div class="text-xs font-semibold uppercase tracking-wider font-mono text-zinc-400 flex items-center gap-2">
-          <TrendingUp class="w-4 h-4 text-zinc-400" />
-          <span>Your Position & Financial Performance</span>
+        <div class="text-xs font-semibold uppercase tracking-wider font-mono text-zinc-400 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <TrendingUp class="w-4 h-4 text-zinc-400" />
+            <span>Your Position & Financial Performance</span>
+          </div>
+          <span class="text-[11px] font-mono text-zinc-500 font-normal">Values in {{ portfolioStore.displayCurrency }}</span>
         </div>
 
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 font-mono">
@@ -424,7 +449,7 @@
             <div class="flex items-center gap-2">
               <Newspaper class="w-4 h-4 text-zinc-400" />
               <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">
-                Market Intelligence for ${{ holding?.ticker || tickerParam }}
+                Market Intelligence for {{ holding?.ticker || tickerParam }}
               </h2>
             </div>
             <p class="text-xs text-zinc-500 mt-0.5">
@@ -571,7 +596,8 @@ import {
   FileText,
   History,
   Newspaper,
-  Star
+  Star,
+  TrendingUp
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -618,7 +644,7 @@ const showDeleteModal = ref(false)
 const txToDelete = ref<StockTransaction | null>(null)
 
 const nativeSymbol = computed(() => {
-  return holding.value?.currency === 'USD' ? '$' : '฿'
+  return (holding.value?.currency || 'THB').toUpperCase() === 'USD' ? '$' : '฿'
 })
 
 const currSymbol = computed(() => {
@@ -630,47 +656,89 @@ function getTxSymbol(tx: StockTransaction): string {
   return c === 'USD' ? '$' : '฿'
 }
 
-// F01: คำนวณมูลค่าใน Display Currency ที่เลือก (THB / USD) เพื่อให้สัญลักษณ์ตรงกับตัวเลขเสมอ
+// F01: คำนวณมูลค่าใน Display Currency ที่เลือก (THB / USD) แบบแม่นยำ 100% สัญลักษณ์ตรงกับตัวเลขเสมอ
 const displayMarketValue = computed(() => {
+  const p = holding.value?.position
+  if (!p) return 0
   if (portfolioStore.displayCurrency === 'USD') {
-    return Number(holding.value?.position?.market_value_usd ?? holding.value?.position?.market_value ?? 0)
+    if (p.market_value_usd !== undefined && p.market_value_usd !== null) return Number(p.market_value_usd)
+    const rate = portfolioStore.overview?.usd_to_thb_rate || portfolioStore.usdToThbRate || 34
+    return (holding.value?.currency || '').toUpperCase() === 'USD' ? Number(p.market_value || 0) : Number(p.market_value || 0) / rate
+  } else {
+    if (p.market_value_thb !== undefined && p.market_value_thb !== null) return Number(p.market_value_thb)
+    const rate = portfolioStore.overview?.usd_to_thb_rate || portfolioStore.usdToThbRate || 34
+    return (holding.value?.currency || '').toUpperCase() === 'THB' ? Number(p.market_value || 0) : Number(p.market_value || 0) * rate
   }
-  return Number(holding.value?.position?.market_value_thb ?? holding.value?.position?.market_value ?? 0)
 })
 
 const displayInvested = computed(() => {
+  const p = holding.value?.position
+  if (!p) return 0
   if (portfolioStore.displayCurrency === 'USD') {
-    return Number(holding.value?.position?.total_invested_usd ?? holding.value?.position?.total_invested ?? 0)
+    if (p.total_invested_usd !== undefined && p.total_invested_usd !== null) return Number(p.total_invested_usd)
+    const rate = portfolioStore.overview?.usd_to_thb_rate || portfolioStore.usdToThbRate || 34
+    return (holding.value?.currency || '').toUpperCase() === 'USD' ? Number(p.total_invested || 0) : Number(p.total_invested || 0) / rate
+  } else {
+    if (p.total_invested_thb !== undefined && p.total_invested_thb !== null) return Number(p.total_invested_thb)
+    const rate = portfolioStore.overview?.usd_to_thb_rate || portfolioStore.usdToThbRate || 34
+    return (holding.value?.currency || '').toUpperCase() === 'THB' ? Number(p.total_invested || 0) : Number(p.total_invested || 0) * rate
   }
-  return Number(holding.value?.position?.total_invested_thb ?? holding.value?.position?.total_invested ?? 0)
 })
 
 const displayUnrealizedPnl = computed(() => {
+  const p = holding.value?.position
+  if (!p) return 0
   if (portfolioStore.displayCurrency === 'USD') {
-    return Number(holding.value?.position?.unrealized_pnl_usd ?? holding.value?.position?.unrealized_pnl ?? 0)
+    if (p.unrealized_pnl_usd !== undefined && p.unrealized_pnl_usd !== null) return Number(p.unrealized_pnl_usd)
+    const rate = portfolioStore.overview?.usd_to_thb_rate || portfolioStore.usdToThbRate || 34
+    return (holding.value?.currency || '').toUpperCase() === 'USD' ? Number(p.unrealized_pnl || 0) : Number(p.unrealized_pnl || 0) / rate
+  } else {
+    if (p.unrealized_pnl_thb !== undefined && p.unrealized_pnl_thb !== null) return Number(p.unrealized_pnl_thb)
+    const rate = portfolioStore.overview?.usd_to_thb_rate || portfolioStore.usdToThbRate || 34
+    return (holding.value?.currency || '').toUpperCase() === 'THB' ? Number(p.unrealized_pnl || 0) : Number(p.unrealized_pnl || 0) * rate
   }
-  return Number(holding.value?.position?.unrealized_pnl_thb ?? holding.value?.position?.unrealized_pnl ?? 0)
 })
 
 const displayRealizedPnl = computed(() => {
+  const p = holding.value?.position
+  if (!p) return 0
   if (portfolioStore.displayCurrency === 'USD') {
-    return Number(holding.value?.position?.total_realized_pnl_usd ?? holding.value?.position?.total_realized_pnl ?? 0)
+    if (p.total_realized_pnl_usd !== undefined && p.total_realized_pnl_usd !== null) return Number(p.total_realized_pnl_usd)
+    const rate = portfolioStore.overview?.usd_to_thb_rate || portfolioStore.usdToThbRate || 34
+    return (holding.value?.currency || '').toUpperCase() === 'USD' ? Number(p.total_realized_pnl || 0) : Number(p.total_realized_pnl || 0) / rate
+  } else {
+    if (p.total_realized_pnl_thb !== undefined && p.total_realized_pnl_thb !== null) return Number(p.total_realized_pnl_thb)
+    const rate = portfolioStore.overview?.usd_to_thb_rate || portfolioStore.usdToThbRate || 34
+    return (holding.value?.currency || '').toUpperCase() === 'THB' ? Number(p.total_realized_pnl || 0) : Number(p.total_realized_pnl || 0) * rate
   }
-  return Number(holding.value?.position?.total_realized_pnl_thb ?? holding.value?.position?.total_realized_pnl ?? 0)
 })
 
 const displayDividends = computed(() => {
+  const p = holding.value?.position
+  if (!p) return 0
   if (portfolioStore.displayCurrency === 'USD') {
-    return Number(holding.value?.position?.total_dividends_usd ?? holding.value?.position?.total_dividends ?? 0)
+    if (p.total_dividends_usd !== undefined && p.total_dividends_usd !== null) return Number(p.total_dividends_usd)
+    const rate = portfolioStore.overview?.usd_to_thb_rate || portfolioStore.usdToThbRate || 34
+    return (holding.value?.currency || '').toUpperCase() === 'USD' ? Number(p.total_dividends || 0) : Number(p.total_dividends || 0) / rate
+  } else {
+    if (p.total_dividends_thb !== undefined && p.total_dividends_thb !== null) return Number(p.total_dividends_thb)
+    const rate = portfolioStore.overview?.usd_to_thb_rate || portfolioStore.usdToThbRate || 34
+    return (holding.value?.currency || '').toUpperCase() === 'THB' ? Number(p.total_dividends || 0) : Number(p.total_dividends || 0) * rate
   }
-  return Number(holding.value?.position?.total_dividends_thb ?? holding.value?.position?.total_dividends ?? 0)
 })
 
 const displayAvgCost = computed(() => {
+  const p = holding.value?.position
+  if (!p) return 0
   if (portfolioStore.displayCurrency === 'USD') {
-    return Number(holding.value?.position?.avg_cost_usd ?? holding.value?.position?.avg_cost ?? 0)
+    if (p.avg_cost_usd !== undefined && p.avg_cost_usd !== null) return Number(p.avg_cost_usd)
+    const rate = portfolioStore.overview?.usd_to_thb_rate || portfolioStore.usdToThbRate || 34
+    return (holding.value?.currency || '').toUpperCase() === 'USD' ? Number(p.avg_cost || 0) : Number(p.avg_cost || 0) / rate
+  } else {
+    if (p.avg_cost_thb !== undefined && p.avg_cost_thb !== null) return Number(p.avg_cost_thb)
+    const rate = portfolioStore.overview?.usd_to_thb_rate || portfolioStore.usdToThbRate || 34
+    return (holding.value?.currency || '').toUpperCase() === 'THB' ? Number(p.avg_cost || 0) : Number(p.avg_cost || 0) * rate
   }
-  return Number(holding.value?.position?.avg_cost_thb ?? holding.value?.position?.avg_cost ?? 0)
 })
 
 function switchHolding(holdingId: string, portfolioId: string) {

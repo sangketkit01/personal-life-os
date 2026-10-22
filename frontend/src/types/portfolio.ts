@@ -13,8 +13,11 @@ export interface PositionSummary {
   total_dividends: number
   is_active: boolean
   currency?: string
-  market_session?: 'REGULAR' | 'PRE' | 'POST' | 'NIGHT'
+  market_session?: 'REGULAR' | 'PRE' | 'POST' | 'POSTPOST' | 'NIGHT'
   regular_price?: number
+  extended_price?: number
+  extended_change?: number
+  extended_change_pct?: number
   market_value_thb?: number
   market_value_usd?: number
   total_invested_thb?: number
@@ -152,6 +155,11 @@ export interface StockChartData {
   base_price: number
   change_amount: number
   change_pct: number
+  market_session?: 'REGULAR' | 'PRE' | 'POST' | 'POSTPOST' | 'NIGHT'
+  regular_price?: number
+  extended_price?: number
+  extended_change?: number
+  extended_change_pct?: number
   points: StockChartPoint[]
 }
 

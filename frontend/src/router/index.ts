@@ -61,7 +61,7 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach(async (to, _from, next) => {
+router.beforeEach(async (to, _from) => {
   const authStore = useAuthStore()
 
   // ถ้าเพิ่งเปิดเว็บ ให้ลองตรวจหา Session ผ่าน Cookie ดูก่อน
@@ -70,11 +70,10 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next({ name: 'login' })
-  } else if (to.meta.requiresGuest && authStore.isAuthenticated) {
-    next({ name: 'overview' })
-  } else {
-    next()
+    return { name: 'login' }
+  }
+  if (to.meta.requiresGuest && authStore.isAuthenticated) {
+    return { name: 'overview' }
   }
 })
 

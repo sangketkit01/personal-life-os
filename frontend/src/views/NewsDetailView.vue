@@ -435,7 +435,7 @@ function handleImageError(e: Event) {
 }
 
 function backToNews() {
-  router.push('/portfolio')
+  router.push('/portfolio?tab=news')
 }
 
 function viewAsset(ticker: string) {

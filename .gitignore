@@ -31,3 +31,7 @@ dist-ssr/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Documentation & Audit reports
+docs/
+doc/

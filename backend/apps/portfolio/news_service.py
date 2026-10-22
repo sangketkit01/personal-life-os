@@ -563,12 +563,36 @@ def ingest_news_for_ticker(ticker: str, limit_per_source: int = 3) -> int:
         seen_urls.add(url)
 
         # ตรวจสอบว่าเคยมีใน Database หรือยัง
-        existing = StockNewsArticle.objects.filter(url=url).first()
-        if existing:
-            # ถ้ามีอยู่แล้วแต่ยังไม่มีเนื้อหา ให้เติมข้อมูล (Backfill)
-            if not existing.content or not existing.content_th:
-                enrich_article_if_empty(existing)
+        existing_this = StockNewsArticle.objects.filter(ticker=clean_tick, url=url).first()
+        if existing_this:
+            # ถ้ามีอยู่แล้วสำหรับหุ้นตัวนี้แต่ยังไม่มีเนื้อหา ให้เติมข้อมูล (Backfill)
+            if not existing_this.content or not existing_this.content_th:
+                enrich_article_if_empty(existing_this)
             continue
+
+        # ตรวจสอบว่าเคยมีบทความนี้ถูกดึงไว้แล้วสำหรับหุ้นตัวอื่นหรือไม่ (Reuse Scraped & Translated Content)
+        existing_other = StockNewsArticle.objects.filter(url=url).first()
+        if existing_other:
+            try:
+                StockNewsArticle.objects.create(
+                    ticker=clean_tick,
+                    title=existing_other.title,
+                    title_th=existing_other.title_th,
+                    summary=existing_other.summary,
+                    summary_th=existing_other.summary_th,
+                    content=existing_other.content,
+                    content_th=existing_other.content_th,
+                    source=existing_other.source,
+                    url=url,
+                    published_at=existing_other.published_at,
+                    sentiment=existing_other.sentiment,
+                    thumbnail_url=existing_other.thumbnail_url
+                )
+                new_articles_count += 1
+                continue
+            except Exception as e:
+                print(f"Warning: Failed to duplicate existing article for {clean_tick}: {e}")
+                continue
 
         # 3. Scrape เนื้อหาข่าวฉบับเต็ม
         scraped = scrape_article_content(url, timeout=8)
@@ -660,7 +684,8 @@ def enrich_article_if_empty(article: StockNewsArticle, force: bool = False) -> S
 
 
 def sync_all_portfolio_news(user=None) -> Dict[str, Any]:
-    """กวาดดึงข่าวและแปลภาษาอัตโนมัติสำหรับหุ้นทุกตัวในพอร์ตและ Watchlist"""
+    """กวาดดึงข่าวและแปลภาษาอัตโนมัติสำหรับหุ้นทุกตัวในพอร์ตและ Watchlist โดยใช้ Worker Pool"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     from .models import StockWatchlist
     holding_qs = StockHolding.objects.all()
     watch_qs = StockWatchlist.objects.all()
@@ -673,9 +698,32 @@ def sync_all_portfolio_news(user=None) -> Dict[str, Any]:
     distinct_tickers = sorted(list(holding_tickers | watch_tickers))
     total_new = 0
 
-    for t in distinct_tickers:
-        new_count = ingest_news_for_ticker(t, limit_per_source=3)
-        total_new += new_count
+    if not distinct_tickers:
+        return {
+            'tickers_synced': [],
+            'new_articles_count': 0
+        }
+
+    def _sync_worker(t_symbol):
+        from django.db import connection
+        try:
+            return ingest_news_for_ticker(t_symbol, limit_per_source=3)
+        finally:
+            connection.close()
+
+    max_workers = min(3, len(distinct_tickers))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_ticker = {
+            executor.submit(_sync_worker, t): t
+            for t in distinct_tickers
+        }
+        for future in as_completed(future_to_ticker):
+            t = future_to_ticker[future]
+            try:
+                new_count = future.result()
+                total_new += new_count
+            except Exception as e:
+                print(f"Error syncing news for {t}: {e}")
 
     return {
         'tickers_synced': distinct_tickers,

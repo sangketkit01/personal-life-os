@@ -23,6 +23,32 @@
             <span>({{ isPositive ? '+' : '' }}{{ displayChangePct.toFixed(2) }}%)</span>
           </div>
         </div>
+
+        <!-- Pre-Market / Post-Market (Extended Hours / Night Market) Secondary Callout (Dime / Webull style) -->
+        <div
+          v-if="!hoveredPoint && isExtendedSession && activeExtendedPrice"
+          class="flex items-center gap-2 mt-2 text-xs font-mono"
+        >
+          <span
+            class="px-1.5 py-0.5 rounded font-semibold text-[10px] flex items-center gap-1"
+            :class="activeMarketSession === 'PRE'
+              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+              : 'bg-purple-500/10 text-purple-400 border border-purple-500/30'"
+          >
+            <span class="w-1.5 h-1.5 rounded-full" :class="activeMarketSession === 'PRE' ? 'bg-amber-400 animate-pulse' : 'bg-purple-400 animate-pulse'"></span>
+            <span>{{ activeMarketSession === 'PRE' ? 'Pre-Market' : 'Post-Market' }}</span>
+          </span>
+          <span class="font-bold text-zinc-100 tabular-nums">
+            {{ currencySymbol }}{{ formatPrice(activeExtendedPrice) }}
+          </span>
+          <span
+            v-if="activeExtendedChangePct !== null"
+            class="font-semibold tabular-nums text-[11px]"
+            :class="(activeExtendedChangePct || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'"
+          >
+            {{ (activeExtendedChangePct || 0) >= 0 ? '+' : '' }}{{ activeExtendedChange !== null ? currencySymbol + formatPrice(activeExtendedChange) + ' ' : '' }}({{ (activeExtendedChangePct || 0) >= 0 ? '+' : '' }}{{ Number(activeExtendedChangePct || 0).toFixed(2) }}%)
+          </span>
+        </div>
       </div>
 
       <!-- Timeframe Selector Pills (Dime style) -->
@@ -192,7 +218,35 @@ const props = defineProps<{
   ticker: string
   currency?: string
   currentPrice?: number
+  extendedPrice?: number
+  extendedChange?: number
+  extendedChangePct?: number
+  marketSession?: 'REGULAR' | 'PRE' | 'POST' | 'POSTPOST' | 'NIGHT'
 }>()
+
+const activeExtendedPrice = computed(() => {
+  return chartData.value?.extended_price ?? props.extendedPrice ?? null
+})
+
+const activeExtendedChange = computed(() => {
+  return chartData.value?.extended_change ?? props.extendedChange ?? null
+})
+
+const activeExtendedChangePct = computed(() => {
+  return chartData.value?.extended_change_pct ?? props.extendedChangePct ?? null
+})
+
+const activeMarketSession = computed(() => {
+  return chartData.value?.market_session ?? props.marketSession ?? 'REGULAR'
+})
+
+const isExtendedSession = computed(() => {
+  return (
+    activeExtendedPrice.value !== null &&
+    activeExtendedPrice.value !== undefined &&
+    activeMarketSession.value !== 'REGULAR'
+  )
+})
 
 const portfolioStore = usePortfolioStore()
 const uid = Math.random().toString(36).substring(2, 9)
@@ -218,7 +272,7 @@ const points = computed<StockChartPoint[]>(() => {
 })
 
 const currencySymbol = computed(() => {
-  const c = chartData.value?.currency || props.currency || 'USD'
+  const c = (chartData.value?.currency || props.currency || 'USD').toUpperCase()
   return c === 'THB' ? '฿' : '$'
 })
 

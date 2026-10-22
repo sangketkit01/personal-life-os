@@ -1,5 +1,5 @@
 from django.db.models import Prefetch
-from rest_framework import viewsets, views, permissions, status, response
+from rest_framework import viewsets, views, permissions, status, response, serializers
 from rest_framework.decorators import action
 from apps.accounts.services import log_activity
 from .models import (
@@ -47,6 +47,8 @@ class InvestmentPortfolioViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         if instance.is_default:
             raise serializers.ValidationError({'detail': 'ไม่สามารถลบพอร์ตหลัก (Default Portfolio) ได้'})
+        if instance.holdings.exists():
+            raise serializers.ValidationError({'detail': 'ไม่สามารถลบพอร์ตที่มีรายการสินทรัพย์หรือประวัติธุรกรรมอยู่ได้ กรุณาย้ายหรือลบรายการสินทรัพย์ออกก่อน'})
         super().perform_destroy(instance)
 
 
@@ -270,6 +272,9 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
                 'change_pct': change_pct,
                 'market_session': getattr(snapshot, 'market_session', 'REGULAR'),
                 'regular_price': float(snapshot.regular_price) if snapshot and snapshot.regular_price else current_price,
+                'extended_price': float(snapshot.extended_price) if snapshot and snapshot.extended_price else None,
+                'extended_change': float(snapshot.extended_change) if snapshot and snapshot.extended_change else None,
+                'extended_change_pct': float(snapshot.extended_change_pct) if snapshot and snapshot.extended_change_pct else None,
                 'is_active': False
             },
             'recent_transactions': []
@@ -340,6 +345,11 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
                 'base_price': round(base_price, 4),
                 'change_amount': round(change_amount, 4),
                 'change_pct': round(change_pct, 2),
+                'market_session': getattr(snapshot, 'market_session', 'REGULAR') if snapshot else 'REGULAR',
+                'regular_price': float(snapshot.regular_price) if snapshot and snapshot.regular_price else current_price,
+                'extended_price': float(snapshot.extended_price) if snapshot and snapshot.extended_price else None,
+                'extended_change': float(snapshot.extended_change) if snapshot and snapshot.extended_change else None,
+                'extended_change_pct': float(snapshot.extended_change_pct) if snapshot and snapshot.extended_change_pct else None,
                 'points': points
             }
 
@@ -361,6 +371,11 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
                 'base_price': round(prev_close, 4),
                 'change_amount': round(change_amt, 4),
                 'change_pct': round(change_pct, 2),
+                'market_session': getattr(snapshot, 'market_session', 'REGULAR') if snapshot else 'REGULAR',
+                'regular_price': float(snapshot.regular_price) if snapshot and snapshot.regular_price else current_price,
+                'extended_price': float(snapshot.extended_price) if snapshot and snapshot.extended_price else None,
+                'extended_change': float(snapshot.extended_change) if snapshot and snapshot.extended_change else None,
+                'extended_change_pct': float(snapshot.extended_change_pct) if snapshot and snapshot.extended_change_pct else None,
                 'points': []
             })
 
@@ -523,23 +538,40 @@ class StockNewsViewSet(viewsets.ReadOnlyModelViewSet):
         if ticker:
             clean_ticker = normalize_ticker(ticker)
             qs = qs.filter(ticker__iexact=clean_ticker)
-            # On-demand News Ingestion: หากยังไม่มีข่าวของหุ้นตัวนี้ในระบบ ให้ดึงและแปลสดทันที
+            # On-demand News Ingestion: หากยังไม่มีข่าวของหุ้นตัวนี้ในระบบ ให้ดึงใน Background Worker
             if not qs.exists():
-                from .news_service import ingest_news_for_ticker
-                ingest_news_for_ticker(clean_ticker, limit_per_source=3)
-                qs = StockNewsArticle.objects.filter(ticker__iexact=clean_ticker)
-            else:
-                # ตรวจสอบและซ่อมแซมข่าวที่ยังไม่ได้แปลภาษาไทยแบบ On-the-fly
-                import re
-                from .news_service import enrich_article_if_empty
-                untranslated = [a for a in qs[:3] if not bool(re.search(r'[\u0e00-\u0e7f]', a.title_th or ''))]
-                for art in untranslated:
+                import threading
+                def _bg_ingest(sym):
+                    from django.db import connection
                     try:
-                        enrich_article_if_empty(art, force=True)
-                    except Exception:
-                        pass
-                if untranslated:
-                    qs = StockNewsArticle.objects.filter(ticker__iexact=clean_ticker)
+                        from .news_service import ingest_news_for_ticker
+                        ingest_news_for_ticker(sym, limit_per_source=3)
+                    except Exception as err:
+                        print(f"Background news ingestion error for {sym}: {err}")
+                    finally:
+                        connection.close()
+
+                threading.Thread(target=_bg_ingest, args=(clean_ticker,), daemon=True).start()
+            else:
+                # ส่งต่อให้ Background Worker เติมเนื้อหาและแปลไทยสำหรับข่าวที่ยังค้างอยู่
+                import re
+                untranslated_ids = [a.id for a in qs[:3] if not bool(re.search(r'[\u0e00-\u0e7f]', a.title_th or ''))]
+                if untranslated_ids:
+                    import threading
+                    def _bg_enrich(art_ids):
+                        from django.db import connection
+                        try:
+                            from .news_service import enrich_article_if_empty
+                            for art_id in art_ids:
+                                a = StockNewsArticle.objects.filter(id=art_id).first()
+                                if a:
+                                    enrich_article_if_empty(a, force=True)
+                        except Exception as err:
+                            print(f"Background enrich error: {err}")
+                        finally:
+                            connection.close()
+
+                    threading.Thread(target=_bg_enrich, args=(untranslated_ids,), daemon=True).start()
         elif watchlist_only and watchlist_only.lower() == 'true':
             watch_tickers = StockWatchlist.objects.filter(user=self.request.user).values_list('ticker', flat=True)
             qs = qs.filter(ticker__in=watch_tickers)

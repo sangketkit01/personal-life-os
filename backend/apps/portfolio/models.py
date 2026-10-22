@@ -226,6 +226,27 @@ class StockPriceSnapshot(models.Model):
         blank=True,
         verbose_name="ราคาปิดตลาดปกติ"
     )
+    extended_price = models.DecimalField(
+        max_digits=24,
+        decimal_places=8,
+        null=True,
+        blank=True,
+        verbose_name="ราคา Pre-Market หรือ Post-Market"
+    )
+    extended_change = models.DecimalField(
+        max_digits=24,
+        decimal_places=8,
+        null=True,
+        blank=True,
+        verbose_name="เปลี่ยนแปลง Extended (จำนวนเงิน)"
+    )
+    extended_change_pct = models.DecimalField(
+        max_digits=8,
+        decimal_places=4,
+        null=True,
+        blank=True,
+        verbose_name="เปลี่ยนแปลง Extended (%)"
+    )
     fetched_at = models.DateTimeField(auto_now=True, verbose_name="อัปเดตล่าสุดเมื่อ")
 
     class Meta:
@@ -247,7 +268,7 @@ class StockNewsArticle(models.Model):
     content = models.TextField(blank=True, default='', verbose_name="เนื้อหาข่าวภาษาอังกฤษฉบับเต็ม")
     content_th = models.TextField(blank=True, default='', verbose_name="เนื้อหาข่าวแปลไทยฉบับเต็ม")
     source = models.CharField(max_length=100, default='Yahoo Finance', verbose_name="สำนักข่าว")
-    url = models.URLField(max_length=1000, unique=True, db_index=True, verbose_name="ลิงก์ข่าว")
+    url = models.URLField(max_length=1000, db_index=True, verbose_name="ลิงก์ข่าว")
     published_at = models.DateTimeField(db_index=True, verbose_name="เวลาที่เผยแพร่")
     sentiment = models.CharField(
         max_length=20,
@@ -261,6 +282,7 @@ class StockNewsArticle(models.Model):
     class Meta:
         db_table = 'stock_news_articles'
         ordering = ['-published_at', '-created_at']
+        unique_together = ('ticker', 'url')
         verbose_name = 'ข่าวสารสินทรัพย์'
         verbose_name_plural = 'ข่าวสารสินทรัพย์ทั้งหมด'
         indexes = [

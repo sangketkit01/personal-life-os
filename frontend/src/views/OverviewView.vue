@@ -434,13 +434,14 @@ const articleLangMap = reactive<Record<string, 'EN' | 'TH'>>({})
 const translatingIds = reactive(new Set<string>())
 
 const activePortfolioSummary = computed(() => {
-  if (portfolioStore.displayCurrency === 'USD' && portfolioStore.overview?.summary_usd) {
-    return portfolioStore.overview.summary_usd
+  if (portfolioStore.displayCurrency === 'USD') {
+    return portfolioStore.overview?.summary_usd || {
+      total_market_value: 0,
+      total_unrealized_pnl: 0,
+      total_unrealized_pnl_pct: 0
+    }
   }
-  if (portfolioStore.overview?.summary_thb) {
-    return portfolioStore.overview.summary_thb
-  }
-  return portfolioStore.overview || {
+  return portfolioStore.overview?.summary_thb || {
     total_market_value: 0,
     total_unrealized_pnl: 0,
     total_unrealized_pnl_pct: 0

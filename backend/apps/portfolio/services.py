@@ -135,67 +135,75 @@ def fetch_and_cache_market_prices(
                     if raw_prev_close is not None:
                         previous_close_val = Decimal(str(round(raw_prev_close, 8)))
 
-                    # 2. Regular close price
+                    # 2. Regular market price & change (ราคาหลักในเวลาทำการปกติ - ไม่ถูกทับโดย Pre/Post)
                     raw_reg_price = info.get('regularMarketPrice') or (fast_info.get('regularMarketPrice') if fast_info else None) or (fast_info.get('lastPrice') if fast_info else None)
                     if raw_reg_price is not None:
                         regular_price_val = Decimal(str(round(raw_reg_price, 8)))
+                        price_val = regular_price_val
 
-                    # 3. ตรวจสอบสถานะตลาด Pre-Market, Regular, และ Post-Market (Extended Hours)
+                    raw_reg_change = info.get('regularMarketChange') or (fast_info.get('regularMarketChange') if fast_info else None)
+                    if raw_reg_change is not None:
+                        change_amount_val = Decimal(str(round(raw_reg_change, 8)))
+                    elif price_val and previous_close_val:
+                        change_amount_val = price_val - previous_close_val
+
+                    raw_reg_change_pct = info.get('regularMarketChangePercent') or (fast_info.get('regularMarketChangePercent') if fast_info else None)
+                    if raw_reg_change_pct is not None:
+                        change_pct_val = Decimal(str(round(raw_reg_change_pct, 4)))
+                    elif previous_close_val and previous_close_val > Decimal('0') and price_val:
+                        change_pct_val = Decimal(str(round(((price_val - previous_close_val) / previous_close_val) * 100, 4)))
+
+                    # 3. ข้อมูลแยกสำหรับ Pre-Market และ Post-Market / Night Market (Extended Hours - เหมือน Dime / Webull)
                     market_state = str(info.get('marketState', '')).upper()
                     raw_post_price = info.get('postMarketPrice')
                     raw_pre_price = info.get('preMarketPrice')
 
+                    extended_price_val = None
+                    extended_change_val = None
+                    extended_change_pct_val = None
+                    session_val = 'REGULAR'
+
                     # ถ้าอยู่ในช่วง PRE-market และมีราคา preMarketPrice
                     if (market_state == 'PRE' or 'PRE' in market_state) and raw_pre_price is not None:
-                        price_val = Decimal(str(round(raw_pre_price, 8)))
                         session_val = 'PRE'
+                        extended_price_val = Decimal(str(round(raw_pre_price, 8)))
                         raw_pre_change_pct = info.get('preMarketChangePercent')
                         if raw_pre_change_pct is not None:
-                            change_pct_val = Decimal(str(round(raw_pre_change_pct, 4)))
+                            extended_change_pct_val = Decimal(str(round(raw_pre_change_pct, 4)))
                         elif previous_close_val and previous_close_val > Decimal('0'):
-                            change_pct_val = Decimal(str(round(((price_val - previous_close_val) / previous_close_val) * 100, 4)))
+                            extended_change_pct_val = Decimal(str(round(((extended_price_val - previous_close_val) / previous_close_val) * 100, 4)))
 
                         raw_pre_change = info.get('preMarketChange')
                         if raw_pre_change is not None:
-                            change_amount_val = Decimal(str(round(raw_pre_change, 8)))
+                            extended_change_val = Decimal(str(round(raw_pre_change, 8)))
                         elif previous_close_val:
-                            change_amount_val = price_val - previous_close_val
+                            extended_change_val = extended_price_val - previous_close_val
 
                     # ถ้าอยู่ในช่วง POST-market หรือนอกเวลาทำการ และมีราคา postMarketPrice
                     elif raw_post_price is not None and (market_state in ('POST', 'POSTPOST', 'CLOSED') or not market_state):
-                        price_val = Decimal(str(round(raw_post_price, 8)))
                         session_val = 'POST'
+                        extended_price_val = Decimal(str(round(raw_post_price, 8)))
                         raw_post_change_pct = info.get('postMarketChangePercent')
                         if raw_post_change_pct is not None:
-                            change_pct_val = Decimal(str(round(raw_post_change_pct, 4)))
+                            extended_change_pct_val = Decimal(str(round(raw_post_change_pct, 4)))
                         elif previous_close_val and previous_close_val > Decimal('0'):
-                            change_pct_val = Decimal(str(round(((price_val - previous_close_val) / previous_close_val) * 100, 4)))
+                            extended_change_pct_val = Decimal(str(round(((extended_price_val - previous_close_val) / previous_close_val) * 100, 4)))
 
                         raw_post_change = info.get('postMarketChange')
                         if raw_post_change is not None:
-                            change_amount_val = Decimal(str(round(raw_post_change, 8)))
+                            extended_change_val = Decimal(str(round(raw_post_change, 8)))
                         elif previous_close_val:
-                            change_amount_val = price_val - previous_close_val
-
-                    # ตลาดปกติ หรือสินทรัพย์ที่ไม่มี Pre/Post (SET, Crypto)
-                    else:
-                        price_val = regular_price_val or (Decimal(str(round(fast_info.get('lastPrice'), 8))) if fast_info and fast_info.get('lastPrice') else None)
-                        session_val = 'REGULAR'
-                        raw_change = info.get('regularMarketChangePercent') or (fast_info.get('regularMarketChangePercent') if fast_info else None)
-                        if raw_change is not None:
-                            change_pct_val = Decimal(str(round(raw_change, 4)))
-                        raw_change_amt = info.get('regularMarketChange')
-                        if raw_change_amt is not None:
-                            change_amount_val = Decimal(str(round(raw_change_amt, 8)))
-                        elif price_val and previous_close_val:
-                            change_amount_val = price_val - previous_close_val
+                            extended_change_val = extended_price_val - previous_close_val
 
                     if price_val is not None and price_val > Decimal('0'):
                         StockPriceSnapshot.objects.update_or_create(
                             ticker=t,
                             defaults={
                                 'price': price_val,
-                                'regular_price': regular_price_val or price_val,
+                                'regular_price': price_val,
+                                'extended_price': extended_price_val,
+                                'extended_change': extended_change_val,
+                                'extended_change_pct': extended_change_pct_val,
                                 'market_session': session_val,
                                 'change_amount': change_amount_val,
                                 'change_pct': change_pct_val,
@@ -271,7 +279,6 @@ def calculate_detailed_position(
             # เงินปันผลรับ = (จำนวนหุ้น * ปันผลต่อหุ้น) - หัก ณ ที่จ่าย
             net_dividend = (tx.shares * tx.price_per_share) - tx.fee
             total_dividends += net_dividend
-            total_realized_pnl += net_dividend
 
     avg_cost = (total_cost_basis / total_shares) if total_shares > Decimal('0') else Decimal('0')
 
@@ -279,9 +286,25 @@ def calculate_detailed_position(
     snapshot = StockPriceSnapshot.objects.filter(ticker=holding.ticker).first()
     if current_price is None:
         current_price = snapshot.price if snapshot else avg_cost
+    elif not isinstance(current_price, Decimal):
+        current_price = Decimal(str(current_price))
 
     market_session = getattr(snapshot, 'market_session', 'REGULAR') if snapshot else 'REGULAR'
     regular_price = getattr(snapshot, 'regular_price', current_price) if snapshot else current_price
+    if regular_price is not None and not isinstance(regular_price, Decimal):
+        regular_price = Decimal(str(regular_price))
+
+    extended_price = getattr(snapshot, 'extended_price', None) if snapshot else None
+    if extended_price is not None and not isinstance(extended_price, Decimal):
+        extended_price = Decimal(str(extended_price))
+
+    extended_change = getattr(snapshot, 'extended_change', None) if snapshot else None
+    if extended_change is not None and not isinstance(extended_change, Decimal):
+        extended_change = Decimal(str(extended_change))
+
+    extended_change_pct = getattr(snapshot, 'extended_change_pct', None) if snapshot else None
+    if extended_change_pct is not None and not isinstance(extended_change_pct, Decimal):
+        extended_change_pct = Decimal(str(extended_change_pct))
 
     market_value = total_shares * current_price
     unrealized_pnl = market_value - total_cost_basis
@@ -290,6 +313,8 @@ def calculate_detailed_position(
     # Dual-Currency conversion (THB <-> USD)
     if usd_to_thb_rate is None or usd_to_thb_rate <= Decimal('0'):
         usd_to_thb_rate = get_usd_to_thb_rate()
+    elif not isinstance(usd_to_thb_rate, Decimal):
+        usd_to_thb_rate = Decimal(str(usd_to_thb_rate))
 
     h_currency = (holding.currency or 'THB').upper()
 
@@ -339,8 +364,12 @@ def calculate_detailed_position(
         'unrealized_pnl_pct': round(unrealized_pnl_pct, 2),
         'total_realized_pnl': round(total_realized_pnl, 2),
         'total_dividends': round(total_dividends, 2),
+        'total_realized_return': round(total_realized_pnl + total_dividends, 2),
         'market_session': market_session or 'REGULAR',
         'regular_price': round(regular_price, 4) if regular_price else None,
+        'extended_price': round(extended_price, 4) if extended_price else None,
+        'extended_change': round(extended_change, 4) if extended_change else None,
+        'extended_change_pct': round(extended_change_pct, 4) if extended_change_pct else None,
         'is_active': total_shares > Decimal('0'),
         # Explicit THB values
         'avg_cost_thb': round(avg_cost_thb, 4),
@@ -350,6 +379,7 @@ def calculate_detailed_position(
         'unrealized_pnl_thb': round(pnl_thb, 2),
         'total_realized_pnl_thb': round(realized_thb, 2),
         'total_dividends_thb': round(div_thb, 2),
+        'total_realized_return_thb': round(realized_thb + div_thb, 2),
         # Explicit USD values
         'avg_cost_usd': round(avg_cost_usd, 4),
         'current_price_usd': round(price_usd, 4),
@@ -358,6 +388,7 @@ def calculate_detailed_position(
         'unrealized_pnl_usd': round(pnl_usd, 2),
         'total_realized_pnl_usd': round(realized_usd, 2),
         'total_dividends_usd': round(div_usd, 2),
+        'total_realized_return_usd': round(realized_usd + div_usd, 2),
     }
 
 
@@ -516,6 +547,7 @@ def get_portfolio_overview(
         'total_unrealized_pnl_pct': round(thb_unrealized_pnl_pct, 2),
         'total_realized_pnl': round(thb_realized_pnl, 2),
         'total_dividends': round(thb_dividends, 2),
+        'total_realized_return': round(thb_realized_pnl + thb_dividends, 2),
         'asset_allocation': alloc_thb,
     }
 
@@ -526,6 +558,7 @@ def get_portfolio_overview(
         'total_unrealized_pnl_pct': round(usd_unrealized_pnl_pct, 2),
         'total_realized_pnl': round(usd_realized_pnl, 2),
         'total_dividends': round(usd_dividends, 2),
+        'total_realized_return': round(usd_realized_pnl + usd_dividends, 2),
         'asset_allocation': alloc_usd,
     }
 

@@ -171,8 +171,11 @@ class PortfolioEngineTestCase(TestCase):
         self.assertEqual(pos['total_dividends'], Decimal('180.00'))
         self.assertEqual(pos['market_value'], Decimal('7000.00'))
         self.assertEqual(pos['unrealized_pnl'], Decimal('1000.00'))
-        # กำไรรวม Realized = 180 (จากเงินปันผล)
-        self.assertEqual(pos['total_realized_pnl'], Decimal('180.00'))
+        # กำไรจากการขายที่รับรู้แล้ว = 0.00 (ยังไม่มีการขายหุ้น)
+        self.assertEqual(pos['total_realized_pnl'], Decimal('0.00'))
+        # ผลตอบแทนที่รับรู้แล้วรวมเงินปันผล = 180.00
+        self.assertEqual(pos['total_dividends'], Decimal('180.00'))
+        self.assertEqual(pos['total_realized_return'], Decimal('180.00'))
 
     def test_multi_user_isolation(self):
         """ทดสอบการแยกข้อมูลพอร์ตระหว่างผู้ใช้ (Multi-tenancy Isolation)"""
@@ -778,3 +781,43 @@ class PortfolioEngineTestCase(TestCase):
         })
         self.assertEqual(res_oversell.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('shares', res_oversell.data)
+
+    def test_portfolio_deletion_guards(self):
+        """A03: ป้องกันการลบ Default Portfolio และ Portfolio ที่ยังมีรายการสินทรัพย์คงค้าง"""
+        default_port = InvestmentPortfolio.objects.filter(user=self.user, is_default=True).first()
+        if not default_port:
+            default_port = InvestmentPortfolio.objects.create(user=self.user, name="Main", is_default=True)
+
+        # 1. พยายามลบ Default Portfolio -> ต้อง 400
+        res_del_default = self.client.delete(f'/api/portfolio/portfolios/{default_port.id}/')
+        self.assertEqual(res_del_default.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # 2. สร้าง Portfolio ใหม่และมี Holding -> พยายามลบ -> ต้อง 400
+        active_port = InvestmentPortfolio.objects.create(user=self.user, name="Active Port", is_default=False)
+        StockHolding.objects.create(user=self.user, portfolio=active_port, ticker="NVDA", currency="USD")
+        res_del_active = self.client.delete(f'/api/portfolio/portfolios/{active_port.id}/')
+        self.assertEqual(res_del_active.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # 3. ลบ Holding ออก แล้วลบ Portfolio ว่างเปล่า -> ต้อง 204 สำเร็จ
+        active_port.holdings.all().delete()
+        res_del_empty = self.client.delete(f'/api/portfolio/portfolios/{active_port.id}/')
+        self.assertEqual(res_del_empty.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_stock_news_article_multi_ticker_url(self):
+        """A01: ตรวจสอบว่าข่าวเดียวกัน (URL เดียวกัน) สามารถผูกกับหลายหุ้นได้"""
+        shared_url = "https://finance.yahoo.com/news/fed-rate-decision-market-impact-12345.html"
+        art_aapl = StockNewsArticle.objects.create(
+            ticker="AAPL",
+            title="Fed Rate Decision",
+            url=shared_url,
+            published_at=timezone.now()
+        )
+        # ผูกกับ MSFT โดยใช้ URL เดียวกัน ต้องสร้างได้ไม่ error
+        art_msft = StockNewsArticle.objects.create(
+            ticker="MSFT",
+            title="Fed Rate Decision",
+            url=shared_url,
+            published_at=timezone.now()
+        )
+        self.assertNotEqual(art_aapl.id, art_msft.id)
+        self.assertEqual(art_aapl.url, art_msft.url)

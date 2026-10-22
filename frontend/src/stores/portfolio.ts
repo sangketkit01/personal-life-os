@@ -28,7 +28,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   const portfolios = ref<InvestmentPortfolio[]>([])
   const selectedPortfolioId = ref<string>('ALL')
   const selectedAssetType = ref<string>('ALL')
-  const displayCurrency = ref<'THB' | 'USD'>('THB')
+  const savedCurrency = (typeof window !== 'undefined' ? localStorage.getItem('preferred_portfolio_currency') : null) as 'THB' | 'USD' | null
+  const displayCurrency = ref<'THB' | 'USD'>(savedCurrency === 'USD' ? 'USD' : 'THB')
   const usdToThbRate = ref<number>(34.00)
   const marketStatus = ref<MarketStatusResponse | null>(null)
   const lastPriceSyncTime = ref<Date | null>(null)
@@ -138,6 +139,9 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
   function setDisplayCurrency(curr: 'THB' | 'USD') {
     displayCurrency.value = curr
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('preferred_portfolio_currency', curr)
+    }
     return fetchOverview({ currency: curr })
   }
 

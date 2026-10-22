@@ -115,6 +115,22 @@
                 <span>{{ holding.portfolio_name }}</span>
               </span>
 
+              <!-- Market Session Badge (Pre/Post-Market) -->
+              <span
+                v-if="holding?.position?.market_session === 'PRE'"
+                class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 font-semibold flex items-center gap-1.5"
+              >
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                <span>Pre-Market Live</span>
+              </span>
+              <span
+                v-else-if="holding?.position?.market_session === 'POST'"
+                class="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/30 font-semibold flex items-center gap-1.5"
+              >
+                <span class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
+                <span>Post-Market (Extended)</span>
+              </span>
+
               <!-- Non-held Pre-investment Badge -->
               <span
                 v-if="holding && !holding.is_held"
@@ -240,7 +256,7 @@
               <span class="text-xs font-mono uppercase tracking-wider text-amber-400 font-semibold">Pre-investment Research Mode</span>
             </div>
             <p class="text-xs text-zinc-300 font-sans leading-relaxed">
-              คุณกำลังศึกษาข้อมูลและกราฟราคาของ <strong class="text-zinc-100">{{ holding?.name || tickerParam }}</strong> (${{ holding?.ticker || tickerParam }}) โดยยังไม่มีรายการถือครองในพอร์ต
+              คุณกำลังศึกษาข้อมูลและกราฟราคาของ <strong class="text-zinc-100">{{ holding?.name || tickerParam }}</strong> ({{ holding?.ticker || tickerParam }}) โดยยังไม่มีรายการถือครองในพอร์ต
             </p>
           </div>
 
@@ -364,15 +380,15 @@
                 </td>
 
                 <td class="py-2.5 text-right text-zinc-300 tabular-nums">
-                  {{ tx.currency || holding?.currency || 'THB' }} {{ formatPrice(tx.price_per_share) }}
+                  {{ getTxSymbol(tx) }}{{ formatPrice(tx.price_per_share) }}
                 </td>
 
                 <td class="py-2.5 text-right text-zinc-500 tabular-nums">
-                  {{ tx.fee ? formatPrice(tx.fee) : '-' }}
+                  {{ tx.fee ? `${getTxSymbol(tx)}${formatPrice(tx.fee)}` : '-' }}
                 </td>
 
                 <td class="py-2.5 text-right font-semibold text-zinc-100 tabular-nums">
-                  {{ tx.currency || holding?.currency || 'THB' }} {{ formatPrice(Number(tx.shares) * Number(tx.price_per_share) + (tx.transaction_type === 'BUY' ? Number(tx.fee || 0) : -Number(tx.fee || 0))) }}
+                  {{ getTxSymbol(tx) }}{{ formatPrice(Number(tx.shares) * Number(tx.price_per_share) + (tx.transaction_type === 'BUY' ? Number(tx.fee || 0) : -Number(tx.fee || 0))) }}
                 </td>
 
                 <td class="py-2.5 pl-4 text-zinc-500 font-sans truncate max-w-[160px]">
@@ -608,6 +624,11 @@ const nativeSymbol = computed(() => {
 const currSymbol = computed(() => {
   return portfolioStore.displayCurrency === 'USD' ? '$' : '฿'
 })
+
+function getTxSymbol(tx: StockTransaction): string {
+  const c = (tx.currency || holding.value?.currency || 'THB').toUpperCase()
+  return c === 'USD' ? '$' : '฿'
+}
 
 // F01: คำนวณมูลค่าใน Display Currency ที่เลือก (THB / USD) เพื่อให้สัญลักษณ์ตรงกับตัวเลขเสมอ
 const displayMarketValue = computed(() => {

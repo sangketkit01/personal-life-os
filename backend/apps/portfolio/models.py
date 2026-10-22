@@ -213,6 +213,19 @@ class StockPriceSnapshot(models.Model):
         verbose_name="ราคาปิดวันก่อนหน้า"
     )
     currency = models.CharField(max_length=5, default='THB', verbose_name="สกุลเงิน")
+    market_session = models.CharField(
+        max_length=20,
+        default='REGULAR',
+        blank=True,
+        verbose_name="ช่วงเวลาตลาดล่าสุด (REGULAR, PRE, POST)"
+    )
+    regular_price = models.DecimalField(
+        max_digits=24,
+        decimal_places=8,
+        null=True,
+        blank=True,
+        verbose_name="ราคาปิดตลาดปกติ"
+    )
     fetched_at = models.DateTimeField(auto_now=True, verbose_name="อัปเดตล่าสุดเมื่อ")
 
     class Meta:

@@ -268,6 +268,8 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
                 'unrealized_pnl_pct': 0,
                 'change_amount': change_amount,
                 'change_pct': change_pct,
+                'market_session': getattr(snapshot, 'market_session', 'REGULAR'),
+                'regular_price': float(snapshot.regular_price) if snapshot and snapshot.regular_price else current_price,
                 'is_active': False
             },
             'recent_transactions': []

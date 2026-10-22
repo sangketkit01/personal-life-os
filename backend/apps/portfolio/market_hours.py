@@ -287,9 +287,15 @@ def should_refresh_ticker(ticker: str, asset_type: Optional[str] = None, force: 
         # ยังไม่มีข้อมูลราคาในระบบ ให้ดึง 1 ครั้ง
         return True
 
-    # ถ้าตลาดปิดและมีข้อมูลที่ดึงไว้ไม่เกิน 4 ชั่วโมงแล้ว ให้ข้ามได้เลย
+    # ถ้าตลาดปิดและมีข้อมูลที่ดึงไว้ ให้ใช้ TTL ตามประเภทตลาดและวัน
     now = timezone.now()
-    if (now - snap.fetched_at) < timedelta(hours=4):
-        return False
+    m = get_market_category(ticker, asset_type)
+    if m == 'US' and now.weekday() < 5:
+        # ในวันธรรมดาสำหรับหุ้นสหรัฐฯ มีการซื้อขาย Post-Market & Night Market ต่อเนื่อง ให้แคชไว้เพียง 15 นาที
+        if (now - snap.fetched_at) < timedelta(minutes=15):
+            return False
+    else:
+        if (now - snap.fetched_at) < timedelta(hours=4):
+            return False
 
     return True

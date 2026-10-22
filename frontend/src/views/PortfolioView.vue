@@ -183,24 +183,6 @@
 
       <!-- Right: Action Buttons -->
       <div class="flex flex-wrap items-center gap-2.5 flex-shrink-0">
-        <!-- Dual Currency View Switcher [฿ THB | $ USD] -->
-        <div class="flex items-center p-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono">
-          <button
-            @click="portfolioStore.setDisplayCurrency('THB')"
-            class="px-2.5 py-1 rounded transition-colors flex items-center gap-1"
-            :class="portfolioStore.displayCurrency === 'THB' ? 'bg-zinc-800 text-zinc-100 font-bold border border-zinc-700/60 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'"
-          >
-            <span>฿ THB View</span>
-          </button>
-          <button
-            @click="portfolioStore.setDisplayCurrency('USD')"
-            class="px-2.5 py-1 rounded transition-colors flex items-center gap-1"
-            :class="portfolioStore.displayCurrency === 'USD' ? 'bg-zinc-800 text-zinc-100 font-bold border border-zinc-700/60 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'"
-          >
-            <span>$ USD View</span>
-          </button>
-        </div>
-
         <button
           @click="handleRefreshPrices"
           :disabled="portfolioStore.isRefreshing"
@@ -725,8 +707,22 @@
 
               <!-- Market Price (Converted to active view currency + native preview) -->
               <td class="py-2.5 text-right text-zinc-200 font-semibold tabular-nums">
-                <div>
-                  {{ currSymbol }}{{ formatHoldingPrice(holding, 'current_price') }}
+                <div class="flex items-center justify-end gap-1.5">
+                  <span
+                    v-if="holding.position.market_session === 'PRE'"
+                    class="text-[9px] font-mono px-1 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold"
+                    title="Pre-Market Live Price"
+                  >
+                    PRE
+                  </span>
+                  <span
+                    v-else-if="holding.position.market_session === 'POST'"
+                    class="text-[9px] font-mono px-1 py-0.2 rounded bg-purple-500/10 text-purple-400 border border-purple-500/30 font-bold"
+                    title="Post-Market / Extended Hours Price"
+                  >
+                    POST
+                  </span>
+                  <span>{{ currSymbol }}{{ formatHoldingPrice(holding, 'current_price') }}</span>
                 </div>
                 <div
                   v-if="holding.currency !== portfolioStore.displayCurrency"
@@ -904,7 +900,7 @@
             <div class="flex items-start justify-between gap-2">
               <div>
                 <div class="flex items-center gap-2">
-                  <span class="font-mono font-bold text-sm text-zinc-100">${{ item.ticker }}</span>
+                  <span class="font-mono font-bold text-sm text-zinc-100">{{ item.ticker }}</span>
                   <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
                     {{ item.asset_type }}
                   </span>
@@ -1111,7 +1107,7 @@
                 class="px-2 py-0.5 rounded text-[11px] font-bold font-mono bg-zinc-800 text-zinc-100 hover:text-blue-400 border border-zinc-700/60 transition-colors"
                 title="View asset details & executions"
               >
-                ${{ article.ticker }}
+                {{ article.ticker }}
               </button>
 
               <span class="text-[10px] font-mono text-zinc-400 uppercase">

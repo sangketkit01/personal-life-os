@@ -13,6 +13,8 @@ export interface PositionSummary {
   total_dividends: number
   is_active: boolean
   currency?: string
+  market_session?: 'REGULAR' | 'PRE' | 'POST' | 'NIGHT'
+  regular_price?: number
   market_value_thb?: number
   market_value_usd?: number
   total_invested_thb?: number

@@ -217,9 +217,7 @@
                 </div>
 
                 <div class="flex items-center gap-2">
-                  <span class="text-[10px] font-mono px-1.5 py-0.5 rounded border font-semibold"
-                    :class="item.currency === 'USD' ? 'bg-blue-950/30 text-blue-400 border-blue-500/30' : 'bg-zinc-900 text-zinc-300 border-zinc-700/60'"
-                  >
+                  <span class="text-[10px] font-mono px-1.5 py-0.5 rounded border uppercase bg-zinc-900 text-zinc-400 border-zinc-800">
                     {{ item.currency }}
                   </span>
                   <span class="text-xs text-zinc-600 group-hover:text-zinc-300">Select →</span>
@@ -228,7 +226,7 @@
             </div>
 
             <!-- Hint if no asset selected -->
-            <p v-if="!selectedAsset" class="text-[10px] text-amber-500/80 mt-1 flex items-center gap-1">
+            <p v-if="!selectedAsset" class="text-[10px] text-zinc-400 mt-1 flex items-center gap-1">
               <span>* You must select a verified asset from the search list to record a trade.</span>
             </p>
           </div>
@@ -428,6 +426,7 @@ const props = defineProps<{
   prefillTicker?: string
   prefillHoldingId?: string
   editingTransaction?: StockTransaction | null
+  initialType?: TransactionType
 }>()
 
 const emit = defineEmits<{
@@ -477,7 +476,7 @@ const getNowLocalDateTime = () => {
   return d.toISOString().slice(0, 16)
 }
 
-// F07: แปลงเวลา UTC จากฐานข้อมูลเป็นเวลาท้องถิ่นสำหรับ input datetime-local อย่างถูกต้อง โดยเวลาไม่เลื่อน
+// F07: Convert UTC database timestamp to local datetime-local input safely
 function toLocalInputDateTime(dateInput?: string | Date): string {
   if (!dateInput) return getNowLocalDateTime()
   const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput
@@ -544,7 +543,7 @@ const pricePlaceholder = computed(() => {
   return form.value.currency === 'USD' ? 'e.g. 182.50' : 'e.g. 35.50'
 })
 
-// F05 & F08: ค้นหา holding ให้ตรงทั้ง ticker และ portfolio ที่เลือก
+// F05 & F08: Find holding matching ticker and selected portfolio
 const currentHolding = computed(() => {
   if (props.prefillHoldingId) {
     return portfolioStore.holdings.find(h => h.id === props.prefillHoldingId)
@@ -661,20 +660,20 @@ watch(
         form.value.shares = Number(tx.shares)
         form.value.price_per_share = Number(tx.price_per_share)
         form.value.fee = Number(tx.fee || 0)
-        // F07: ใช้ toLocalInputDateTime เพื่อคงเวลาตาม Timezone ท้องถิ่นเดิม ไม่เลื่อน 7 ชั่วโมง
+        // F07: Use toLocalInputDateTime to preserve local timezone offset
         form.value.executed_at = toLocalInputDateTime(tx.executed_at)
         form.value.notes = tx.notes || ''
         manualCurrency.value = true
       } else {
         form.value.ticker = props.prefillTicker || ''
-        form.value.transaction_type = 'BUY'
+        form.value.transaction_type = props.initialType || 'BUY'
         form.value.shares = null
         form.value.price_per_share = null
         form.value.fee = 0
         form.value.executed_at = getNowLocalDateTime()
         form.value.notes = ''
 
-        // F05 & F09: จัดการค่าเริ่มต้นเมื่อเปิดมาจาก Holding หรือ Watchlist
+        // F05 & F09: Handle initial defaults when opened from Holding or Watchlist
         if (props.prefillHoldingId && currentHolding.value) {
           form.value.currency = (currentHolding.value.currency || 'THB').toUpperCase() as 'THB' | 'USD'
           if (currentHolding.value.portfolio) {
@@ -694,7 +693,7 @@ watch(
           const t = props.prefillTicker.trim().toUpperCase()
           form.value.ticker = t
 
-          // หาว่ามีถืออยู่ในพอร์ตนี้อยู่แล้วหรือไม่
+          // Check if already held in this portfolio
           const held = currentHolding.value
           if (held) {
             form.value.currency = (held.currency || 'THB').toUpperCase() as 'THB' | 'USD'
@@ -709,7 +708,7 @@ watch(
               exchange: held.ticker.endsWith('.BK') ? 'SET' : 'US'
             }
           } else {
-            // ค้นจาก watchlist
+            // Check from watchlist
             const watch = portfolioStore.watchlist.find(w => w.ticker.toUpperCase() === t)
             if (watch) {
               selectedAsset.value = {

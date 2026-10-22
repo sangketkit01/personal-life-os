@@ -231,7 +231,8 @@ def fetch_and_cache_market_prices(
 def calculate_detailed_position(
     holding: StockHolding,
     current_price: Decimal = None,
-    usd_to_thb_rate: Optional[Decimal] = None
+    usd_to_thb_rate: Optional[Decimal] = None,
+    snapshot: Optional[StockPriceSnapshot] = None
 ) -> Dict[str, Any]:
     """
     คำนวณต้นทุนเฉลี่ย (Weighted Average Cost), มูลค่าตลาด, กำไร/ขาดทุน Realized และ Unrealized
@@ -283,7 +284,8 @@ def calculate_detailed_position(
     avg_cost = (total_cost_basis / total_shares) if total_shares > Decimal('0') else Decimal('0')
 
     # ราคาตลาดล่าสุด และข้อมูล Market Session (Regular, Pre-market, Post-market)
-    snapshot = StockPriceSnapshot.objects.filter(ticker=holding.ticker).first()
+    if snapshot is None:
+        snapshot = StockPriceSnapshot.objects.filter(ticker=holding.ticker).first()
     if current_price is None:
         current_price = snapshot.price if snapshot else avg_cost
     elif not isinstance(current_price, Decimal):
@@ -461,10 +463,10 @@ def get_portfolio_overview(
     if selected_curr not in ('THB', 'USD'):
         selected_curr = 'THB'
 
-    # รวบรวม Tickers เพื่อดึงราคาแคช
+    # รวบรวม Tickers เพื่อดึงราคาและ Snapshot แบบ Batch ป้องกัน N+1
     tickers = [h.ticker for h in holdings]
-    cached_prices = {
-        s.ticker: s.price for s in StockPriceSnapshot.objects.filter(ticker__in=tickers)
+    cached_snapshots = {
+        s.ticker: s for s in StockPriceSnapshot.objects.filter(ticker__in=tickers)
     }
 
     # ตัวสะสมสำหรับ THB และ USD
@@ -481,8 +483,9 @@ def get_portfolio_overview(
     holdings_summary = []
 
     for h in holdings:
-        price = cached_prices.get(h.ticker)
-        pos = calculate_detailed_position(h, current_price=price, usd_to_thb_rate=usd_to_thb_rate)
+        snap = cached_snapshots.get(h.ticker)
+        price = snap.price if snap else None
+        pos = calculate_detailed_position(h, current_price=price, usd_to_thb_rate=usd_to_thb_rate, snapshot=snap)
 
         if pos['is_active']:
             thb_market_value += pos['market_value_thb']

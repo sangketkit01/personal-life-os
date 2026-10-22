@@ -26,15 +26,131 @@ const router = createRouter({
           name: 'overview',
           component: () => import('../views/OverviewView.vue'),
         },
+        // Financial Radar Domain Routes (Separation of Concerns)
         {
           path: 'finance',
-          name: 'finance',
-          component: () => import('../views/FinanceView.vue'),
+          redirect: '/finance/overview',
         },
         {
+          path: 'finance/overview',
+          name: 'finance-overview',
+          component: () => import('../views/finance/FinanceRadarOverviewView.vue'),
+        },
+        {
+          path: 'finance/installments',
+          name: 'finance-installments',
+          component: () => import('../views/finance/InstallmentsView.vue'),
+        },
+        {
+          path: 'finance/installments/new',
+          name: 'finance-installments-new',
+          component: () => import('../views/finance/InstallmentCreateView.vue'),
+        },
+        {
+          path: 'finance/installments/:id',
+          name: 'finance-installments-detail',
+          component: () => import('../views/finance/InstallmentDetailView.vue'),
+        },
+        {
+          path: 'finance/bnpl',
+          name: 'finance-bnpl',
+          component: () => import('../views/finance/BNPLView.vue'),
+        },
+        {
+          path: 'finance/bnpl/new',
+          name: 'finance-bnpl-new',
+          component: () => import('../views/finance/BNPLAccountCreateView.vue'),
+        },
+        {
+          path: 'finance/bnpl/:id',
+          name: 'finance-bnpl-detail',
+          component: () => import('../views/finance/BNPLAccountDetailView.vue'),
+        },
+        {
+          path: 'finance/bnpl/:id/new-order',
+          name: 'finance-bnpl-new-order',
+          component: () => import('../views/finance/BNPLOrderCreateView.vue'),
+        },
+        {
+          path: 'finance/subscriptions',
+          name: 'finance-subscriptions',
+          component: () => import('../views/finance/SubscriptionsView.vue'),
+        },
+        {
+          path: 'finance/subscriptions/new',
+          name: 'finance-subscriptions-new',
+          component: () => import('../views/finance/SubscriptionCreateView.vue'),
+        },
+        {
+          path: 'finance/subscriptions/:id',
+          name: 'finance-subscriptions-detail',
+          component: () => import('../views/finance/SubscriptionDetailView.vue'),
+        },
+        {
+          path: 'finance/debts',
+          name: 'finance-debts',
+          component: () => import('../views/finance/DebtsView.vue'),
+        },
+        {
+          path: 'finance/debts/new',
+          name: 'finance-debts-new',
+          component: () => import('../views/finance/DebtCreateView.vue'),
+        },
+        {
+          path: 'finance/debts/:id',
+          name: 'finance-debts-detail',
+          component: () => import('../views/finance/DebtDetailView.vue'),
+        },
+
+        // Wealth & Portfolio Domain Routes (Separation of Concerns)
+        {
           path: 'portfolio',
-          name: 'portfolio',
-          component: () => import('../views/PortfolioView.vue'),
+          redirect: '/portfolio/overview',
+        },
+        {
+          path: 'portfolio/overview',
+          name: 'portfolio-overview',
+          component: () => import('../views/portfolio/PortfolioOverviewView.vue'),
+        },
+        {
+          path: 'portfolio/accounts',
+          name: 'portfolio-accounts',
+          component: () => import('../views/portfolio/PortfolioAccountsView.vue'),
+        },
+        {
+          path: 'portfolio/accounts/new',
+          name: 'portfolio-accounts-new',
+          component: () => import('../views/portfolio/PortfolioAccountCreateView.vue'),
+        },
+        {
+          path: 'portfolio/accounts/:id',
+          name: 'portfolio-accounts-detail',
+          component: () => import('../views/portfolio/PortfolioAccountDetailView.vue'),
+        },
+        {
+          path: 'portfolio/watchlist',
+          name: 'portfolio-watchlist',
+          component: () => import('../views/portfolio/PortfolioWatchlistView.vue'),
+        },
+        {
+          path: 'portfolio/executions',
+          name: 'portfolio-executions',
+          component: () => import('../views/portfolio/PortfolioExecutionsView.vue'),
+        },
+        {
+          path: 'portfolio/executions/import',
+          name: 'portfolio-executions-import',
+          component: () => import('../views/portfolio/PortfolioExecutionsImportView.vue'),
+        },
+        {
+          path: 'portfolio/executions/dividends',
+          name: 'portfolio-executions-dividends',
+          component: () => import('../views/portfolio/PortfolioDividendsView.vue'),
+        },
+        {
+          path: 'portfolio/news',
+          name: 'portfolio-news',
+          component: () => import('../views/portfolio/PortfolioNewsView.vue'),
         },
         {
           path: 'portfolio/asset/:ticker',
@@ -64,7 +180,7 @@ const router = createRouter({
 router.beforeEach(async (to, _from) => {
   const authStore = useAuthStore()
 
-  // ถ้าเพิ่งเปิดเว็บ ให้ลองตรวจหา Session ผ่าน Cookie ดูก่อน
+  // Check session via cookie if still initializing
   if (authStore.isLoading) {
     await authStore.fetchMe()
   }

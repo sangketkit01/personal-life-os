@@ -26,20 +26,20 @@ class CookieJWTAuthentication(authentication.BaseAuthentication):
         try:
             payload = decode_token(token)
         except jwt.ExpiredSignatureError:
-            raise exceptions.AuthenticationFailed('Access Token หมดอายุแล้ว กรุณา Refresh Token')
+            raise exceptions.AuthenticationFailed('Access token has expired. Please refresh.')
         except jwt.InvalidTokenError:
-            raise exceptions.AuthenticationFailed('Token ไม่ถูกต้อง')
+            raise exceptions.AuthenticationFailed('Invalid token.')
 
         if payload.get('token_type') != 'access':
-            raise exceptions.AuthenticationFailed('ประเภท Token ไม่ถูกต้อง')
+            raise exceptions.AuthenticationFailed('Invalid token type.')
 
         user_id = payload.get('user_id')
         if not user_id:
-            raise exceptions.AuthenticationFailed('Token ไม่มีข้อมูลผู้ใช้')
+            raise exceptions.AuthenticationFailed('Token missing user payload.')
 
         try:
             user = User.objects.get(id=user_id, is_active=True)
         except User.DoesNotExist:
-            raise exceptions.AuthenticationFailed('ไม่พบบัญชีผู้ใช้ หรือผู้ใช้ถูกระงับ')
+            raise exceptions.AuthenticationFailed('User account not found or deactivated.')
 
         return (user, token)

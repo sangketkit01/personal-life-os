@@ -12,7 +12,7 @@ def calculate_deadline_info(deadline) -> Dict[str, Any]:
             'days_left': None,
             'urgency': 'NONE',
             'is_overdue': False,
-            'label': 'ไม่มีกำหนด'
+            'label': 'No deadline'
         }
 
     now = timezone.now()
@@ -61,7 +61,7 @@ def calculate_deadline_info(deadline) -> Dict[str, Any]:
 def transition_task_status(task: TaskDocument, new_status: str) -> TaskDocument:
     """เปลี่ยนสถานะเอกสาร/งาน พร้อมปรับปรุง completed_at อัตโนมัติ"""
     if new_status not in TaskStatus.values:
-        raise ValueError(f"สถานะไม่ถูกต้อง: {new_status}")
+        raise ValueError(f"Invalid task status: {new_status}")
 
     task.status = new_status
     if new_status == TaskStatus.COMPLETED:

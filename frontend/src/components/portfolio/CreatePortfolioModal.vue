@@ -12,7 +12,7 @@
       <!-- Modal Title -->
       <div class="mb-5">
         <div class="flex items-center gap-2">
-          <FolderPlus class="w-4 h-4 text-blue-400" />
+          <FolderPlus class="w-4 h-4 text-zinc-300" />
           <h2 class="text-base font-semibold text-zinc-100 tracking-tight">Create Portfolio</h2>
         </div>
         <p class="text-xs text-zinc-500 mt-1">

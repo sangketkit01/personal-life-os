@@ -487,10 +487,10 @@ const getDeadlineBadgeClass = (info?: DeadlineInfo) => {
   switch (info.urgency) {
     case 'OVERDUE':
     case 'CRITICAL':
-      return 'bg-rose-950/20 text-rose-400 border-rose-500/30'
+      return 'bg-zinc-900 text-rose-400 border-zinc-800'
     case 'WARNING':
     case 'ATTENTION':
-      return 'bg-amber-950/20 text-amber-400 border-amber-500/30'
+      return 'bg-zinc-900 text-zinc-300 border-zinc-800'
     default:
       return 'bg-zinc-900 text-zinc-400 border-zinc-800'
   }

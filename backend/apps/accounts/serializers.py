@@ -26,12 +26,12 @@ class RegisterSerializer(serializers.Serializer):
 
     def validate_username(self, value):
         if User.objects.filter(username__iexact=value).exists():
-            raise serializers.ValidationError('ชื่อผู้ใช้นี้มีคนใช้งานแล้ว')
+            raise serializers.ValidationError('This username is already taken.')
         return value
 
     def validate_email(self, value):
         if User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError('อีเมลนี้ถูกใช้งานไปแล้ว')
+            raise serializers.ValidationError('This email is already registered.')
         return value
 
     def validate_password(self, value):
@@ -45,10 +45,10 @@ class RegisterSerializer(serializers.Serializer):
         try:
             invite = InviteCode.objects.get(code=value)
         except InviteCode.DoesNotExist:
-            raise serializers.ValidationError('รหัสบัตรเชิญไม่ถูกต้อง')
+            raise serializers.ValidationError('Invalid invitation code.')
 
         if not invite.is_valid():
-            raise serializers.ValidationError('รหัสบัตรเชิญนี้หมดอายุ หรือถูกใช้งานจนครบโควตาแล้ว')
+            raise serializers.ValidationError('Invitation code is expired or maximum uses reached.')
 
         return invite
 
@@ -58,7 +58,7 @@ class RegisterSerializer(serializers.Serializer):
         # Concurrency safety: Lock the invite code row during registration
         invite = InviteCode.objects.select_for_update().get(id=invite_input.id)
         if not invite.is_valid():
-            raise serializers.ValidationError({'invite_code': 'รหัสบัตรเชิญนี้หมดอายุ หรือถูกใช้งานจนครบโควตาแล้ว'})
+            raise serializers.ValidationError({'invite_code': 'Invitation code is expired or maximum uses reached.'})
 
         user = User.objects.create_user(
             username=validated_data['username'],
@@ -66,7 +66,7 @@ class RegisterSerializer(serializers.Serializer):
             password=validated_data['password'],
             invited_by=invite.created_by
         )
-        # อัปเดตการใช้งานบัตรเชิญ
+        # Update invitation code usage
         invite.uses_count += 1
         invite.used_by = user
         if invite.uses_count >= invite.max_uses:
@@ -84,10 +84,9 @@ class LoginSerializer(serializers.Serializer):
         username = attrs.get('username')
         password = attrs.get('password')
 
-        # รองรับทั้ง Login ด้วย Username หรือ Email
+        # Supports login by username or email
         user = authenticate(username=username, password=password)
         if not user:
-            # ลองค้นหาด้วย email
             try:
                 user_obj = User.objects.get(email__iexact=username)
                 user = authenticate(username=user_obj.username, password=password)
@@ -95,10 +94,10 @@ class LoginSerializer(serializers.Serializer):
                 pass
 
         if not user:
-            raise serializers.ValidationError('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')
+            raise serializers.ValidationError('Invalid username or password.')
 
         if not user.is_active:
-            raise serializers.ValidationError('บัญชีนี้ถูกระงับการใช้งาน')
+            raise serializers.ValidationError('User account is deactivated.')
 
         attrs['user'] = user
         return attrs

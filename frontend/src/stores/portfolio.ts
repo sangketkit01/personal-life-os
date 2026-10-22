@@ -346,7 +346,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
     try {
       const res = await apiClient.post<PortfolioOverview>('/portfolio/refresh/', payload)
-      // F02: อัปเดตเฉพาะเมื่อตัวกรองยังตรงกับตอนส่งคำขอ (ป้องกัน race condition สลับตัวกรองเร็ว)
+      // Only update when filter state matches request to prevent fast-switching race condition
       if (selectedPortfolioId.value === requestedPf && selectedAssetType.value === requestedType) {
         overview.value = res.data
         lastPriceSyncTime.value = new Date()
@@ -365,7 +365,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     isSubmitting.value = true
     try {
       const res = await apiClient.post<StockTransaction>('/portfolio/transactions/', payload)
-      // F06: POST สำเร็จแล้ว! ดึงข้อมูลอัปเดตแบบ background โดยไม่โยน error หาก news หรือ GET อื่นล้มเหลว
+      // Refresh state in background without throwing if non-critical endpoints fail
       Promise.allSettled([
         fetchOverview(),
         fetchHoldings(),
@@ -385,7 +385,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     isSubmitting.value = true
     try {
       const res = await apiClient.patch<StockTransaction>(`/portfolio/transactions/${id}/`, payload)
-      // F06: PATCH สำเร็จแล้ว! ดึงข้อมูลอัปเดตแบบ background
+      // Background sync after transaction update
       Promise.allSettled([
         fetchOverview(),
         fetchHoldings(),

@@ -34,6 +34,8 @@ class InvestmentPortfolioSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'is_default', 'holdings_count', 'created_at', 'updated_at')
 
     def get_holdings_count(self, obj):
+        if hasattr(obj, 'annotated_holdings_count'):
+            return obj.annotated_holdings_count
         return obj.holdings.count()
 
     def create(self, validated_data):
@@ -117,7 +119,7 @@ class StockTransactionSerializer(serializers.ModelSerializer):
                 holding = matched_holding
             else:
                 raise serializers.ValidationError({
-                    'portfolio': f'สินทรัพย์ที่เลือกผูกกับพอร์ต "{holding.portfolio.name}" ซึ่งไม่ตรงกับพอร์ตปลายทางที่เลือก'
+                    'portfolio': f'Selected asset belongs to portfolio "{holding.portfolio.name}", which does not match target.'
                 })
 
         # F08: Validate SELL volume against current holding (รองรับทั้งส่ง holding และส่ง ticker)
@@ -136,7 +138,7 @@ class StockTransactionSerializer(serializers.ModelSerializer):
 
             if not holding:
                 raise serializers.ValidationError({
-                    'shares': f'ไม่สามารถขายได้เนื่องจากคุณยังไม่มีสินทรัพย์นี้ในพอร์ตที่เลือก'
+                    'shares': 'Cannot sell; asset does not exist in selected portfolio.'
                 })
 
             pos = calculate_detailed_position(holding)
@@ -187,7 +189,7 @@ class StockTransactionSerializer(serializers.ModelSerializer):
 
             if not verified and not StockHolding.objects.filter(user=user, ticker=clean_ticker).exists():
                 raise serializers.ValidationError({
-                    'ticker': f"ไม่พบสินทรัพย์ '{clean_ticker}' ในระบบ กรุณาค้นหาและเลือกจากรายชื่อสินทรัพย์ที่ถูกต้อง"
+                    'ticker': f"Asset symbol '{clean_ticker}' not found. Please verify ticker from search catalog."
                 })
 
             default_curr = currency_input.upper() if currency_input else (
@@ -211,9 +213,9 @@ class StockTransactionSerializer(serializers.ModelSerializer):
             validated_data['holding'] = holding
 
         if not validated_data.get('holding'):
-            raise serializers.ValidationError({'holding': 'จำเป็นต้องระบุ holding หรือ ticker'})
+            raise serializers.ValidationError({'holding': 'Holding or ticker is required.'})
 
-        # F03: ล็อก currency ของ transaction ให้ตรงกับ holding เสมอ เพื่อไม่ให้เปลี่ยน denomination ของข้อมูลเดิม
+        # F03: Lock currency of transaction to match holding
         target_holding = validated_data['holding']
         validated_data['currency'] = target_holding.currency or 'THB'
 
@@ -221,21 +223,22 @@ class StockTransactionSerializer(serializers.ModelSerializer):
         tx = super().create(validated_data)
 
         # Requirements 2 & 3:
-        # ตอนเพิ่มหุ้น ซิงค์ราคาตลาดสดทันทีเพื่อคำนวณกำไรขาดทุน และซิงค์ข่าวสารพร้อมแปลภาษาอัตโนมัติ
+        # On adding trades, sync market price and news in background (skip if bulk import to prevent server overload)
+        is_bulk = self.context.get('is_bulk_import', False)
         holding_ticker = target_holding.ticker
         import sys
-        if holding_ticker and 'test' not in sys.argv:
+        if holding_ticker and 'test' not in sys.argv and not is_bulk:
             import threading
             from .services import fetch_and_cache_market_prices
             from .news_service import ingest_news_for_ticker
 
-            # 1. Sync Price ทันที (force=True) เพื่อคำนวณกำไรขาดทุนล่าสุด
+            # 1. Sync Price immediately (force=True) to compute latest PnL
             try:
                 fetch_and_cache_market_prices([holding_ticker, 'USDTHB=X'], force=True)
             except Exception:
                 pass
 
-            # 2. Sync News อัตโนมัติใน Background Thread (ไม่บล็อก UI)
+            # 2. Sync News in background thread
             try:
                 threading.Thread(
                     target=ingest_news_for_ticker,
@@ -281,7 +284,9 @@ class StockHoldingSerializer(serializers.ModelSerializer):
         price_map = self.context.get('price_map', {})
         current_price = price_map.get(obj.ticker)
         usd_to_thb_rate = self.context.get('usd_to_thb_rate')
-        return calculate_detailed_position(obj, current_price=current_price, usd_to_thb_rate=usd_to_thb_rate)
+        snapshot_map = self.context.get('snapshot_map', {})
+        snapshot = snapshot_map.get(obj.ticker)
+        return calculate_detailed_position(obj, current_price=current_price, usd_to_thb_rate=usd_to_thb_rate, snapshot=snapshot)
 
     def get_recent_transactions(self, obj):
         if hasattr(obj, '_prefetched_objects_cache') and 'transactions' in obj._prefetched_objects_cache:

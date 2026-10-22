@@ -51,7 +51,7 @@ class TaskDocumentSerializer(serializers.ModelSerializer):
 
     def validate_project(self, value):
         if value and value.user != self.context['request'].user:
-            raise serializers.ValidationError('คุณไม่มีสิทธิ์เข้าถึงโปรเจกต์นี้')
+            raise serializers.ValidationError('You do not have permission to access this project.')
         return value
 
     def create(self, validated_data):
@@ -77,7 +77,7 @@ class NoteSerializer(serializers.ModelSerializer):
 
     def validate_project(self, value):
         if value and value.user != self.context['request'].user:
-            raise serializers.ValidationError('คุณไม่มีสิทธิ์เข้าถึงโปรเจกต์นี้')
+            raise serializers.ValidationError('You do not have permission to access this project.')
         return value
 
     def create(self, validated_data):

@@ -206,8 +206,8 @@
             <div class="flex flex-wrap items-center gap-2">
               <button
                 @click="goToAssetDetail(article.ticker)"
-                class="px-1.5 py-0.5 rounded text-[10px] font-bold font-mono bg-zinc-800 hover:bg-zinc-700 text-blue-400 hover:text-blue-300 border border-zinc-700/60 transition-colors"
-                title="คลิกเพื่อดูหน้าสินทรัพย์"
+                class="px-1.5 py-0.5 rounded text-[10px] font-bold font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white border border-zinc-700/60 transition-colors"
+                title="View Asset Details"
               >
                 ${{ article.ticker }}
               </button>
@@ -251,7 +251,7 @@
                 target="_blank"
                 rel="noopener noreferrer"
                 class="text-zinc-500 hover:text-zinc-200 p-1"
-                title="เว็บข่าวต้นฉบับภายนอก"
+                title="Original external article"
               >
                 <ExternalLink class="w-3 h-3" />
               </a>
@@ -261,7 +261,7 @@
           <div class="mt-1 space-y-1">
             <h4
               @click="goToNewsDetail(article.id)"
-              class="text-xs font-semibold text-zinc-200 leading-snug cursor-pointer hover:text-blue-400 transition-colors"
+              class="text-xs font-semibold text-zinc-200 leading-snug cursor-pointer hover:text-white transition-colors"
             >
               {{ (articleLangMap[article.id] === 'TH' && article.title_th) ? article.title_th : article.title }}
             </h4>
@@ -278,9 +278,9 @@
           <div class="mt-2.5 flex items-center justify-between">
             <button
               @click="goToNewsDetail(article.id)"
-              class="inline-flex items-center gap-1 text-[11px] font-mono text-blue-400 hover:text-blue-300 font-semibold transition-colors group"
+              class="inline-flex items-center gap-1 text-[11px] font-mono text-zinc-300 hover:text-white font-semibold transition-colors group"
             >
-              <span>อ่านข่าวฉบับเต็ม & สรุป AI</span>
+              <span>Read Full Intelligence & AI Summary</span>
               <span class="group-hover:translate-x-0.5 transition-transform">→</span>
             </button>
           </div>
@@ -451,9 +451,9 @@ const activePortfolioSummary = computed(() => {
 function getSentimentClass(sentiment: string) {
   switch (sentiment) {
     case 'BULLISH':
-      return 'bg-emerald-950/30 text-emerald-400 border-emerald-500/30'
+      return 'bg-zinc-900 text-emerald-400 border-zinc-800'
     case 'BEARISH':
-      return 'bg-rose-950/30 text-rose-400 border-rose-500/30'
+      return 'bg-zinc-900 text-rose-400 border-zinc-800'
     default:
       return 'bg-zinc-900 text-zinc-400 border-zinc-800'
   }

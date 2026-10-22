@@ -36,19 +36,22 @@ class InvestmentPortfolioViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # ตรวจสอบและสร้าง Main Portfolio เริ่มต้นถ้ายังไม่มี
+        from django.db.models import Count
+        # Ensure default main portfolio exists
         InvestmentPortfolio.objects.get_or_create(
             user=self.request.user,
             is_default=True,
             defaults={'name': 'Main Portfolio', 'currency': 'THB'}
         )
-        return InvestmentPortfolio.objects.filter(user=self.request.user).order_by('-is_default', 'created_at')
+        return InvestmentPortfolio.objects.filter(user=self.request.user).annotate(
+            annotated_holdings_count=Count('holdings')
+        ).order_by('-is_default', 'created_at')
 
     def perform_destroy(self, instance):
         if instance.is_default:
-            raise serializers.ValidationError({'detail': 'ไม่สามารถลบพอร์ตหลัก (Default Portfolio) ได้'})
+            raise serializers.ValidationError({'detail': 'Cannot delete default portfolio.'})
         if instance.holdings.exists():
-            raise serializers.ValidationError({'detail': 'ไม่สามารถลบพอร์ตที่มีรายการสินทรัพย์หรือประวัติธุรกรรมอยู่ได้ กรุณาย้ายหรือลบรายการสินทรัพย์ออกก่อน'})
+            raise serializers.ValidationError({'detail': 'Cannot delete portfolio containing active holdings or transactions. Please move or remove holdings first.'})
         super().perform_destroy(instance)
 
 
@@ -167,10 +170,12 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         tickers = [h.ticker for h in queryset]
-        price_map = {s.ticker: s.price for s in StockPriceSnapshot.objects.filter(ticker__in=tickers)}
+        snapshots = list(StockPriceSnapshot.objects.filter(ticker__in=tickers))
+        price_map = {s.ticker: s.price for s in snapshots}
+        snapshot_map = {s.ticker: s for s in snapshots}
         rate = get_usd_to_thb_rate()
 
-        context = {'request': request, 'price_map': price_map, 'usd_to_thb_rate': rate}
+        context = {'request': request, 'price_map': price_map, 'snapshot_map': snapshot_map, 'usd_to_thb_rate': rate}
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True, context=context)
@@ -185,6 +190,7 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
         context = {
             'request': request,
             'price_map': {instance.ticker: snapshot.price if snapshot else None},
+            'snapshot_map': {instance.ticker: snapshot} if snapshot else {},
             'usd_to_thb_rate': get_usd_to_thb_rate()
         }
         serializer = self.get_serializer(instance, context=context)
@@ -502,7 +508,7 @@ class StockTransactionViewSet(viewsets.ModelViewSet):
             self.request.user,
             'PORTFOLIO',
             f'{tx.transaction_type}_STOCK',
-            f'บันทึกรายการ {tx.transaction_type} {tx.shares} หน่วย {tx.holding.ticker} ที่ราคา {tx.price_per_share} ({tx.currency})',
+            f'Recorded trade {tx.transaction_type} {tx.shares} shares of {tx.holding.ticker} at {tx.price_per_share} ({tx.currency})',
             request=self.request
         )
 
@@ -512,9 +518,96 @@ class StockTransactionViewSet(viewsets.ModelViewSet):
             self.request.user,
             'PORTFOLIO',
             f'UPDATE_{tx.transaction_type}_STOCK',
-            f'แก้ไขรายการ {tx.transaction_type} {tx.shares} หน่วย {tx.holding.ticker} ที่ราคา {tx.price_per_share} ({tx.currency})',
+            f'Updated transaction {tx.transaction_type} {tx.shares} shares of {tx.holding.ticker} at {tx.price_per_share} ({tx.currency})',
             request=self.request
         )
+
+    @action(detail=False, methods=['post'], url_path='bulk-import')
+    def bulk_import(self, request):
+        """
+        Bulk import transactions (e.g. from Dime, Streaming, or Bitkub CSV statement).
+        Supports deduplication by (user, holding__ticker, executed_at, shares, transaction_type).
+        Optimized with transaction atomicity and batched market sync.
+        """
+        from django.db import transaction
+        import sys
+
+        portfolio_id = request.data.get('portfolio_id')
+        raw_transactions = request.data.get('transactions', [])
+
+        if not isinstance(raw_transactions, list) or len(raw_transactions) == 0:
+            return response.Response({'detail': 'No transactions provided for bulk import.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        imported_count = 0
+        skipped_count = 0
+        errors = []
+        imported_tickers = set()
+
+        with transaction.atomic():
+            for idx, item in enumerate(raw_transactions):
+                try:
+                    ticker = str(item.get('ticker', '')).strip().upper()
+                    if not ticker:
+                        errors.append({'row': idx + 1, 'error': 'Missing asset ticker.'})
+                        continue
+
+                    tx_type = str(item.get('transaction_type', 'BUY')).upper()
+                    shares = item.get('shares')
+                    executed_at = item.get('executed_at')
+
+                    # Check duplicate
+                    if executed_at and shares:
+                        exists = StockTransaction.objects.filter(
+                            user=request.user,
+                            holding__ticker__iexact=ticker,
+                            executed_at=executed_at,
+                            shares=shares,
+                            transaction_type=tx_type
+                        ).exists()
+                        if exists:
+                            skipped_count += 1
+                            continue
+
+                    # Prepare payload
+                    payload = dict(item)
+                    if portfolio_id and 'portfolio' not in payload:
+                        payload['portfolio'] = portfolio_id
+
+                    serializer = self.get_serializer(data=payload, context={'request': request, 'is_bulk_import': True})
+                    if serializer.is_valid():
+                        tx = serializer.save()
+                        imported_count += 1
+                        if tx.holding and tx.holding.ticker:
+                            imported_tickers.add(tx.holding.ticker)
+                    else:
+                        errors.append({'row': idx + 1, 'ticker': ticker, 'errors': serializer.errors})
+                except Exception as e:
+                    errors.append({'row': idx + 1, 'error': str(e)})
+
+        # Batch market sync once after atomic block completes without blocking worker
+        if imported_tickers and 'test' not in sys.argv:
+            import threading
+            threading.Thread(
+                target=fetch_and_cache_market_prices,
+                args=(list(imported_tickers) + ['USDTHB=X'],),
+                kwargs={'force': True},
+                daemon=True
+            ).start()
+
+        log_activity(
+            request.user,
+            'PORTFOLIO',
+            'BULK_IMPORT_TRANSACTIONS',
+            f'Bulk imported {imported_count} trades ({skipped_count} duplicates skipped, {len(errors)} errors)',
+            request=request
+        )
+
+        return response.Response({
+            'imported': imported_count,
+            'duplicates_skipped': skipped_count,
+            'errors_count': len(errors),
+            'errors': errors[:20]  # Cap errors preview
+        })
 
 
 class StockNewsViewSet(viewsets.ReadOnlyModelViewSet):

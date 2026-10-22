@@ -27,7 +27,7 @@
           <button
             @click="portfolioStore.setDisplayCurrency('USD')"
             class="px-2 py-1 rounded text-[11px] font-semibold transition-colors"
-            :class="portfolioStore.displayCurrency === 'USD' ? 'bg-blue-950/60 text-blue-400 border border-blue-500/30 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'"
+            :class="portfolioStore.displayCurrency === 'USD' ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'"
           >
             $ USD
           </button>
@@ -37,10 +37,10 @@
           @click="handleToggleWatchlist"
           :disabled="isTogglingWatchlist"
           class="px-2.5 py-1.5 rounded-md border text-xs font-mono transition-colors flex items-center gap-1.5 disabled:opacity-50"
-          :class="isWatchlisted ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'"
-          :title="isWatchlisted ? 'อยู่ในรายการเฝ้าดูแล้ว' : 'เพิ่มในรายการเฝ้าดู (Watchlist)'"
+          :class="isWatchlisted ? 'bg-zinc-800 text-zinc-200 border-zinc-700' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'"
+          :title="isWatchlisted ? 'In Watchlist' : 'Add to Watchlist'"
         >
-          <Star class="w-3.5 h-3.5" :class="{ 'fill-amber-400 text-amber-400': isWatchlisted }" />
+          <Star class="w-3.5 h-3.5" :class="{ 'fill-zinc-300 text-zinc-200': isWatchlisted }" />
           <span>{{ isWatchlisted ? 'In Watchlist' : 'Watchlist' }}</span>
         </button>
 
@@ -105,8 +105,7 @@
                 {{ holding?.asset_type || 'STOCK' }}
               </span>
               <span
-                class="text-[10px] font-mono px-2 py-0.5 rounded border font-semibold"
-                :class="holding?.currency === 'USD' ? 'bg-blue-950/40 text-blue-400 border-blue-500/30' : 'bg-zinc-900 text-zinc-300 border-zinc-700/60'"
+                class="text-[10px] font-mono px-2 py-0.5 rounded border uppercase bg-zinc-900 text-zinc-400 border-zinc-800"
               >
                 {{ holding?.currency || 'THB' }}
               </span>
@@ -136,25 +135,25 @@
               <!-- Market Session Badge (Pre/Post-Market) -->
               <span
                 v-if="holding?.position?.market_session === 'PRE'"
-                class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 font-semibold flex items-center gap-1.5"
+                class="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-300 border border-zinc-800 font-medium flex items-center gap-1.5"
               >
-                <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-pulse"></span>
                 <span>Pre-Market Live</span>
               </span>
               <span
                 v-else-if="holding?.position?.market_session === 'POST' || holding?.position?.market_session === 'POSTPOST'"
-                class="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/30 font-semibold flex items-center gap-1.5"
+                class="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-300 border border-zinc-800 font-medium flex items-center gap-1.5"
               >
-                <span class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-pulse"></span>
                 <span>Post-Market (Extended)</span>
               </span>
 
               <!-- Non-held Pre-investment Badge -->
               <span
                 v-if="holding && !holding.is_held"
-                class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 font-semibold flex items-center gap-1.5"
+                class="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800 font-medium flex items-center gap-1.5"
               >
-                <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-zinc-400"></span>
                 <span>Pre-investment Research Mode</span>
               </span>
             </div>
@@ -274,14 +273,14 @@
 
       <!-- Pre-investment Research Banner (When Not Held) -->
       <div v-else class="p-6 rounded-xl bg-zinc-950 border border-zinc-800 shadow-xl space-y-4">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg bg-gradient-to-r from-amber-500/10 via-zinc-900/50 to-zinc-900/30 border border-amber-500/25">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg bg-zinc-900/60 border border-zinc-800">
           <div class="space-y-1">
             <div class="flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-              <span class="text-xs font-mono uppercase tracking-wider text-amber-400 font-semibold">Pre-investment Research Mode</span>
+              <span class="w-2 h-2 rounded-full bg-zinc-400"></span>
+              <span class="text-xs font-mono uppercase tracking-wider text-zinc-300 font-semibold">Pre-investment Research Mode</span>
             </div>
-            <p class="text-xs text-zinc-300 font-sans leading-relaxed">
-              คุณกำลังศึกษาข้อมูลและกราฟราคาของ <strong class="text-zinc-100">{{ holding?.name || tickerParam }}</strong> ({{ holding?.ticker || tickerParam }}) โดยยังไม่มีรายการถือครองในพอร์ต
+            <p class="text-xs text-zinc-400 font-sans leading-relaxed">
+              Researching market quote and price action for <strong class="text-zinc-200">{{ holding?.name || tickerParam }}</strong> ({{ holding?.ticker || tickerParam }}). No active position held in this portfolio.
             </p>
           </div>
 
@@ -290,9 +289,9 @@
               @click="handleToggleWatchlist"
               :disabled="isTogglingWatchlist"
               class="px-3 py-1.5 rounded-md border text-xs font-mono transition-colors flex items-center gap-1.5"
-              :class="isWatchlisted ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-zinc-900 text-zinc-200 border-zinc-700 hover:bg-zinc-800'"
+              :class="isWatchlisted ? 'bg-zinc-800 text-zinc-200 border-zinc-700' : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800 hover:text-white'"
             >
-              <Star class="w-3.5 h-3.5" :class="{ 'fill-amber-400 text-amber-400': isWatchlisted }" />
+              <Star class="w-3.5 h-3.5" :class="{ 'fill-zinc-300 text-zinc-200': isWatchlisted }" />
               <span>{{ isWatchlisted ? 'In Watchlist' : 'Add to Watchlist' }}</span>
             </button>
 
@@ -301,7 +300,7 @@
               class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow"
             >
               <Plus class="w-3.5 h-3.5" />
-              <span>+ บันทึกการซื้อ (Buy {{ holding?.ticker || tickerParam }})</span>
+              <span>Record Execution (Buy {{ holding?.ticker || tickerParam }})</span>
             </button>
           </div>
         </div>
@@ -504,8 +503,8 @@
 
             <!-- Title & Summary -->
             <div class="mt-3 space-y-1.5">
-              <h3 class="text-sm font-semibold text-zinc-100 group-hover:text-blue-400 transition-colors leading-snug">
-                {{ item.title_th || item.title }}
+              <h3 class="text-sm font-semibold text-zinc-100 group-hover:text-white transition-colors leading-snug">
+                {{ item.title }}
               </h3>
               <p v-if="item.summary_th || item.summary" class="text-xs text-zinc-400 font-sans leading-relaxed line-clamp-2">
                 {{ item.summary_th || item.summary }}
@@ -656,7 +655,7 @@ function getTxSymbol(tx: StockTransaction): string {
   return c === 'USD' ? '$' : '฿'
 }
 
-// F01: คำนวณมูลค่าใน Display Currency ที่เลือก (THB / USD) แบบแม่นยำ 100% สัญลักษณ์ตรงกับตัวเลขเสมอ
+// Compute market value in selected display currency (THB / USD)
 const displayMarketValue = computed(() => {
   const p = holding.value?.position
   if (!p) return 0
@@ -787,11 +786,11 @@ function getPnlClass(val: number) {
 function getTransactionBadgeClass(type: string) {
   switch (type) {
     case 'BUY':
-      return 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30'
+      return 'bg-zinc-900 text-emerald-400 border-zinc-800'
     case 'SELL':
-      return 'bg-rose-950/40 text-rose-400 border-rose-500/30'
+      return 'bg-zinc-900 text-rose-400 border-zinc-800'
     case 'DIVIDEND':
-      return 'bg-amber-950/40 text-amber-400 border-amber-500/30'
+      return 'bg-zinc-900 text-zinc-300 border-zinc-800'
     default:
       return 'bg-zinc-900 text-zinc-400 border-zinc-800'
   }
@@ -800,9 +799,9 @@ function getTransactionBadgeClass(type: string) {
 function getSentimentClass(sentiment: string) {
   switch (sentiment) {
     case 'BULLISH':
-      return 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30'
+      return 'bg-zinc-900 text-emerald-400 border-zinc-800'
     case 'BEARISH':
-      return 'bg-rose-950/40 text-rose-400 border-rose-500/30'
+      return 'bg-zinc-900 text-rose-400 border-zinc-800'
     default:
       return 'bg-zinc-900 text-zinc-400 border-zinc-800'
   }
@@ -886,7 +885,7 @@ async function loadAssetData() {
   const holdingId = (route.query.holding_id as string) || undefined
 
   try {
-    // 1. Fetch holding info พร้อมระบุ holdingId/portfolioId เพื่อให้ตรงพอร์ต (F04)
+    // 1. Fetch holding info with holdingId/portfolioId filter
     const fetchedHolding = await portfolioStore.fetchHoldingByTicker(ticker, { holdingId, portfolioId })
     holding.value = fetchedHolding
 
@@ -895,7 +894,7 @@ async function loadAssetData() {
       activeTab.value = 'news'
     }
 
-    // 2. Fetch transactions สำหรับ Holding และ Portfolio เจาะจงนี้
+    // 2. Fetch transactions for this specific holding and portfolio
     if (fetchedHolding.is_held && fetchedHolding.id) {
       const txList = await portfolioStore.fetchTransactions({
         ticker,
@@ -911,7 +910,7 @@ async function loadAssetData() {
     const newsList = await portfolioStore.fetchNews({ ticker })
     assetNews.value = newsList
   } catch (err: any) {
-    errorMessage.value = err?.response?.data?.detail || `ไม่พบข้อมูลสินทรัพย์ ${ticker} ในตลาดการเงิน`
+    errorMessage.value = err?.response?.data?.detail || `Asset quote unavailable for ${ticker} in market feed`
   }
 }
 

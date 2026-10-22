@@ -35,3 +35,7 @@ Desktop.ini
 # Documentation & Audit reports
 docs/
 doc/
+
+# Uploaded Media & Static collection
+backend/media/
+backend/staticfiles/

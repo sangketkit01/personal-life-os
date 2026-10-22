@@ -17,7 +17,7 @@
           <!-- Change Amount & Percentage Badge -->
           <div
             class="flex items-center gap-1 font-mono text-xs sm:text-sm font-semibold tabular-nums px-2 py-0.5 rounded"
-            :class="isPositive ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/30' : 'bg-rose-950/40 text-rose-400 border border-rose-500/30'"
+            :class="isPositive ? 'bg-zinc-900 text-emerald-400 border border-zinc-800' : 'bg-zinc-900 text-rose-400 border border-zinc-800'"
           >
             <span>{{ isPositive ? '+' : '' }}{{ currencySymbol }}{{ formatPrice(displayChangeAmount) }}</span>
             <span>({{ isPositive ? '+' : '' }}{{ displayChangePct.toFixed(2) }}%)</span>
@@ -30,12 +30,9 @@
           class="flex items-center gap-2 mt-2 text-xs font-mono"
         >
           <span
-            class="px-1.5 py-0.5 rounded font-semibold text-[10px] flex items-center gap-1"
-            :class="activeMarketSession === 'PRE'
-              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
-              : 'bg-purple-500/10 text-purple-400 border border-purple-500/30'"
+            class="px-1.5 py-0.5 rounded font-medium text-[10px] flex items-center gap-1.5 bg-zinc-900 text-zinc-300 border border-zinc-800"
           >
-            <span class="w-1.5 h-1.5 rounded-full" :class="activeMarketSession === 'PRE' ? 'bg-amber-400 animate-pulse' : 'bg-purple-400 animate-pulse'"></span>
+            <span class="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-pulse"></span>
             <span>{{ activeMarketSession === 'PRE' ? 'Pre-Market' : 'Post-Market' }}</span>
           </span>
           <span class="font-bold text-zinc-100 tabular-nums">
@@ -362,9 +359,9 @@ const hoveredTimeFormatted = computed(() => {
   if (!hoveredPoint.value) return ''
   const d = new Date(hoveredPoint.value.time)
   if (selectedPeriod.value === '1D') {
-    return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.'
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
   }
-  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 })
 
 // Active Price Calculation (Hover vs Latest)
@@ -401,9 +398,9 @@ const displaySubtitle = computed(() => {
     return 'Scrubbing Historical Point'
   }
   if (selectedPeriod.value === '1D') {
-    return 'วันนี้ เทียบกับราคาปิดวันก่อน'
+    return 'Today vs. Previous Close'
   }
-  return `ผลตอบแทนรอบ ${selectedPeriod.value}`
+  return `Return over ${selectedPeriod.value}`
 })
 
 function formatPrice(val: number): string {

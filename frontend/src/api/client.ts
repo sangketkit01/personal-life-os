@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api',
-  withCredentials: true, // สำคัญมาก: ส่ง HttpOnly Cookies ไปกับทุก Request
+  withCredentials: true, // Send HttpOnly Cookies with every request
   headers: {
     'Content-Type': 'application/json',
   },
@@ -25,14 +25,14 @@ const processQueue = (error: unknown) => {
   failedQueue = []
 }
 
-// Response Interceptor สำหรับดักจับ 401/403 และทำ Silent Token Refresh
+// Response Interceptor to catch 401/403 and perform silent token refresh
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
     if (!originalRequest) return Promise.reject(error)
 
-    // ข้ามการ Refresh ถ้า Request นั้นเป็นคำขอ auth พื้นฐานอยู่แล้ว
+    // Skip refresh if request is already an auth endpoint
     if (
       originalRequest.url?.includes('/auth/login') ||
       originalRequest.url?.includes('/auth/register') ||
@@ -63,13 +63,13 @@ apiClient.interceptors.response.use(
       isRefreshing = true
 
       try {
-        // ขอหมุน Token ใบใหม่
+        // Request token refresh
         await apiClient.post('/auth/refresh/')
         processQueue(null)
         return apiClient(originalRequest)
       } catch (refreshError) {
         processQueue(refreshError)
-        // ถ้า Refresh ไม่ผ่าน แปลว่า Session ตายแล้ว ให้พากลับไปหน้า Login
+        // If refresh fails, session is expired; redirect to login
         if (window.location.pathname !== '/login') {
           window.location.href = '/login'
         }

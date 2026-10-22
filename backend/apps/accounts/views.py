@@ -146,7 +146,7 @@ class LoginView(views.APIView):
 
         res = response.Response(
             {
-                'message': 'เข้าสู่ระบบสำเร็จ',
+                'message': 'Login successful',
                 'user': UserSerializer(user).data
             },
             status=status.HTTP_200_OK
@@ -169,14 +169,13 @@ class LogoutView(views.APIView):
             except Exception:
                 pass
 
-        res = response.Response({'message': 'ออกจากระบบเรียบร้อยแล้ว'}, status=status.HTTP_200_OK)
+        res = response.Response({'message': 'Logged out successfully'}, status=status.HTTP_200_OK)
         clear_auth_cookies(res)
-        log_activity(request.user, 'AUTH', 'LOGOUT', 'ออกจากระบบ', request=request)
+        log_activity(request.user, 'AUTH', 'LOGOUT', 'Logged out', request=request)
         return res
 
 
 class RefreshTokenView(views.APIView):
-    # ปลดล็อคไม่ให้ DRF ตรวจจับ access_token ที่หมดอายุ
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
     throttle_classes = [ScopedRateThrottle]
@@ -185,17 +184,17 @@ class RefreshTokenView(views.APIView):
     def post(self, request):
         refresh_token = request.COOKIES.get('refresh_token')
         if not refresh_token:
-            return response.Response({'detail': 'ไม่พบ Refresh Token'}, status=status.HTTP_401_UNAUTHORIZED)
+            return response.Response({'detail': 'Refresh token not found.'}, status=status.HTTP_401_UNAUTHORIZED)
 
         try:
             payload = decode_token(refresh_token)
         except Exception:
-            res = response.Response({'detail': 'Refresh Token ไม่ถูกต้องหรือหมดอายุ'}, status=status.HTTP_401_UNAUTHORIZED)
+            res = response.Response({'detail': 'Invalid or expired refresh token.'}, status=status.HTTP_401_UNAUTHORIZED)
             clear_auth_cookies(res)
             return res
 
         if payload.get('token_type') != 'refresh':
-            return response.Response({'detail': 'Token Type ไม่ถูกต้อง'}, status=status.HTTP_401_UNAUTHORIZED)
+            return response.Response({'detail': 'Invalid token type.'}, status=status.HTTP_401_UNAUTHORIZED)
 
         session_id = payload.get('session_id')
         user_id = payload.get('user_id')
@@ -203,16 +202,16 @@ class RefreshTokenView(views.APIView):
         try:
             session = UserDeviceSession.objects.get(id=session_id, user_id=user_id)
         except UserDeviceSession.DoesNotExist:
-            res = response.Response({'detail': 'ไม่พบเซสชันนี้ในระบบ'}, status=status.HTTP_401_UNAUTHORIZED)
+            res = response.Response({'detail': 'Session not found.'}, status=status.HTTP_401_UNAUTHORIZED)
             clear_auth_cookies(res)
             return res
 
         if session.is_revoked:
-            res = response.Response({'detail': 'เซสชันนี้ถูกยกเลิกแล้ว กรุณาเข้าสู่ระบบใหม่'}, status=status.HTTP_401_UNAUTHORIZED)
+            res = response.Response({'detail': 'Session has been revoked. Please sign in again.'}, status=status.HTTP_401_UNAUTHORIZED)
             clear_auth_cookies(res)
             return res
 
-        # ตรวจสอบ Token Hash: รองรับทั้ง token ปัจจุบัน และ Grace Period (เช่น เปิดหลายแท็บ หรือคำขอคู่ขนาน)
+        # Verify Token Hash: supports both current token and Grace Period
         current_hash = hash_token(refresh_token)
         is_current_token = (session.refresh_token_hash == current_hash)
         
@@ -224,11 +223,11 @@ class RefreshTokenView(views.APIView):
                 is_grace_token = True
 
         if not is_current_token and not is_grace_token:
-            # Token Reuse Detected! เมื่อไม่ใช่ทั้ง token ปัจจุบันและไม่ได้อยู่ในช่วง grace period
+            # Token Reuse Detected!
             session.is_revoked = True
             session.save(update_fields=['is_revoked'])
             res = response.Response(
-                {'detail': 'ตรวจพบการนำ Token เก่ามาใช้ เซสชันนี้ถูกยกเลิกเพื่อความปลอดภัย'},
+                {'detail': 'Token reuse detected. Session revoked for security.'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
             clear_auth_cookies(res)
@@ -236,7 +235,7 @@ class RefreshTokenView(views.APIView):
 
         user = session.user
         if not user.is_active:
-            return response.Response({'detail': 'บัญชีนี้ถูกระงับ'}, status=status.HTTP_401_UNAUTHORIZED)
+            return response.Response({'detail': 'User account is deactivated.'}, status=status.HTTP_401_UNAUTHORIZED)
 
         # Token Rotation: สร้าง Access Token ใหม่ และ Refresh Token ใบใหม่
         new_access_token = generate_access_token(user)

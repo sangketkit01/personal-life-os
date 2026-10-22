@@ -3,14 +3,10 @@
     <!-- Top Navigation Breadcrumb & Quick Actions -->
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-2 text-xs font-mono text-zinc-400">
-        <RouterLink to="/portfolio" class="hover:text-zinc-200 transition-colors flex items-center gap-1">
+        <RouterLink to="/portfolio/news" class="hover:text-zinc-200 transition-colors flex items-center gap-1">
           <ArrowLeft class="w-3.5 h-3.5" />
-          <span>Portfolio</span>
+          <span>Market News</span>
         </RouterLink>
-        <span class="text-zinc-600">/</span>
-        <button @click="backToNews" class="hover:text-zinc-200 transition-colors">
-          Market Intelligence
-        </button>
         <span class="text-zinc-600">/</span>
         <span class="text-zinc-300 truncate max-w-[240px]">{{ article?.ticker || 'Article' }}</span>
       </div>
@@ -19,10 +15,10 @@
         <button
           v-if="article"
           @click="viewAsset(article.ticker)"
-          class="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-mono text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5"
+          class="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-mono text-zinc-300 hover:text-white transition-colors flex items-center gap-1.5"
         >
           <BarChart3 class="w-3.5 h-3.5" />
-          <span>${{ article.ticker }} Asset Page</span>
+          <span>${{ article.ticker }} Asset Dossier</span>
         </button>
       </div>
     </div>
@@ -30,21 +26,21 @@
     <!-- Loading State -->
     <div v-if="isLoading" class="p-16 text-center text-xs text-zinc-500 font-mono space-y-2">
       <div class="w-5 h-5 border-2 border-zinc-600 border-t-zinc-200 rounded-full animate-spin mx-auto"></div>
-      <div>กำลังโหลดข้อมูลข่าวและเนื้อหาฉบับเต็ม (Loading full article)...</div>
+      <div>Loading full market intelligence briefing...</div>
     </div>
 
     <!-- Error State -->
     <div v-else-if="errorMessage || !article" class="p-12 text-center rounded-xl bg-zinc-900/30 border border-zinc-800 space-y-3">
-      <p class="text-xs text-rose-400 font-mono">{{ errorMessage || 'ไม่พบบทความข่าวนี้' }}</p>
+      <p class="text-xs text-rose-400 font-mono">{{ errorMessage || 'Article not found or unavailable' }}</p>
       <button
         @click="backToNews"
-        class="px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 transition-colors"
+        class="px-3 py-1.5 rounded-md bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 transition-colors font-sans"
       >
-        กลับสู่หน้าหลัก Portfolio
+        Back to Market News
       </button>
     </div>
 
-    <!-- Article Detail Layout (Format 2 + 1) -->
+    <!-- Article Detail Layout -->
     <div v-else class="space-y-6">
       <!-- Article Header & Metadata Card -->
       <div class="p-6 rounded-xl bg-zinc-950 border border-zinc-800 shadow-xl space-y-5">
@@ -54,7 +50,7 @@
             <!-- Ticker Link Badge -->
             <button
               @click="viewAsset(article.ticker)"
-              class="font-mono font-bold text-xs px-2.5 py-1 rounded bg-blue-950/60 text-blue-400 border border-blue-500/30 hover:bg-blue-900/40 transition-colors flex items-center gap-1"
+              class="font-mono font-bold text-xs px-2.5 py-1 rounded bg-zinc-900 text-zinc-100 border border-zinc-800 hover:bg-zinc-800 transition-colors flex items-center gap-1"
               title="Click to view full asset details"
             >
               <span>${{ article.ticker }}</span>
@@ -108,19 +104,20 @@
           <div class="flex items-center gap-1.5 p-1 bg-zinc-900 border border-zinc-800 rounded-lg">
             <button
               type="button"
-              @click="activeLang = 'th'"
-              class="px-3 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1.5"
-              :class="activeLang === 'th' ? 'bg-zinc-800 text-zinc-100 shadow-sm font-semibold' : 'text-zinc-400 hover:text-zinc-200'"
-            >
-              <span>🇹🇭 ภาษาไทย (เต็มเรื่อง + สรุป)</span>
-            </button>
-            <button
-              type="button"
               @click="activeLang = 'en'"
               class="px-3 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1.5"
               :class="activeLang === 'en' ? 'bg-zinc-800 text-zinc-100 shadow-sm font-semibold' : 'text-zinc-400 hover:text-zinc-200'"
             >
-              <span>🇺🇸 Original English (Full Text)</span>
+              <span>Original English</span>
+            </button>
+            <button
+              v-if="article.summary_th || article.content_th"
+              type="button"
+              @click="activeLang = 'th'"
+              class="px-3 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1.5"
+              :class="activeLang === 'th' ? 'bg-zinc-800 text-zinc-100 shadow-sm font-semibold' : 'text-zinc-400 hover:text-zinc-200'"
+            >
+              <span>Thai Translation</span>
             </button>
           </div>
 
@@ -129,7 +126,7 @@
             <button
               @click="copyArticleText"
               class="px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-mono text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1"
-              :title="copied ? 'คัดลอกเรียบร้อย' : 'คัดลอกเนื้อหาข่าว'"
+              :title="copied ? 'Article text copied' : 'Copy article text'"
             >
               <Check v-if="copied" class="w-3.5 h-3.5 text-emerald-400" />
               <Copy v-else class="w-3.5 h-3.5" />
@@ -139,7 +136,7 @@
             <button
               @click="toggleFontSize"
               class="px-2 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-mono text-zinc-400 hover:text-zinc-200 transition-colors"
-              title="ปรับขนาดตัวอักษร"
+              title="Toggle reading font size"
             >
               <span class="font-bold">{{ isLargeFont ? 'A-' : 'A+' }}</span>
             </button>
@@ -152,15 +149,15 @@
         </h1>
       </div>
 
-      <!-- FORMAT 1: AI Executive Summary & Key Takeaways Card -->
-      <div class="p-6 rounded-xl bg-gradient-to-b from-amber-500/10 via-zinc-950 to-zinc-950 border border-amber-500/25 shadow-xl space-y-4">
-        <div class="flex items-center justify-between border-b border-amber-500/15 pb-3">
-          <div class="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-amber-400 font-semibold">
-            <Sparkles class="w-4 h-4 text-amber-400" />
-            <span>{{ activeLang === 'th' ? 'บทวิเคราะห์และสรุปสาระสำคัญ (AI Executive Summary)' : 'Market Intelligence & Key Takeaways' }}</span>
+      <!-- AI Executive Summary & Key Takeaways Card -->
+      <div class="p-6 rounded-xl bg-zinc-900/40 border border-zinc-800 shadow-xl space-y-4">
+        <div class="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+          <div class="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-zinc-300 font-semibold">
+            <Sparkles class="w-4 h-4 text-zinc-400" />
+            <span>Market Intelligence & Key Takeaways</span>
           </div>
-          <span class="text-[11px] font-mono text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
-            Key Takeaways
+          <span class="text-[11px] font-mono text-zinc-400 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
+            Executive Summary
           </span>
         </div>
 
@@ -169,9 +166,9 @@
           <div
             v-for="(bullet, idx) in executiveBullets"
             :key="idx"
-            class="flex items-start gap-3 p-3.5 rounded-lg bg-zinc-900/50 border border-zinc-800/80 hover:border-amber-500/30 transition-colors"
+            class="flex items-start gap-3 p-3.5 rounded-lg bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700 transition-colors"
           >
-            <div class="w-5 h-5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-mono flex items-center justify-center shrink-0 mt-0.5 font-bold">
+            <div class="w-5 h-5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-mono flex items-center justify-center shrink-0 mt-0.5 font-bold">
               {{ idx + 1 }}
             </div>
             <div class="text-sm text-zinc-200 font-sans leading-relaxed">
@@ -181,15 +178,15 @@
         </div>
       </div>
 
-      <!-- FORMAT 2: Full Article Body Reader -->
+      <!-- Full Article Body Reader -->
       <div class="p-6 sm:p-8 rounded-xl bg-zinc-950 border border-zinc-800 shadow-xl space-y-6">
         <div class="flex items-center justify-between border-b border-zinc-800/80 pb-3">
           <div class="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-zinc-300 font-semibold">
-            <FileText class="w-4 h-4 text-blue-400" />
-            <span>{{ activeLang === 'th' ? 'เนื้อหาข่าวฉบับเต็ม (Full Article Body)' : 'Full Article Journalism' }}</span>
+            <FileText class="w-4 h-4 text-zinc-400" />
+            <span>Full Article Journalism</span>
           </div>
           <div class="text-[11px] font-mono text-zinc-500">
-            {{ activeLang === 'th' ? (article.content_th ? 'แปลไทยเรียบเรียงสมบูรณ์' : 'สรุปสาระสำคัญ') : 'Direct Source Scrape' }}
+            {{ activeLang === 'th' ? 'Translated Text' : 'Direct Source Scrape' }}
           </div>
         </div>
 
@@ -208,7 +205,7 @@
             </p>
           </template>
           <div v-else class="p-6 text-center text-xs font-mono text-zinc-500 italic bg-zinc-900/30 rounded-lg border border-zinc-800/60">
-            {{ activeLang === 'th' ? 'กำลังประมวลผลเนื้อหาฉบับเต็ม หรือข่าวนี้มีเฉพาะสาระสำคัญ' : 'Full body content is being retrieved from the original publisher.' }}
+            Full body content is being retrieved from the original publisher.
           </div>
         </div>
 
@@ -219,7 +216,7 @@
             class="text-xs font-mono text-zinc-400 hover:text-zinc-200 flex items-center gap-1.5 transition-colors"
           >
             <ChevronDown class="w-3.5 h-3.5 transition-transform" :class="{ 'rotate-180': showOriginalToggle }" />
-            <span>{{ activeLang === 'th' ? 'แสดงเนื้อหาภาษาอังกฤษดั้งเดิม (Show Original English Body)' : 'แสดงเนื้อหาแปลภาษาไทย (Show Thai Translation Body)' }}</span>
+            <span>{{ activeLang === 'th' ? 'Show Original English Body' : 'Show Secondary Translation' }}</span>
           </button>
 
           <div
@@ -235,10 +232,10 @@
       <div class="p-5 rounded-xl bg-zinc-950 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div class="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
-            <span>สำนักข่าวต้นทาง: {{ article.source || 'Financial Media' }}</span>
+            <span>Original Source: {{ article.source || 'Financial Media' }}</span>
           </div>
           <div class="text-[11px] text-zinc-500 font-sans mt-0.5">
-            อ่านบทความต้นฉบับฉบับเต็มโดยตรงจากสำนักข่าวเพื่อการอ้างอิงเชิงลึก
+            Read original unabridged journalism directly from publisher site
           </div>
         </div>
 
@@ -248,7 +245,7 @@
           rel="noopener noreferrer"
           class="px-4 py-2 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center justify-center gap-2 shadow shrink-0"
         >
-          <span>เปิดบทความต้นฉบับ (Open Original)</span>
+          <span>Open Publisher Article</span>
           <ExternalLink class="w-3.5 h-3.5" />
         </a>
       </div>
@@ -256,12 +253,12 @@
       <!-- Quick Ticker Action Card -->
       <div class="p-4 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-blue-400 font-mono font-bold text-xs">
+          <div class="w-9 h-9 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 font-mono font-bold text-xs">
             ${{ article.ticker.slice(0, 3) }}
           </div>
           <div>
-            <div class="text-xs font-semibold text-zinc-200">สนใจลงทุนใน {{ article.ticker }} หรือถือครองอยู่แล้ว?</div>
-            <div class="text-[11px] text-zinc-500 font-sans">ดูกราฟราคา Dime-style สัดส่วนพอร์ต ทุนเฉลี่ย และประวัติการทำรายการ</div>
+            <div class="text-xs font-semibold text-zinc-200">Inspect holding or execution history for {{ article.ticker }}?</div>
+            <div class="text-[11px] text-zinc-500 font-sans">View candlestick charts, weighted DCA cost basis, and audit ledger</div>
           </div>
         </div>
 
@@ -269,7 +266,7 @@
           @click="viewAsset(article.ticker)"
           class="px-3.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-mono text-zinc-200 hover:text-white transition-colors"
         >
-          ดูหน้าสินทรัพย์ {{ article.ticker }} →
+          View ${{ article.ticker }} Dossier →
         </button>
       </div>
     </div>
@@ -284,14 +281,14 @@ import type { StockNewsArticle } from '../types/portfolio'
 import {
   ArrowLeft,
   Clock,
+  BookOpen,
   Sparkles,
+  FileText,
   ExternalLink,
   ChevronDown,
-  BarChart3,
-  BookOpen,
-  FileText,
   Copy,
-  Check
+  Check,
+  BarChart3
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -300,11 +297,11 @@ const portfolioStore = usePortfolioStore()
 
 const article = ref<StockNewsArticle | null>(null)
 const isLoading = ref(true)
-const errorMessage = ref('')
-const activeLang = ref<'th' | 'en'>('th')
+const errorMessage = ref<string | null>(null)
+const activeLang = ref<'en' | 'th'>('en')
+const isLargeFont = ref(false)
 const showOriginalToggle = ref(false)
 const copied = ref(false)
-const isLargeFont = ref(false)
 
 const currentTitle = computed(() => {
   if (!article.value) return ''
@@ -322,7 +319,7 @@ const executiveBullets = computed(() => {
 
   if (!text) return []
 
-  // แยกบรรทัดและตัดสัญลักษณ์ Bullet ออก
+  // Split lines and strip bullet markers
   const lines = text
     .split('\n')
     .map(line => line.trim())
@@ -344,7 +341,7 @@ const articleParagraphs = computed(() => {
     rawContent = article.value.content || ''
   }
 
-  // หากไม่มีเนื้อหาฉบับเต็ม ให้ใช้ summary เป็นย่อหน้าเดี่ยว
+  // Fallback to summary if full body unavailable
   if (!rawContent) {
     const fallback = activeLang.value === 'th'
       ? (article.value.summary_th || article.value.summary)
@@ -359,11 +356,11 @@ const articleParagraphs = computed(() => {
 })
 
 const readingTimeEstimate = computed(() => {
-  if (!article.value) return '~1 min'
+  if (!article.value) return '~1 min read'
   const text = (article.value.content || '') + ' ' + (article.value.summary || '')
   const words = text.split(/\s+/).filter(Boolean).length
   const minutes = Math.max(1, Math.ceil(words / 180))
-  return `~${minutes} นาที (${words} คำ)`
+  return `~${minutes} min read (${words} words)`
 })
 
 const hasSecondaryLang = computed(() => {
@@ -396,9 +393,9 @@ async function copyArticleText() {
 function getSentimentClass(sentiment: string) {
   switch (sentiment) {
     case 'BULLISH':
-      return 'bg-emerald-950/40 text-emerald-400 border-emerald-500/30'
+      return 'bg-zinc-900 text-emerald-400 border-zinc-800'
     case 'BEARISH':
-      return 'bg-rose-950/40 text-rose-400 border-rose-500/30'
+      return 'bg-zinc-900 text-rose-400 border-zinc-800'
     default:
       return 'bg-zinc-900 text-zinc-400 border-zinc-800'
   }
@@ -418,8 +415,8 @@ function getSentimentDot(sentiment: string) {
 function formatDateTime(dateStr: string): string {
   if (!dateStr) return ''
   const d = new Date(dateStr)
-  return d.toLocaleDateString('th-TH', {
-    day: 'numeric',
+  return d.toLocaleDateString('en-GB', {
+    day: '2-digit',
     month: 'short',
     year: 'numeric',
     hour: '2-digit',
@@ -435,7 +432,7 @@ function handleImageError(e: Event) {
 }
 
 function backToNews() {
-  router.push('/portfolio?tab=news')
+  router.push('/portfolio/news')
 }
 
 function viewAsset(ticker: string) {
@@ -445,27 +442,27 @@ function viewAsset(ticker: string) {
 onMounted(async () => {
   const articleId = route.params.id as string
   if (!articleId) {
-    errorMessage.value = 'ไม่พบรหัสบทความ (Invalid article ID)'
+    errorMessage.value = 'Invalid article identifier'
     isLoading.value = false
     return
   }
 
-  // 1. ลองค้นหาใน Pinia Store
+  // 1. Look up in Pinia Store cache
   const existing = portfolioStore.news.find(n => n.id === articleId)
-  if (existing && existing.content && existing.content_th) {
+  if (existing && existing.content) {
     article.value = existing
-    activeLang.value = existing.title_th || existing.summary_th ? 'th' : 'en'
+    activeLang.value = 'en'
     isLoading.value = false
     return
   }
 
-  // 2. ดึงจาก Backend API (จะทำการ Lazy Backfill เนื้อหาอัตโนมัติหากยังไม่มี)
+  // 2. Fetch from Backend API with lazy scraper
   try {
     const fetched = await portfolioStore.fetchNewsArticle(articleId)
     article.value = fetched
-    activeLang.value = fetched.title_th || fetched.summary_th ? 'th' : 'en'
+    activeLang.value = 'en'
   } catch (err: any) {
-    errorMessage.value = err?.response?.data?.detail || 'ไม่สามารถโหลดรายละเอียดบทความได้'
+    errorMessage.value = err?.response?.data?.detail || 'Unable to retrieve article content'
   } finally {
     isLoading.value = false
   }

@@ -17,7 +17,11 @@ if not SECRET_KEY:
     else:
         raise ValueError("CRITICAL SECURITY ERROR: SECRET_KEY must be configured when DEBUG=False!")
 
-ALLOWED_HOSTS = ['*']
+allowed_hosts_env = os.getenv('ALLOWED_HOSTS')
+if allowed_hosts_env:
+    ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(',') if h.strip()]
+else:
+    ALLOWED_HOSTS = ['*'] if DEBUG else ['localhost', '127.0.0.1']
 
 # Application definition
 INSTALLED_APPS = [
@@ -102,13 +106,18 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # Internationalization
-LANGUAGE_CODE = 'th-th'
+LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'Asia/Bangkok'
 USE_I18N = True
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Media files (Slips, Contracts, Documents)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

@@ -347,29 +347,18 @@ function formatLogTime(dateStr: string) {
   })
 }
 
-function getCategoryClass(category: string) {
-  switch (category) {
-    case 'AUTH':
-      return 'bg-blue-950/30 text-blue-400 border-blue-500/30'
-    case 'FINANCE':
-      return 'bg-amber-950/30 text-amber-400 border-amber-500/30'
-    case 'PORTFOLIO':
-      return 'bg-emerald-950/30 text-emerald-400 border-emerald-500/30'
-    case 'WORKSPACE':
-      return 'bg-purple-950/30 text-purple-400 border-purple-500/30'
-    default:
-      return 'bg-zinc-900 text-zinc-400 border-zinc-800'
-  }
+function getCategoryClass(_category: string) {
+  return 'bg-zinc-900 text-zinc-400 border-zinc-800'
 }
 
 function getStatusClass(status: string) {
   switch (status) {
     case 'SUCCESS':
-      return 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30'
+      return 'bg-zinc-900 text-emerald-400 border-zinc-800'
     case 'WARNING':
-      return 'bg-amber-950/20 text-amber-400 border-amber-500/30'
+      return 'bg-zinc-900 text-zinc-300 border-zinc-800'
     case 'FAILED':
-      return 'bg-rose-950/20 text-rose-400 border-rose-500/30'
+      return 'bg-zinc-900 text-rose-400 border-zinc-800'
     default:
       return 'bg-zinc-900 text-zinc-400 border-zinc-800'
   }

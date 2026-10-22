@@ -12,7 +12,7 @@
       <!-- Modal Title -->
       <div class="mb-5">
         <div class="flex items-center gap-2">
-          <FolderInput class="w-4 h-4 text-blue-400" />
+          <FolderInput class="w-4 h-4 text-zinc-300" />
           <h2 class="text-base font-semibold text-zinc-100 tracking-tight">Move Asset to Portfolio</h2>
         </div>
         <p class="text-xs text-zinc-500 mt-1">
@@ -74,9 +74,9 @@
         </div>
 
         <!-- Automatic Merge Notice -->
-        <div class="p-3 rounded-lg bg-blue-950/20 border border-blue-500/20 text-xs text-zinc-300 space-y-1.5 font-sans leading-relaxed">
-          <div class="flex items-center gap-1.5 font-semibold text-blue-400 text-[11px] font-mono uppercase">
-            <ArrowRightLeft class="w-3.5 h-3.5" />
+        <div class="p-3 rounded-lg bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-300 space-y-1.5 font-sans leading-relaxed">
+          <div class="flex items-center gap-1.5 font-semibold text-zinc-300 text-[11px] font-mono uppercase">
+            <ArrowRightLeft class="w-3.5 h-3.5 text-zinc-400" />
             <span>Seamless Execution Merging</span>
           </div>
           <p class="text-[11px] text-zinc-400">

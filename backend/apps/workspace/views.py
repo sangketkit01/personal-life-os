@@ -40,7 +40,7 @@ class TaskDocumentViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = TaskDocument.objects.filter(user=self.request.user)
+        qs = TaskDocument.objects.filter(user=self.request.user).select_related('project')
 
         # ตัวกรอง
         project_id = self.request.query_params.get('project_id')
@@ -76,7 +76,7 @@ class NoteViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = Note.objects.filter(user=self.request.user)
+        qs = Note.objects.filter(user=self.request.user).select_related('project')
 
         project_id = self.request.query_params.get('project_id')
         tag = self.request.query_params.get('tag')

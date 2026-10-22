@@ -10,6 +10,15 @@ class ObligationType(models.TextChoices):
     DEBT = 'DEBT', 'หนี้สิน/ยืมคืน'
 
 
+class ObligationSubtype(models.TextChoices):
+    STANDARD = 'STANDARD', 'มาตรฐานทั่วไป'
+    HIRE_PURCHASE = 'HIRE_PURCHASE', 'สัญญาเช่าซื้อรถ/มอเตอร์ไซค์'
+    BNPL_ACCOUNT = 'BNPL_ACCOUNT', 'วงเงินเครดิตช้อปปิ้งออนไลน์ (BNPL)'
+    BNPL_ORDER = 'BNPL_ORDER', 'รายการซื้อย่อยในวงเงิน BNPL'
+    FORMAL_LOAN = 'FORMAL_LOAN', 'สินเชื่อสถาบันการเงิน/ธนาคาร'
+    INFORMAL_BORROW = 'INFORMAL_BORROW', 'ยืมเงินบุคคล/เพื่อน/ครอบครัว'
+
+
 class FlowDirection(models.TextChoices):
     OUTFLOW = 'OUTFLOW', 'จ่ายออก'
     INFLOW = 'INFLOW', 'รับเข้า'
@@ -36,6 +45,21 @@ class FinancialObligation(models.Model):
         choices=ObligationType.choices,
         db_index=True,
         verbose_name="ประเภทภาระ"
+    )
+    subtype = models.CharField(
+        max_length=30,
+        choices=ObligationSubtype.choices,
+        default=ObligationSubtype.STANDARD,
+        db_index=True,
+        verbose_name="ประเภทย่อย"
+    )
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='sub_orders',
+        verbose_name="บัญชีหลัก (สำหรับรายการย่อย BNPL)"
     )
     direction = models.CharField(
         max_length=10,
@@ -140,3 +164,66 @@ class PaymentHistory(models.Model):
 
     def __str__(self):
         return f"Paid {self.paid_amount} for {self.obligation.title}"
+
+
+class AttachmentType(models.TextChoices):
+    CONTRACT = 'CONTRACT', 'สัญญา/เอกสารประกอบ'
+    SLIP = 'SLIP', 'สลิปโอนเงิน'
+    STATEMENT = 'STATEMENT', 'ใบแจ้งยอดชำระ'
+    SCREENSHOT = 'SCREENSHOT', 'ภาพแคปหน้าจอ'
+    OTHER = 'OTHER', 'อื่นๆ'
+
+
+class ObligationAttachment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='obligation_attachments',
+        verbose_name="เจ้าของไฟล์"
+    )
+    obligation = models.ForeignKey(
+        FinancialObligation,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        verbose_name="ภาระผูกพัน"
+    )
+    payment_history = models.ForeignKey(
+        PaymentHistory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='attachments',
+        verbose_name="ประวัติการชำระเงินที่เกี่ยวข้อง"
+    )
+    file = models.FileField(
+        upload_to='finance/attachments/%Y/%m/',
+        verbose_name="ไฟล์แนบ"
+    )
+    file_name = models.CharField(
+        max_length=255,
+        verbose_name="ชื่อไฟล์ต้นฉบับ"
+    )
+    file_type = models.CharField(
+        max_length=20,
+        choices=AttachmentType.choices,
+        default=AttachmentType.OTHER,
+        verbose_name="ประเภทเอกสาร"
+    )
+    file_size = models.PositiveIntegerField(
+        default=0,
+        verbose_name="ขนาดไฟล์ (bytes)"
+    )
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="เวลาที่อัปโหลด"
+    )
+
+    class Meta:
+        db_table = 'obligation_attachments'
+        ordering = ['-uploaded_at']
+        verbose_name = 'เอกสารแนบภาระทางการเงิน'
+        verbose_name_plural = 'เอกสารแนบภาระทางการเงินทั้งหมด'
+
+    def __str__(self):
+        return f"{self.file_name} ({self.get_file_type_display()})"

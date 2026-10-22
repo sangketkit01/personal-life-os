@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen bg-[#090a0f] text-zinc-100 flex font-sans antialiased selection:bg-zinc-800 selection:text-white">
     <!-- Desktop Sidebar (Fixed to viewport height, sticky top-0) -->
-    <aside class="hidden md:flex w-60 border-r border-zinc-800/80 bg-zinc-950 flex-col justify-between shrink-0 sticky top-0 h-screen overflow-y-auto z-20">
+    <aside class="hidden md:flex w-64 border-r border-zinc-800/80 bg-zinc-950 flex-col justify-between shrink-0 sticky top-0 h-screen overflow-y-auto z-20">
       <div>
         <!-- Brand -->
         <div class="h-14 px-5 flex items-center gap-2.5 border-b border-zinc-800/80">
@@ -16,26 +16,195 @@
           </div>
         </div>
 
-        <!-- Navigation Links -->
-        <nav class="p-3 space-y-0.5">
+        <!-- Navigation Links & Accordion Groups -->
+        <nav class="p-3 space-y-1">
+          <!-- 1. Executive Home Overview -->
           <RouterLink
-            v-for="item in navItems"
-            :key="item.path"
-            :to="item.path"
-            class="flex items-center gap-2.5 px-3 py-2 rounded-md text-xs font-medium transition-colors group"
+            to="/"
+            class="flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors group"
             :class="[
-              $route.path === item.path
+              $route.path === '/'
                 ? 'bg-zinc-900 text-white border border-zinc-800 shadow-sm'
                 : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
             ]"
           >
-            <component
-              :is="item.icon"
-              class="w-3.5 h-3.5 transition-colors shrink-0"
-              :class="$route.path === item.path ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
-            />
-            <span class="truncate">{{ item.label }}</span>
+            <div class="flex items-center gap-2.5">
+              <LayoutDashboard
+                class="w-3.5 h-3.5 transition-colors shrink-0"
+                :class="$route.path === '/' ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
+              />
+              <span>Executive Overview</span>
+            </div>
           </RouterLink>
+
+          <!-- 2. Financial Radar Accordion Group -->
+          <div class="pt-1.5">
+            <!-- Group Header Button -->
+            <button
+              type="button"
+              @click="toggleGroup('finance')"
+              class="w-full flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors group"
+              :class="[
+                $route.path.startsWith('/finance')
+                  ? 'text-zinc-100 bg-zinc-900/60'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/30'
+              ]"
+            >
+              <div class="flex items-center gap-2.5">
+                <CreditCard
+                  class="w-3.5 h-3.5 transition-colors shrink-0"
+                  :class="$route.path.startsWith('/finance') ? 'text-zinc-100' : 'text-zinc-500 group-hover:text-zinc-300'"
+                />
+                <span class="font-semibold tracking-tight">Financial Radar</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <!-- Group Alert Badge if critical trial exists -->
+                <span
+                  v-if="criticalTrialsCount > 0"
+                  class="w-1.5 h-1.5 rounded-full bg-rose-500/80 animate-pulse"
+                  title="Expiring trials pending"
+                />
+                <ChevronDown
+                  class="w-3.5 h-3.5 text-zinc-500 transition-transform duration-200"
+                  :class="{ 'rotate-180': expandedGroups.finance }"
+                />
+              </div>
+            </button>
+
+            <!-- Collapsible Sub-menu -->
+            <div v-show="expandedGroups.finance" class="pl-4 pr-1 py-1 space-y-0.5 border-l border-zinc-800/80 ml-4 my-1">
+              <RouterLink
+                v-for="sub in financeNavItems"
+                :key="sub.path"
+                :to="sub.path"
+                class="flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors group"
+                :class="[
+                  isNavActive(sub.path)
+                    ? 'bg-zinc-900 text-white border border-zinc-800/80 shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
+                ]"
+              >
+                <div class="flex items-center gap-2 truncate">
+                  <component
+                    :is="sub.icon"
+                    class="w-3 h-3 transition-colors shrink-0"
+                    :class="isNavActive(sub.path) ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
+                  />
+                  <span class="truncate">{{ sub.label }}</span>
+                </div>
+
+                <!-- Sub-item Badge -->
+                <span
+                  v-if="sub.badge && sub.badge()"
+                  class="text-[9px] font-mono px-1.5 py-0.2 rounded border uppercase font-semibold shrink-0"
+                  :class="sub.badgeClass || 'bg-zinc-900 text-zinc-400 border-zinc-800'"
+                >
+                  {{ sub.badge() }}
+                </span>
+              </RouterLink>
+            </div>
+          </div>
+
+          <!-- 3. Wealth & Portfolio Accordion Group -->
+          <div class="pt-1.5">
+            <!-- Group Header Button -->
+            <button
+              type="button"
+              @click="toggleGroup('portfolio')"
+              class="w-full flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors group"
+              :class="[
+                $route.path.startsWith('/portfolio')
+                  ? 'text-zinc-100 bg-zinc-900/60'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/30'
+              ]"
+            >
+              <div class="flex items-center gap-2.5">
+                <TrendingUp
+                  class="w-3.5 h-3.5 transition-colors shrink-0"
+                  :class="$route.path.startsWith('/portfolio') ? 'text-zinc-100' : 'text-zinc-500 group-hover:text-zinc-300'"
+                />
+                <span class="font-semibold tracking-tight">Wealth & Portfolio</span>
+              </div>
+              <ChevronDown
+                class="w-3.5 h-3.5 text-zinc-500 transition-transform duration-200"
+                :class="{ 'rotate-180': expandedGroups.portfolio }"
+              />
+            </button>
+
+            <!-- Collapsible Sub-menu -->
+            <div v-show="expandedGroups.portfolio" class="pl-4 pr-1 py-1 space-y-0.5 border-l border-zinc-800/80 ml-4 my-1">
+              <RouterLink
+                v-for="sub in portfolioNavItems"
+                :key="sub.path"
+                :to="sub.path"
+                class="flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors group"
+                :class="[
+                  isNavActive(sub.path)
+                    ? 'bg-zinc-900 text-white border border-zinc-800/80 shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
+                ]"
+              >
+                <div class="flex items-center gap-2 truncate">
+                  <component
+                    :is="sub.icon"
+                    class="w-3 h-3 transition-colors shrink-0"
+                    :class="isNavActive(sub.path) ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
+                  />
+                  <span class="truncate">{{ sub.label }}</span>
+                </div>
+
+                <span
+                  v-if="sub.badge && sub.badge()"
+                  class="text-[9px] font-mono px-1.5 py-0.2 rounded border uppercase font-semibold shrink-0"
+                  :class="sub.badgeClass || 'bg-zinc-900 text-zinc-400 border-zinc-800'"
+                >
+                  {{ sub.badge() }}
+                </span>
+              </RouterLink>
+            </div>
+          </div>
+
+          <!-- 4. Workspace & Tasks (Standalone) -->
+          <div class="pt-1.5">
+            <RouterLink
+              to="/workspace"
+              class="flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors group"
+              :class="[
+                $route.path === '/workspace'
+                  ? 'bg-zinc-900 text-white border border-zinc-800 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
+              ]"
+            >
+              <div class="flex items-center gap-2.5">
+                <FolderKanban
+                  class="w-3.5 h-3.5 transition-colors shrink-0"
+                  :class="$route.path === '/workspace' ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
+                />
+                <span>Workspace</span>
+              </div>
+            </RouterLink>
+          </div>
+
+          <!-- 5. Settings & Config (Standalone) -->
+          <div>
+            <RouterLink
+              to="/settings"
+              class="flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors group"
+              :class="[
+                $route.path === '/settings'
+                  ? 'bg-zinc-900 text-white border border-zinc-800 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
+              ]"
+            >
+              <div class="flex items-center gap-2.5">
+                <Settings
+                  class="w-3.5 h-3.5 transition-colors shrink-0"
+                  :class="$route.path === '/settings' ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
+                />
+                <span>Settings</span>
+              </div>
+            </RouterLink>
+          </div>
         </nav>
       </div>
 
@@ -68,7 +237,7 @@
       class="fixed inset-0 z-50 md:hidden bg-black/75 backdrop-blur-sm flex"
       @click.self="isMobileMenuOpen = false"
     >
-      <div class="w-64 bg-zinc-950 border-r border-zinc-800 flex flex-col justify-between h-full p-4">
+      <div class="w-64 bg-zinc-950 border-r border-zinc-800 flex flex-col justify-between h-full p-4 overflow-y-auto">
         <div>
           <div class="flex items-center justify-between pb-4 border-b border-zinc-800 mb-4">
             <div class="flex items-center gap-2">
@@ -80,22 +249,68 @@
             </button>
           </div>
 
+          <!-- Mobile Nav Links -->
           <nav class="space-y-1">
             <RouterLink
-              v-for="item in navItems"
-              :key="item.path"
-              :to="item.path"
+              to="/"
               @click="isMobileMenuOpen = false"
-              class="flex items-center gap-2.5 px-3 py-2 rounded-md text-xs font-medium transition-colors"
-              :class="[
-                $route.path === item.path
-                  ? 'bg-zinc-900 text-white border border-zinc-800'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              ]"
+              class="flex items-center gap-2.5 px-3 py-2 rounded-md text-xs font-medium text-zinc-400 hover:text-zinc-200"
+              :class="{ 'bg-zinc-900 text-white': $route.path === '/' }"
             >
-              <component :is="item.icon" class="w-4 h-4" />
-              <span>{{ item.label }}</span>
+              <LayoutDashboard class="w-3.5 h-3.5" />
+              <span>Overview</span>
             </RouterLink>
+
+            <!-- Finance Sub-list -->
+            <div class="pt-2">
+              <div class="text-[10px] font-mono uppercase text-zinc-500 px-3 py-1 font-semibold">Financial Radar</div>
+              <RouterLink
+                v-for="sub in financeNavItems"
+                :key="sub.path"
+                :to="sub.path"
+                @click="isMobileMenuOpen = false"
+                class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs text-zinc-400 hover:text-zinc-200 pl-5"
+                :class="{ 'bg-zinc-900 text-white font-medium': isNavActive(sub.path) }"
+              >
+                <component :is="sub.icon" class="w-3 h-3" />
+                <span>{{ sub.label }}</span>
+              </RouterLink>
+            </div>
+
+            <!-- Portfolio Sub-list -->
+            <div class="pt-2">
+              <div class="text-[10px] font-mono uppercase text-zinc-500 px-3 py-1 font-semibold">Wealth & Portfolio</div>
+              <RouterLink
+                v-for="sub in portfolioNavItems"
+                :key="sub.path"
+                :to="sub.path"
+                @click="isMobileMenuOpen = false"
+                class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs text-zinc-400 hover:text-zinc-200 pl-5"
+                :class="{ 'bg-zinc-900 text-white font-medium': isNavActive(sub.path) }"
+              >
+                <component :is="sub.icon" class="w-3 h-3" />
+                <span>{{ sub.label }}</span>
+              </RouterLink>
+            </div>
+
+            <div class="pt-2">
+              <RouterLink
+                to="/workspace"
+                @click="isMobileMenuOpen = false"
+                class="flex items-center gap-2.5 px-3 py-2 rounded-md text-xs text-zinc-400 hover:text-zinc-200"
+              >
+                <FolderKanban class="w-3.5 h-3.5" />
+                <span>Workspace</span>
+              </RouterLink>
+              <RouterLink
+                to="/settings"
+                @click="isMobileMenuOpen = false"
+                class="flex items-center gap-2.5 px-3 py-2 rounded-md text-xs text-zinc-400 hover:text-zinc-200"
+              >
+                <Settings class="w-3.5 h-3.5" />
+                <span>Settings</span>
+              </RouterLink>
+            </div>
           </nav>
         </div>
 
@@ -110,9 +325,9 @@
 
     <!-- Main Content Area -->
     <div class="flex-1 flex flex-col min-w-0">
-      <!-- Topbar Header -->
+      <!-- Topbar Header with Breadcrumbs & Utilities -->
       <header class="h-14 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur px-4 md:px-6 flex items-center justify-between shrink-0">
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 min-w-0">
           <!-- Mobile Hamburger Toggle -->
           <button
             @click="isMobileMenuOpen = true"
@@ -122,16 +337,20 @@
             <Menu class="w-4 h-4" />
           </button>
 
-          <!-- Quick Search command pill (Interactive) -->
+          <!-- Dynamic Breadcrumbs -->
+          <div class="hidden sm:flex items-center gap-2 text-xs font-mono text-zinc-500">
+            <span class="text-zinc-400">{{ currentDomainLabel }}</span>
+            <span v-if="currentSubdomainLabel" class="text-zinc-600">/</span>
+            <span v-if="currentSubdomainLabel" class="text-zinc-200 font-medium font-sans">{{ currentSubdomainLabel }}</span>
+          </div>
+
+          <!-- Quick Search command pill -->
           <button
             @click="isCommandPaletteOpen = true"
-            class="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-900/60 border border-zinc-800/80 px-3 py-1.5 rounded-md w-48 sm:w-72 hover:border-zinc-700 transition cursor-pointer text-left"
+            class="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-900/60 border border-zinc-800/80 px-3 py-1.5 rounded-md w-44 sm:w-64 hover:border-zinc-700 transition cursor-pointer text-left ml-2"
           >
             <Search class="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-            <span class="text-[11px] text-zinc-400 truncate">Search commands, assets...</span>
-            <kbd class="ml-auto text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700/60 text-zinc-400 shrink-0">
-              {{ shortcutKey }}
-            </kbd>
+            <span class="text-[11px] text-zinc-400 truncate">Search ({{ shortcutKey }})</span>
           </button>
         </div>
 
@@ -191,7 +410,7 @@
           </div>
           <div>
             <h3 class="font-medium text-white text-sm">Telegram Butler Connection</h3>
-            <p class="text-xs text-zinc-400 mt-0.5">Receive 10:00 AM advance reminders with settlement actions</p>
+            <p class="text-xs text-zinc-400 mt-0.5">Receive advance reminders with settlement actions</p>
           </div>
         </div>
 
@@ -207,7 +426,7 @@
 
         <div v-else class="space-y-4">
           <p class="text-xs text-zinc-300 leading-relaxed">
-            Click below to open bot <span class="font-mono text-zinc-100">@brandy_personal_os_bot</span> in Telegram and click <strong>[ START ]</strong> to link your session.
+            Click below to open bot in Telegram and click <strong>[ START ]</strong> to link your session.
           </p>
           <button
             @click="handleConnectTelegram"
@@ -233,9 +452,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useFinanceStore } from '../stores/finance'
 import { useToastStore } from '../stores/toast'
 import CommandPalette from '../components/common/CommandPalette.vue'
 import ToastContainer from '../components/common/ToastContainer.vue'
@@ -252,11 +472,24 @@ import {
   CheckCircle2,
   Send,
   X,
-  Menu
+  Menu,
+  ChevronDown,
+  Gauge,
+  Layers,
+  ShoppingBag,
+  Repeat,
+  Scale,
+  PieChart,
+  Briefcase,
+  Eye,
+  ArrowLeftRight,
+  Newspaper
 } from 'lucide-vue-next'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
+const financeStore = useFinanceStore()
 const toast = useToastStore()
 
 const showTelegramModal = ref(false)
@@ -267,19 +500,161 @@ const isCommandPaletteOpen = ref(false)
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/.test(navigator.platform || navigator.userAgent)
 const shortcutKey = isMac ? '⌘K' : 'Ctrl+K'
 
-interface NavItem {
+// Accordion Expand/Collapse State
+const expandedGroups = ref<Record<string, boolean>>({
+  finance: true,
+  portfolio: true
+})
+
+function toggleGroup(key: string) {
+  expandedGroups.value[key] = !expandedGroups.value[key]
+}
+
+// Auto-expand group when route matches
+watch(
+  () => route.path,
+  (path) => {
+    if (path.startsWith('/finance')) {
+      expandedGroups.value.finance = true
+    }
+    if (path.startsWith('/portfolio')) {
+      expandedGroups.value.portfolio = true
+    }
+  },
+  { immediate: true }
+)
+
+function isNavActive(path: string): boolean {
+  if (path === '/finance/overview' || path === '/portfolio/overview') {
+    return route.path === path
+  }
+  return route.path.startsWith(path)
+}
+
+const criticalTrialsCount = computed(() => {
+  return financeStore.overview?.critical_trials_count || 0
+})
+
+const upcoming7DaysCount = computed(() => {
+  return financeStore.overview?.upcoming_7_days_count || 0
+})
+
+interface NavSubItem {
   path: string
   label: string
   icon: any
+  badge?: () => string | undefined
+  badgeClass?: string
 }
 
-const navItems: NavItem[] = [
-  { path: '/', label: 'Overview', icon: LayoutDashboard },
-  { path: '/finance', label: 'Financial Radar', icon: CreditCard },
-  { path: '/portfolio', label: 'Portfolio', icon: TrendingUp },
-  { path: '/workspace', label: 'Workspace', icon: FolderKanban },
-  { path: '/settings', label: 'Settings', icon: Settings },
+// Sub-navigation for Financial Radar
+const financeNavItems: NavSubItem[] = [
+  {
+    path: '/finance/overview',
+    label: 'Radar Overview',
+    icon: Gauge,
+    badge: () => upcoming7DaysCount.value > 0 ? `${upcoming7DaysCount.value} due` : undefined,
+    badgeClass: 'bg-zinc-900 text-zinc-400 border-zinc-800'
+  },
+  {
+    path: '/finance/installments',
+    label: 'Installments & Contracts',
+    icon: Layers,
+    badge: () => {
+      const count = financeStore.obligations.filter(o => o.type === 'INSTALLMENT' && o.subtype !== 'BNPL_ACCOUNT' && !o.parent).length
+      return count > 0 ? `${count}` : undefined
+    }
+  },
+  {
+    path: '/finance/bnpl',
+    label: 'Shopping Credit',
+    icon: ShoppingBag,
+    badge: () => {
+      const count = financeStore.obligations.filter(o => o.subtype === 'BNPL_ACCOUNT').length
+      return count > 0 ? `${count}` : undefined
+    }
+  },
+  {
+    path: '/finance/subscriptions',
+    label: 'Subscriptions & Trials',
+    icon: Repeat,
+    badge: () => criticalTrialsCount.value > 0 ? 'ALERT' : undefined,
+    badgeClass: 'bg-zinc-900 text-rose-400 border-zinc-800'
+  },
+  {
+    path: '/finance/debts',
+    label: 'Two-Way Debt Ledger',
+    icon: Scale,
+    badge: () => {
+      const count = financeStore.obligations.filter(o => o.direction === 'INFLOW' && o.status === 'ACTIVE').length
+      return count > 0 ? `${count} debtors` : undefined
+    },
+    badgeClass: 'bg-zinc-900 text-zinc-400 border-zinc-800'
+  }
 ]
+
+// Sub-navigation for Wealth & Portfolio
+const portfolioNavItems: NavSubItem[] = [
+  {
+    path: '/portfolio/overview',
+    label: 'Portfolio Overview',
+    icon: PieChart
+  },
+  {
+    path: '/portfolio/accounts',
+    label: 'My Portfolios',
+    icon: Briefcase
+  },
+  {
+    path: '/portfolio/watchlist',
+    label: 'Watchlist',
+    icon: Eye
+  },
+  {
+    path: '/portfolio/executions',
+    label: 'Executions',
+    icon: ArrowLeftRight
+  },
+  {
+    path: '/portfolio/news',
+    label: 'Market News',
+    icon: Newspaper
+  }
+]
+
+// Dynamic Breadcrumbs
+const currentDomainLabel = computed(() => {
+  const p = route.path
+  if (p.startsWith('/finance')) return 'Financial Radar'
+  if (p.startsWith('/portfolio')) return 'Wealth & Portfolio'
+  if (p.startsWith('/workspace')) return 'Workspace'
+  if (p.startsWith('/settings')) return 'Settings'
+  return 'Console'
+})
+
+const currentSubdomainLabel = computed(() => {
+  const p = route.path
+  if (p === '/finance/installments/new') return 'New Contract'
+  if (p.startsWith('/finance/installments/')) return 'Contract Dossier'
+  if (p === '/finance/bnpl/new') return 'New Credit Facility'
+  if (p.includes('/new-order')) return 'New Purchase Order'
+  if (p.startsWith('/finance/bnpl/')) return 'Account Dossier'
+  if (p === '/finance/debts/new') return 'New Debt Entry'
+  if (p.startsWith('/finance/debts/')) return 'Debt Dossier'
+  if (p === '/finance/subscriptions/new') return 'New Subscription'
+  if (p.startsWith('/finance/subscriptions/')) return 'Subscription Dossier'
+  if (p === '/portfolio/accounts/new') return 'New Brokerage Basket'
+  if (p.startsWith('/portfolio/accounts/')) return 'Account Dossier'
+  if (p === '/portfolio/executions/import') return 'Import CSV Statement'
+  if (p === '/portfolio/executions/dividends') return 'Dividend Ledger'
+  if (p.startsWith('/portfolio/news/')) return 'News Briefing'
+  const fMatch = financeNavItems.find(i => i.path === p)
+  if (fMatch) return fMatch.label
+  const pMatch = portfolioNavItems.find(i => i.path === p)
+  if (pMatch) return pMatch.label
+  if (p.includes('/asset/')) return `Asset: ${route.params.ticker || ''}`
+  return ''
+})
 
 async function handleLogout() {
   await authStore.logout()
@@ -297,7 +672,6 @@ async function handleConnectTelegram() {
   }
 }
 
-// Global hotkey listener for opening Command Palette
 const handleKeyDown = (e: KeyboardEvent) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault()
@@ -307,6 +681,9 @@ const handleKeyDown = (e: KeyboardEvent) => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
+  // Prefetch finance overview for badges
+  financeStore.fetchOverview().catch(() => {})
+  financeStore.fetchObligations().catch(() => {})
 })
 
 onUnmounted(() => {

@@ -1,5 +1,19 @@
 export type ObligationType = 'INSTALLMENT' | 'SUBSCRIPTION' | 'FREE_TRIAL' | 'DEBT'
+export type ObligationSubtype = 'STANDARD' | 'HIRE_PURCHASE' | 'BNPL_ACCOUNT' | 'BNPL_ORDER' | 'FORMAL_LOAN' | 'INFORMAL_BORROW'
 export type ObligationStatus = 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'CANCELLED'
+export type AttachmentType = 'CONTRACT' | 'SLIP' | 'STATEMENT' | 'SCREENSHOT' | 'OTHER'
+
+export interface ObligationAttachmentItem {
+  id: string
+  obligation: string
+  payment_history?: string | null
+  file: string
+  file_url: string
+  file_name: string
+  file_type: AttachmentType
+  file_size: number
+  uploaded_at: string
+}
 
 export interface PaymentHistoryItem {
   id: string
@@ -7,6 +21,7 @@ export interface PaymentHistoryItem {
   paid_at: string
   term_number: number | null
   note: string
+  attachments?: ObligationAttachmentItem[]
 }
 
 export interface InstallmentSummary {
@@ -52,8 +67,10 @@ export type ObligationSummary = Record<string, any>
 
 export interface FinancialObligation {
   id: string
+  parent?: string | null
   title: string
   type: ObligationType
+  subtype?: ObligationSubtype
   direction: 'OUTFLOW' | 'INFLOW'
   amount: string
   currency: string
@@ -62,7 +79,9 @@ export interface FinancialObligation {
   billing_day: number | null
   metadata: Record<string, any>
   summary: Record<string, any>
+  sub_orders?: any[]
   payment_histories?: PaymentHistoryItem[]
+  attachments?: ObligationAttachmentItem[]
   created_at: string
   updated_at: string
 }
@@ -71,7 +90,10 @@ export interface UpcomingBill {
   id: string
   title: string
   type: ObligationType
+  direction?: 'OUTFLOW' | 'INFLOW'
   amount: string
+  amount_thb?: string | number
+  currency?: string
   due_date: string
   days_left: number
   is_trial: boolean
@@ -82,6 +104,7 @@ export interface FinancialOverview {
   target_month: string
   confirmed_burn_rate: string | number
   potential_risk_amount: string | number
+  expected_inflow_amount?: string | number
   active_trials_count: number
   critical_trials_count: number
   upcoming_7_days_count: number

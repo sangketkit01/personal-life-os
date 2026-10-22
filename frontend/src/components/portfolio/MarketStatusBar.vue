@@ -72,7 +72,7 @@
     </div>
 
     <!-- Right: Real-time Polling Status, Last Synced & Refresh Trigger -->
-    <div class="flex items-center gap-2.5 self-end lg:self-center">
+    <div class="flex flex-wrap items-center justify-between sm:justify-end gap-2.5 w-full lg:w-auto lg:self-center">
       <div
         v-if="portfolioStore.marketStatus?.should_poll_realtime"
         class="flex items-center gap-1.5 text-[10px] text-zinc-300 bg-zinc-900/60 border border-zinc-800 px-2 py-0.5 rounded"

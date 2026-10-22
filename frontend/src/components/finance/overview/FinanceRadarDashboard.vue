@@ -137,7 +137,7 @@
     </div>
 
     <!-- Quick Navigation Category Hubs -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-3.5 pt-2">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-2">
       <!-- Hub 1: Installments -->
       <div
         @click="emit('switchTab', 'INSTALLMENT')"

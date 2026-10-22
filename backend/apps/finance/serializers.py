@@ -182,3 +182,8 @@ class PayObligationSerializer(serializers.Serializer):
         allow_null=True,
         help_text="ไฟล์สลิปหลักฐานการโอนเงิน"
     )
+    account_id = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+        help_text="ID ของบัญชีต้นทาง/ปลายทางสำหรับบันทึก Ledger อัตโนมัติ"
+    )

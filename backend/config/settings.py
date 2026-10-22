@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'apps.finance',
     'apps.workspace',
     'apps.portfolio',
+    'apps.ledger',
     'apps.bot',
 ]
 

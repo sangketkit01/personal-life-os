@@ -12,7 +12,7 @@
         </button>
 
         <div>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
             <span
               class="text-[10px] font-mono uppercase px-2 py-0.5 rounded border font-semibold"
               :class="debt?.direction === 'INFLOW' ? 'bg-zinc-900 text-emerald-400 border-emerald-500/30' : 'bg-zinc-900 text-rose-400 border-rose-500/30'"
@@ -29,7 +29,7 @@
               {{ debt?.status || 'ACTIVE' }}
             </span>
           </div>
-          <div class="flex items-center gap-3 text-xs text-zinc-500 font-mono mt-0.5">
+          <div class="flex flex-wrap items-center gap-3 text-xs text-zinc-500 font-mono mt-0.5">
             <span v-if="debt?.metadata?.contact">📞 {{ debt.metadata.contact }}</span>
             <span v-if="debt?.metadata?.promptpay">PromptPay: {{ debt.metadata.promptpay }}</span>
             <span>Due: {{ debt?.due_date ? new Date(debt.due_date).toLocaleDateString('en-GB') : (debt?.metadata?.is_flexible ? 'Flexible' : 'Not set') }}</span>
@@ -38,7 +38,7 @@
       </div>
 
       <!-- Action Buttons -->
-      <div class="flex items-center gap-2 self-start sm:self-auto">
+      <div class="flex flex-wrap items-center gap-2 self-start sm:self-auto">
         <button
           @click="showEditModal = true"
           class="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"

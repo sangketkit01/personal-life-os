@@ -133,7 +133,7 @@ export function useSubscriptions() {
     }
   }
 
-  async function renewSubscription(id: string, paidAmount?: number, note?: string, slipFile?: File) {
+  async function renewSubscription(id: string, paidAmount?: number, note?: string, slipFile?: File, accountId?: string) {
     isActionLoading.value = true
     error.value = null
     try {
@@ -146,6 +146,9 @@ export function useSubscriptions() {
       }
       if (slipFile) {
         formData.append('slip_file', slipFile)
+      }
+      if (accountId) {
+        formData.append('account_id', accountId)
       }
 
       const res = await apiClient.post(`/finance/obligations/${id}/pay/`, formData, {

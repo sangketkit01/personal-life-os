@@ -14,7 +14,7 @@
       </div>
 
       <!-- Quick Actions -->
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <!-- Currency View Toggle (F01) -->
         <div class="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-md p-0.5">
           <button

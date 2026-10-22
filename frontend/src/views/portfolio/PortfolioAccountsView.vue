@@ -86,8 +86,11 @@
             </span>
           </button>
 
-          <!-- Edit & Delete buttons on hover -->
-          <div class="hidden group-hover:flex items-center gap-1 absolute -top-2 -right-2 z-10">
+          <!-- Edit & Delete buttons (always visible on touch/active, hover on desktop) -->
+          <div
+            class="items-center gap-1 absolute -top-2 -right-2 z-10"
+            :class="portfolioStore.selectedPortfolioId === p.id ? 'flex' : 'hidden group-hover:flex'"
+          >
             <button
               @click.stop="openEditPortfolio(p)"
               type="button"

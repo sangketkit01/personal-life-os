@@ -1,7 +1,7 @@
 <template>
   <div
     v-if="isOpen"
-    class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-start justify-center pt-[15vh] p-4 font-sans"
+    class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-start justify-center pt-4 sm:pt-[15vh] p-4 font-sans"
     @click.self="close"
   >
     <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col">
@@ -78,6 +78,7 @@ import { useRouter } from 'vue-router'
 import { useFinanceStore } from '../../stores/finance'
 import { usePortfolioStore } from '../../stores/portfolio'
 import { useWorkspaceStore } from '../../stores/workspace'
+import { useLedgerStore } from '../../stores/ledger'
 import {
   Search,
   LayoutDashboard,
@@ -86,7 +87,11 @@ import {
   FolderKanban,
   Settings,
   FileText,
-  CalendarClock
+  CalendarClock,
+  Wallet,
+  Receipt,
+  Users,
+  PieChart
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -95,12 +100,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void
+  (e: 'closeDirect'): void
 }>()
 
 const router = useRouter()
 const financeStore = useFinanceStore()
 const portfolioStore = usePortfolioStore()
 const workspaceStore = useWorkspaceStore()
+const ledgerStore = useLedgerStore()
 
 const query = ref('')
 const activeIndex = ref(0)
@@ -121,6 +128,11 @@ interface CommandItem {
 const defaultCommands: CommandItem[] = [
   { id: 'nav-overview', title: 'System Overview', category: 'Navigation', icon: LayoutDashboard, action: () => router.push('/') },
   { id: 'nav-finance', title: 'Financial Radar', subtitle: 'Obligations & Trials', category: 'Navigation', icon: CreditCard, action: () => router.push('/finance') },
+  { id: 'nav-ledger', title: 'Cash Flow Radar', subtitle: 'Multi-Account & Splits', category: 'Navigation', icon: Wallet, action: () => router.push('/ledger') },
+  { id: 'nav-ledger-tx', title: 'Transaction Ledger', subtitle: 'Inflows & Outflows', category: 'Navigation', icon: Receipt, action: () => router.push('/ledger/transactions') },
+  { id: 'nav-ledger-acc', title: 'Accounts & Wallets', subtitle: 'Bank & Credit Lines', category: 'Navigation', icon: Wallet, action: () => router.push('/ledger/accounts') },
+  { id: 'nav-ledger-splits', title: 'Shared Bill Splits', subtitle: 'Friend Receivables', category: 'Navigation', icon: Users, action: () => router.push('/ledger/splits') },
+  { id: 'nav-ledger-budgets', title: 'Category Budgets', subtitle: 'Spending Ceilings', category: 'Navigation', icon: PieChart, action: () => router.push('/ledger/budgets') },
   { id: 'nav-portfolio', title: 'Portfolio Snapshot', subtitle: 'SET, US & Crypto', category: 'Navigation', icon: TrendingUp, action: () => router.push('/portfolio') },
   { id: 'nav-workspace', title: 'Workspace Pipeline', subtitle: 'Kanban & Notes', category: 'Navigation', icon: FolderKanban, action: () => router.push('/workspace') },
   { id: 'nav-settings', title: 'Settings & Security', subtitle: 'Sessions & Webhooks', category: 'Navigation', icon: Settings, action: () => router.push('/settings') },
@@ -141,7 +153,21 @@ const filteredResults = computed(() => {
     }
   }
 
-  // 2. Financial Obligations
+  // 2. Ledger Accounts
+  for (const acc of ledgerStore.accounts) {
+    if (acc.name.toLowerCase().includes(q) || acc.institution_name?.toLowerCase().includes(q) || acc.account_type.toLowerCase().includes(q)) {
+      results.push({
+        id: `ledger-acc-${acc.id}`,
+        title: acc.name,
+        subtitle: `฿${Number(acc.current_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} • ${acc.account_type}`,
+        category: 'Finance',
+        icon: Wallet,
+        action: () => router.push(`/ledger/accounts/${acc.id}`)
+      })
+    }
+  }
+
+  // 3. Financial Obligations
   for (const ob of financeStore.obligations) {
     if (ob.title.toLowerCase().includes(q) || ob.type.toLowerCase().includes(q)) {
       results.push({

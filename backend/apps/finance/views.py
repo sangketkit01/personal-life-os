@@ -1,3 +1,6 @@
+from decimal import Decimal
+from django.db import models, transaction as db_transaction
+from django.utils import timezone
 from rest_framework import viewsets, views, permissions, status, response
 from rest_framework.decorators import action
 from apps.accounts.services import log_activity
@@ -98,6 +101,7 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
         return qs
 
     @action(detail=True, methods=['post'])
+    @db_transaction.atomic
     def pay(self, request, pk=None):
         """Action สำหรับกดชำระเงิน / ตัดงวด / ทยอยจ่ายหนี้"""
         obligation = self.get_object()
@@ -138,6 +142,46 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
                         file_type='SLIP',
                         file_size=getattr(slip_file, 'size', 0)
                     )
+
+            # ซิงค์เข้า Cash Flow Ledger (ถ้าเลือกบัญชี)
+            account_id = serializer.validated_data.get('account_id')
+            if account_id:
+                from apps.ledger.models import Account, Transaction, TransactionType
+                try:
+                    account = Account.objects.select_for_update().get(id=account_id, user=request.user)
+                except Account.DoesNotExist:
+                    raise ValueError("Target cash flow account not found or does not belong to user.")
+
+                actual_paid = Decimal(str(paid_amount if paid_amount is not None else obligation.amount))
+
+                if obligation.direction == 'INFLOW':
+                    tx_type = TransactionType.INFLOW
+                    tx_title = f"Debt Repayment: {obligation.title}"
+                    Account.objects.filter(id=account.id).update(
+                        current_balance=models.F('current_balance') + actual_paid,
+                        updated_at=timezone.now()
+                    )
+                else:
+                    tx_type = TransactionType.OUTFLOW
+                    tx_title = f"Settlement: {obligation.title}"
+                    Account.objects.filter(id=account.id).update(
+                        current_balance=models.F('current_balance') - actual_paid,
+                        updated_at=timezone.now()
+                    )
+
+                account.refresh_from_db(fields=['current_balance', 'updated_at'])
+
+                Transaction.objects.create(
+                    user=request.user,
+                    account=account,
+                    transaction_type=tx_type,
+                    gross_amount=actual_paid,
+                    net_amount=actual_paid,
+                    title=tx_title,
+                    notes=note or f"Auto-settled from Financial Radar ({obligation.get_type_display()})",
+                    transaction_date=timezone.now().date(),
+                    obligation=obligation
+                )
 
             # โหลดข้อมูล obligation ล่าสุดส่งกลับ
             obligation.refresh_from_db()

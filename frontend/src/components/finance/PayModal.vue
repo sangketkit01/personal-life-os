@@ -1,6 +1,6 @@
 <template>
-  <div v-if="isOpen && obligation" @click.self="emit('close')" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 font-sans">
-    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md p-6 shadow-2xl relative">
+  <div v-if="isOpen && obligation" @click.self="emit('close')" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto font-sans">
+    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md p-6 shadow-2xl relative my-8 max-h-[90vh] overflow-y-auto">
       <button
         @click="emit('close')"
         class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -69,6 +69,37 @@
           />
         </div>
 
+        <!-- Account / Ledger Sync Selector -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-[11px] font-mono uppercase tracking-wider text-zinc-400">
+              {{ obligation.direction === 'INFLOW' ? 'Deposit to Account' : 'Deduct from Account' }}
+            </label>
+            <span class="text-[10px] text-zinc-500 font-mono">Ledger 2-Way Sync</span>
+          </div>
+          <select
+            v-model="selectedAccountId"
+            class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-mono focus:outline-none focus:border-zinc-600 transition-colors"
+          >
+            <option value="">-- No Account Link (Radar Status Only) --</option>
+            <option
+              v-for="acc in ledgerStore.activeAccounts"
+              :key="acc.id"
+              :value="acc.id"
+            >
+              {{ acc.name }} ({{ acc.currency }} {{ Number(acc.current_balance).toLocaleString('en-US', { minimumFractionDigits: 2 }) }})
+            </option>
+          </select>
+
+          <!-- Real-time account balance & low balance warning -->
+          <div v-if="selectedAccountInfo" class="mt-1.5 text-[10px] font-mono flex items-center justify-between">
+            <span :class="isInsufficientBalance ? 'text-amber-400 font-medium' : 'text-zinc-500'">
+              {{ isInsufficientBalance ? '⚠️ Balance is lower than settlement amount' : 'Auto-links cash flow transaction' }}
+            </span>
+            <span class="text-zinc-400">Avail: ฿{{ Number(selectedAccountInfo.current_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
+          </div>
+        </div>
+
         <!-- Note -->
         <div>
           <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Payment Reference / Note</label>
@@ -129,8 +160,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useFinanceStore } from '../../stores/finance'
+import { useLedgerStore } from '../../stores/ledger'
 import type { FinancialObligation } from '../../types/finance'
 import { X, Upload, Trash2 } from 'lucide-vue-next'
 
@@ -145,16 +177,35 @@ const emit = defineEmits<{
 }>()
 
 const financeStore = useFinanceStore()
+const ledgerStore = useLedgerStore()
 
 const paidAmount = ref('')
+const selectedAccountId = ref('')
 const note = ref('')
 const selectedFile = ref<File | null>(null)
 const isSubmitting = ref(false)
 const errorMessage = ref('')
 
+const selectedAccountInfo = computed(() => {
+  return ledgerStore.accounts.find(a => a.id === selectedAccountId.value) || null
+})
+
+const isInsufficientBalance = computed(() => {
+  if (!selectedAccountInfo.value || props.obligation?.direction === 'INFLOW') return false
+  if (selectedAccountInfo.value.account_type === 'CREDIT_CARD') return false
+  return Number(selectedAccountInfo.value.current_balance) < parseFloat(paidAmount.value || '0')
+})
+
+onMounted(() => {
+  if (ledgerStore.accounts.length === 0) {
+    ledgerStore.fetchAccounts().catch(() => {})
+  }
+})
+
 watch(() => props.obligation, (ob) => {
   errorMessage.value = ''
   note.value = ''
+  selectedAccountId.value = ''
   selectedFile.value = null
   if (!ob) return
 
@@ -182,8 +233,13 @@ async function handlePay() {
     await financeStore.payObligation(props.obligation.id, {
       paid_amount: parseFloat(paidAmount.value),
       note: note.value,
-      slip_file: selectedFile.value || undefined
+      slip_file: selectedFile.value || undefined,
+      account_id: selectedAccountId.value || undefined
     })
+    if (selectedAccountId.value) {
+      ledgerStore.fetchAccounts().catch(() => {})
+      ledgerStore.fetchSummary().catch(() => {})
+    }
     emit('paid')
     emit('close')
   } catch (err: any) {

@@ -55,7 +55,7 @@ export const useFinanceStore = defineStore('finance', () => {
     return res.data
   }
 
-  async function payObligation(id: string, data: { paid_amount?: number; term_number?: number; note?: string; slip_file?: File } = {}) {
+  async function payObligation(id: string, data: { paid_amount?: number; term_number?: number; note?: string; slip_file?: File; account_id?: string } = {}) {
     let requestData: any = data
     let headers: Record<string, string> = {}
 
@@ -65,6 +65,7 @@ export const useFinanceStore = defineStore('finance', () => {
       if (data.paid_amount !== undefined) formData.append('paid_amount', String(data.paid_amount))
       if (data.term_number !== undefined) formData.append('term_number', String(data.term_number))
       if (data.note) formData.append('note', data.note)
+      if (data.account_id) formData.append('account_id', data.account_id)
       formData.append('slip_file', data.slip_file)
       requestData = formData
       headers = { 'Content-Type': 'multipart/form-data' }

@@ -12,7 +12,7 @@
         </button>
 
         <div>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
             <span class="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800 font-semibold">
               {{ account?.metadata?.provider || 'BNPL FACILITY' }}
             </span>
@@ -26,7 +26,7 @@
               {{ account?.status || 'ACTIVE' }}
             </span>
           </div>
-          <div class="flex items-center gap-3 text-xs text-zinc-500 font-mono mt-0.5">
+          <div class="flex flex-wrap items-center gap-3 text-xs text-zinc-500 font-mono mt-0.5">
             <span v-if="account?.metadata?.account_number">Ref: {{ account.metadata.account_number }}</span>
             <span>Cut-off: Day {{ account?.metadata?.cutoff_day || 25 }}</span>
             <span>Due: Day {{ account?.metadata?.due_day || 10 }}</span>
@@ -35,7 +35,7 @@
       </div>
 
       <!-- Action Buttons -->
-      <div class="flex items-center gap-2 self-start sm:self-auto">
+      <div class="flex flex-wrap items-center gap-2 self-start sm:self-auto">
         <button
           @click="showEditModal = true"
           class="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"

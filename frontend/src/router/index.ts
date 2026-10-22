@@ -167,6 +167,37 @@ const router = createRouter({
           name: 'workspace',
           component: () => import('../views/WorkspaceView.vue'),
         },
+        // Cash Flow & Ledger Domain Routes
+        {
+          path: 'ledger',
+          name: 'ledger-overview',
+          component: () => import('../views/ledger/LedgerOverviewView.vue'),
+        },
+        {
+          path: 'ledger/transactions',
+          name: 'ledger-transactions',
+          component: () => import('../views/ledger/LedgerTransactionsView.vue'),
+        },
+        {
+          path: 'ledger/accounts',
+          name: 'ledger-accounts',
+          component: () => import('../views/ledger/LedgerAccountsView.vue'),
+        },
+        {
+          path: 'ledger/accounts/:id',
+          name: 'ledger-account-detail',
+          component: () => import('../views/ledger/LedgerAccountDetailView.vue'),
+        },
+        {
+          path: 'ledger/splits',
+          name: 'ledger-splits',
+          component: () => import('../views/ledger/LedgerSplitsView.vue'),
+        },
+        {
+          path: 'ledger/budgets',
+          name: 'ledger-budgets',
+          component: () => import('../views/ledger/LedgerBudgetsView.vue'),
+        },
         {
           path: 'settings',
           name: 'settings',

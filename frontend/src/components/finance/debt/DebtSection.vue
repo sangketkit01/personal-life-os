@@ -36,12 +36,12 @@
     </div>
 
     <!-- Segmented Tab: Choose between Liabilities vs Debtors Directory -->
-    <div class="flex items-center justify-between pb-2 border-b border-zinc-800/80">
-      <div class="flex items-center gap-1.5 p-1 bg-zinc-900 border border-zinc-800 rounded-lg">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-zinc-800/80">
+      <div class="flex items-center gap-1.5 p-1 bg-zinc-900 border border-zinc-800 rounded-lg overflow-x-auto">
         <button
           type="button"
           @click="activeSubTab = 'DEBTORS'"
-          class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-2"
+          class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-2 whitespace-nowrap"
           :class="[
             activeSubTab === 'DEBTORS'
               ? 'bg-zinc-800 text-emerald-400 shadow-sm'
@@ -58,7 +58,7 @@
         <button
           type="button"
           @click="activeSubTab = 'LIABILITIES'"
-          class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-2"
+          class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-2 whitespace-nowrap"
           :class="[
             activeSubTab === 'LIABILITIES'
               ? 'bg-zinc-800 text-rose-400 shadow-sm'
@@ -75,7 +75,7 @@
 
       <button
         @click="emit('openCreate')"
-        class="px-3 py-1.5 rounded bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+        class="self-start sm:self-auto px-3 py-1.5 rounded bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
       >
         <Plus class="w-3.5 h-3.5" />
         <span>{{ activeSubTab === 'DEBTORS' ? 'Add Debtor' : 'Add Liability' }}</span>

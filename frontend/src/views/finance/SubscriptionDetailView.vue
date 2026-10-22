@@ -15,7 +15,7 @@
           <span class="text-xs font-mono text-zinc-300">{{ subscription?.title || 'Dossier' }}</span>
         </div>
 
-        <div class="flex items-center gap-2.5">
+        <div class="flex flex-wrap items-center gap-2.5">
           <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">
             {{ subscription?.title || 'Loading Service...' }}
           </h1>
@@ -442,6 +442,26 @@
           </div>
 
           <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-zinc-400">Deduct from Account / Card</label>
+              <span class="text-[10px] text-zinc-500">Ledger 2-Way Sync</span>
+            </div>
+            <select
+              v-model="payAccountId"
+              class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-zinc-700 outline-none"
+            >
+              <option value="">-- No Account Link --</option>
+              <option
+                v-for="acc in ledgerStore.activeAccounts"
+                :key="acc.id"
+                :value="acc.id"
+              >
+                {{ acc.name }} ({{ acc.currency }} {{ Number(acc.current_balance).toLocaleString('en-US', { minimumFractionDigits: 2 }) }})
+              </option>
+            </select>
+          </div>
+
+          <div>
             <label class="block text-zinc-400 mb-1">Upload Receipt Slip (Optional)</label>
             <input
               type="file"
@@ -539,6 +559,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSubscriptions } from '../../composables/finance/useSubscriptions'
+import { useLedgerStore } from '../../stores/ledger'
 import { useToastStore } from '../../stores/toast'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import {
@@ -574,12 +595,14 @@ const {
 } = useSubscriptions()
 
 const toast = useToastStore()
+const ledgerStore = useLedgerStore()
 const subscriptionId = computed(() => route.params.id as string)
 const subscription = computed(() => currentSubscription.value)
 
 const showPayModal = ref(false)
 const payAmount = ref(0)
 const payNote = ref('')
+const payAccountId = ref('')
 const paySlipFile = ref<File | null>(null)
 const isSubmittingPay = ref(false)
 
@@ -670,12 +693,18 @@ async function submitRenewal() {
       subscriptionId.value,
       payAmount.value,
       payNote.value,
-      paySlipFile.value || undefined
+      paySlipFile.value || undefined,
+      payAccountId.value || undefined
     )
+    if (payAccountId.value) {
+      ledgerStore.fetchAccounts().catch(() => {})
+      ledgerStore.fetchSummary().catch(() => {})
+    }
     toast.success('Subscription renewal recorded successfully')
     showPayModal.value = false
     paySlipFile.value = null
     payNote.value = ''
+    payAccountId.value = ''
   } catch {
     toast.error('Failed to record subscription payment')
   } finally {

@@ -1,0 +1,350 @@
+<template>
+  <div class="space-y-6 max-w-7xl mx-auto font-sans pb-16">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
+      <div>
+        <div class="flex items-center gap-2 mb-2">
+          <RouterLink
+            to="/ledger"
+            class="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-400 hover:text-zinc-200 transition-colors"
+          >
+            <ArrowLeft class="w-3.5 h-3.5" />
+            <span>Cash Flow Radar</span>
+          </RouterLink>
+          <span class="text-zinc-600">/</span>
+          <span class="text-xs font-mono text-zinc-300">Category Budgets</span>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">Monthly Category Budgets</h1>
+          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-zinc-900 text-zinc-400 border border-zinc-800">
+            BURN RATE CONTROLS
+          </span>
+        </div>
+        <p class="text-xs text-zinc-500 mt-1">
+          Set discretionary spending caps per category to prevent lifestyle inflation
+        </p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+        <input
+          v-model="activeMonth"
+          type="month"
+          @change="loadBudgets"
+          class="px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-200 outline-none focus:border-zinc-700"
+        />
+
+        <button
+          @click="showCreateBudgetModal = true"
+          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+        >
+          <Plus class="w-3.5 h-3.5 text-zinc-950" />
+          <span>+ Set Budget</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Executive Budget Summary Strip -->
+    <div v-if="ledgerStore.budgets.length > 0" class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 font-mono text-xs">
+      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
+        <span class="text-[10px] uppercase text-zinc-500 block">Total Budget Cap</span>
+        <div class="text-xl font-bold text-zinc-100 mt-2 tabular-nums">
+          ฿{{ totalBudgetCap.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+        </div>
+        <span class="text-[10px] text-zinc-500 block mt-1">Across {{ ledgerStore.budgets.length }} budgeted categories</span>
+      </div>
+
+      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
+        <span class="text-[10px] uppercase text-zinc-500 block">Total Spent (Month)</span>
+        <div class="text-xl font-bold text-zinc-300 mt-2 tabular-nums">
+          ฿{{ totalBudgetSpent.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+        </div>
+        <span class="text-[10px] text-zinc-500 block mt-1">{{ overallUsagePct }}% of allocated ceiling</span>
+      </div>
+
+      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
+        <span class="text-[10px] uppercase text-zinc-500 block">Remaining Cushion</span>
+        <div
+          class="text-xl font-bold mt-2 tabular-nums"
+          :class="totalBudgetCushion < 0 ? 'text-rose-400' : 'text-emerald-400'"
+        >
+          ฿{{ totalBudgetCushion.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+        </div>
+        <span class="text-[10px] text-zinc-500 block mt-1">{{ totalBudgetCushion < 0 ? 'Over budget' : 'Available buffer' }}</span>
+      </div>
+    </div>
+
+    <!-- Budgets Grid -->
+    <div v-if="ledgerStore.budgets.length === 0" class="p-16 rounded-xl bg-zinc-900/20 border border-zinc-800/80 text-center space-y-3 font-mono text-xs text-zinc-500">
+      <p>No category budgets allocated for {{ activeMonth }}.</p>
+      <button
+        @click="showCreateBudgetModal = true"
+        class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 font-sans font-medium text-xs transition-colors inline-block shadow-sm"
+      >
+        + Allocate Category Budget
+      </button>
+    </div>
+
+    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 font-mono">
+      <div
+        v-for="b in ledgerStore.budgets"
+        :key="b.id"
+        class="p-5 rounded-xl bg-zinc-900/30 border border-zinc-800/80 hover:border-zinc-700/80 transition-all space-y-4"
+      >
+        <div class="flex items-start justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-zinc-100 font-sans">{{ b.category_name }}</h3>
+            <span class="text-[10px] text-zinc-500">{{ b.period_month }}</span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <span
+              class="text-xs font-bold"
+              :class="b.usage_pct >= 90 ? 'text-rose-400' : (b.usage_pct >= 75 ? 'text-amber-400' : 'text-zinc-300')"
+            >
+              {{ b.usage_pct }}%
+            </span>
+            <button
+              @click="confirmDeleteBudget(b.id, b.category_name)"
+              class="p-1 rounded text-zinc-600 hover:text-rose-400 transition-colors"
+              title="Delete Category Budget"
+            >
+              <Trash2 class="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <!-- Gauge Progress Bar -->
+        <div class="space-y-1.5">
+          <div class="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
+            <div
+              class="h-full rounded-full transition-all duration-300"
+              :class="b.usage_pct >= 90 ? 'bg-rose-500' : (b.usage_pct >= 75 ? 'bg-amber-400' : 'bg-zinc-200')"
+              :style="{ width: `${Math.min(100, b.usage_pct)}%` }"
+            />
+          </div>
+
+          <div class="flex justify-between text-xs pt-1">
+            <span class="text-zinc-400">
+              Spent: ฿{{ Number(b.spent_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+            </span>
+            <span class="text-zinc-500">
+              Limit: ฿{{ Number(b.limit_amount).toLocaleString('en-US') }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Remaining -->
+        <div class="pt-2 border-t border-zinc-800/60 flex items-center justify-between text-xs">
+          <span class="text-[10px] text-zinc-500">Remaining Cushion:</span>
+          <span
+            class="font-bold tabular-nums"
+            :class="Number(b.remaining_amount) < 0 ? 'text-rose-400' : 'text-emerald-400'"
+          >
+            ฿{{ Number(b.remaining_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create Budget Modal -->
+    <div
+      v-if="showCreateBudgetModal"
+      @click.self="showCreateBudgetModal = false"
+      class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto font-sans"
+    >
+      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md p-6 shadow-2xl relative my-8 font-mono text-xs">
+        <button
+          @click="showCreateBudgetModal = false"
+          class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300"
+        >
+          <X class="w-4 h-4" />
+        </button>
+
+        <h3 class="text-base font-semibold text-zinc-100 font-sans mb-3">Set Category Budget</h3>
+
+        <form @submit.prevent="handleSaveBudget" class="space-y-4">
+          <div>
+            <label class="block text-[10px] uppercase text-zinc-400 mb-1">Target Category</label>
+            <select
+              v-model="newBudgetCategory"
+              required
+              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 font-mono"
+            >
+              <option
+                v-for="c in expenseCategories"
+                :key="c.id"
+                :value="c.id"
+              >
+                {{ c.name }}
+              </option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-[10px] uppercase text-zinc-400 mb-1">Monthly Ceiling Limit (฿)</label>
+            <input
+              v-model.number="newBudgetLimit"
+              type="number"
+              step="100"
+              required
+              placeholder="10000"
+              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 font-mono"
+            />
+          </div>
+
+          <div class="flex items-center justify-end gap-2.5 pt-2">
+            <button
+              type="button"
+              @click="showCreateBudgetModal = false"
+              class="px-3.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-sans"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              :disabled="isSaving"
+              class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 font-sans font-semibold disabled:opacity-50"
+            >
+              {{ isSaving ? 'Saving...' : 'Save Budget' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <ConfirmModal
+      :is-open="confirmModal.isOpen"
+      :title="confirmModal.title"
+      :message="confirmModal.message"
+      :confirm-text="confirmModal.confirmText"
+      :is-danger="confirmModal.isDanger"
+      @confirm="executeConfirmAction"
+      @cancel="confirmModal.isOpen = false"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useLedgerStore } from '../../stores/ledger'
+import { useToastStore } from '../../stores/toast'
+import { ledgerApi } from '../../api/ledger'
+import ConfirmModal from '../../components/common/ConfirmModal.vue'
+import { ArrowLeft, Plus, X, Trash2 } from 'lucide-vue-next'
+
+const ledgerStore = useLedgerStore()
+const toast = useToastStore()
+const now = new Date()
+const activeMonth = ref<string>(
+  `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+)
+
+const showCreateBudgetModal = ref(false)
+const isSaving = ref(false)
+const newBudgetCategory = ref('')
+const newBudgetLimit = ref(5000)
+
+const totalBudgetCap = computed(() => {
+  return ledgerStore.budgets.reduce((sum, b) => sum + Number(b.limit_amount || 0), 0)
+})
+
+const totalBudgetSpent = computed(() => {
+  return ledgerStore.budgets.reduce((sum, b) => sum + Number(b.spent_amount || 0), 0)
+})
+
+const totalBudgetCushion = computed(() => {
+  return totalBudgetCap.value - totalBudgetSpent.value
+})
+
+const overallUsagePct = computed(() => {
+  if (totalBudgetCap.value <= 0) return 0
+  return Math.round((totalBudgetSpent.value / totalBudgetCap.value) * 100)
+})
+
+const expenseCategories = computed(() =>
+  ledgerStore.categories.filter((c) => c.category_type === 'EXPENSE')
+)
+
+const confirmModal = reactive({
+  isOpen: false,
+  title: '',
+  message: '',
+  confirmText: 'Delete',
+  isDanger: true,
+  action: () => {}
+})
+
+function executeConfirmAction() {
+  confirmModal.isOpen = false
+  confirmModal.action()
+}
+
+const handleKeyDown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && showCreateBudgetModal.value) {
+    showCreateBudgetModal.value = false
+  }
+}
+
+watch(showCreateBudgetModal, (open) => {
+  if (open) {
+    window.addEventListener('keydown', handleKeyDown)
+  } else {
+    window.removeEventListener('keydown', handleKeyDown)
+  }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown)
+})
+
+onMounted(async () => {
+  await Promise.all([
+    ledgerStore.fetchCategories('EXPENSE'),
+    loadBudgets()
+  ])
+  if (expenseCategories.value.length > 0) {
+    newBudgetCategory.value = expenseCategories.value[0].id
+  }
+})
+
+async function loadBudgets() {
+  await ledgerStore.fetchBudgets(activeMonth.value)
+}
+
+async function handleSaveBudget() {
+  isSaving.value = true
+  try {
+    await ledgerApi.createBudget({
+      category: newBudgetCategory.value,
+      period_month: activeMonth.value,
+      limit_amount: newBudgetLimit.value
+    })
+    toast.success('Category budget allocated successfully')
+    showCreateBudgetModal.value = false
+    await loadBudgets()
+  } catch (err: any) {
+    toast.error('Failed to save budget limit')
+  } finally {
+    isSaving.value = false
+  }
+}
+
+function confirmDeleteBudget(id: string, name?: string) {
+  const categoryName = name || 'Category'
+  confirmModal.title = 'Remove Category Budget'
+  confirmModal.message = `Are you sure you want to remove the monthly spending limit for "${categoryName}"?`
+  confirmModal.confirmText = 'Remove Budget'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
+    try {
+      await ledgerApi.deleteBudget(id)
+      toast.success(`Removed budget for ${categoryName}`)
+      await loadBudgets()
+    } catch (err: any) {
+      toast.error('Failed to delete category budget')
+    }
+  }
+  confirmModal.isOpen = true
+}
+</script>

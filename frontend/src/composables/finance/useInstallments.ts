@@ -72,6 +72,7 @@ export function useInstallments() {
     term_number?: number
     note?: string
     slip_file?: File
+    account_id?: string
   }) {
     isActionLoading.value = true
     try {
@@ -80,6 +81,7 @@ export function useInstallments() {
       if (payload.term_number !== undefined) formData.append('term_number', payload.term_number.toString())
       if (payload.note) formData.append('note', payload.note)
       if (payload.slip_file) formData.append('slip_file', payload.slip_file)
+      if (payload.account_id) formData.append('account_id', payload.account_id)
 
       const res = await apiClient.post(`/finance/obligations/${id}/pay/`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }

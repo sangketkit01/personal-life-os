@@ -60,7 +60,7 @@
           </button>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
           <div
             v-for="acc in bnplAccounts"
             :key="acc.id"
@@ -100,12 +100,12 @@
             </div>
 
             <!-- Actions Bar inside card -->
-            <div class="flex items-center justify-between pt-1 border-t border-zinc-800/60 text-[11px] font-mono">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1.5 border-t border-zinc-800/60 text-[11px] font-mono">
               <span class="text-zinc-400">
                 Cycle Due: <strong class="text-zinc-100">฿{{ Number(acc.summary?.current_bill_amount || 0).toLocaleString('en-US') }}</strong>
               </span>
 
-              <div class="flex items-center gap-1.5" @click.stop>
+              <div class="flex flex-wrap items-center gap-1.5 self-end sm:self-auto" @click.stop>
                 <RouterLink
                   :to="`/finance/bnpl/${acc.id}`"
                   class="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-sans text-[10px] flex items-center gap-1 transition-colors"

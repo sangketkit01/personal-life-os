@@ -105,7 +105,73 @@
             </div>
           </div>
 
-          <!-- 3. Wealth & Portfolio Accordion Group -->
+          <!-- 3. Cash Flow & Ledger Accordion Group -->
+          <div class="pt-1.5">
+            <!-- Group Header Button -->
+            <button
+              type="button"
+              @click="toggleGroup('ledger')"
+              class="w-full flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors group"
+              :class="[
+                $route.path.startsWith('/ledger')
+                  ? 'text-zinc-100 bg-zinc-900/60'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/30'
+              ]"
+            >
+              <div class="flex items-center gap-2.5">
+                <Wallet
+                  class="w-3.5 h-3.5 transition-colors shrink-0"
+                  :class="$route.path.startsWith('/ledger') ? 'text-zinc-100' : 'text-zinc-500 group-hover:text-zinc-300'"
+                />
+                <span class="font-semibold tracking-tight">Cash Flow & Ledger</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span
+                  v-if="ledgerStore.pendingSplits.length > 0"
+                  class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"
+                  title="Pending split shares"
+                />
+                <ChevronDown
+                  class="w-3.5 h-3.5 text-zinc-500 transition-transform duration-200"
+                  :class="{ 'rotate-180': expandedGroups.ledger }"
+                />
+              </div>
+            </button>
+
+            <!-- Collapsible Sub-menu -->
+            <div v-show="expandedGroups.ledger" class="pl-4 pr-1 py-1 space-y-0.5 border-l border-zinc-800/80 ml-4 my-1">
+              <RouterLink
+                v-for="sub in ledgerNavItems"
+                :key="sub.path"
+                :to="sub.path"
+                class="flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors group"
+                :class="[
+                  isNavActive(sub.path)
+                    ? 'bg-zinc-900 text-white border border-zinc-800/80 shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
+                ]"
+              >
+                <div class="flex items-center gap-2 truncate">
+                  <component
+                    :is="sub.icon"
+                    class="w-3 h-3 transition-colors shrink-0"
+                    :class="isNavActive(sub.path) ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
+                  />
+                  <span class="truncate">{{ sub.label }}</span>
+                </div>
+
+                <span
+                  v-if="sub.badge && sub.badge()"
+                  class="text-[9px] font-mono px-1.5 py-0.2 rounded border uppercase font-semibold shrink-0"
+                  :class="sub.badgeClass || 'bg-zinc-900 text-zinc-400 border-zinc-800'"
+                >
+                  {{ sub.badge() }}
+                </span>
+              </RouterLink>
+            </div>
+          </div>
+
+          <!-- 4. Wealth & Portfolio Accordion Group -->
           <div class="pt-1.5">
             <!-- Group Header Button -->
             <button
@@ -266,6 +332,22 @@
               <div class="text-[10px] font-mono uppercase text-zinc-500 px-3 py-1 font-semibold">Financial Radar</div>
               <RouterLink
                 v-for="sub in financeNavItems"
+                :key="sub.path"
+                :to="sub.path"
+                @click="isMobileMenuOpen = false"
+                class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs text-zinc-400 hover:text-zinc-200 pl-5"
+                :class="{ 'bg-zinc-900 text-white font-medium': isNavActive(sub.path) }"
+              >
+                <component :is="sub.icon" class="w-3 h-3" />
+                <span>{{ sub.label }}</span>
+              </RouterLink>
+            </div>
+
+            <!-- Ledger Sub-list -->
+            <div class="pt-2">
+              <div class="text-[10px] font-mono uppercase text-zinc-500 px-3 py-1 font-semibold">Cash Flow & Ledger</div>
+              <RouterLink
+                v-for="sub in ledgerNavItems"
                 :key="sub.path"
                 :to="sub.path"
                 @click="isMobileMenuOpen = false"
@@ -456,6 +538,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useFinanceStore } from '../stores/finance'
+import { useLedgerStore } from '../stores/ledger'
 import { useToastStore } from '../stores/toast'
 import CommandPalette from '../components/common/CommandPalette.vue'
 import ToastContainer from '../components/common/ToastContainer.vue'
@@ -483,13 +566,17 @@ import {
   Briefcase,
   Eye,
   ArrowLeftRight,
-  Newspaper
+  Newspaper,
+  Wallet,
+  Receipt,
+  Users
 } from 'lucide-vue-next'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const financeStore = useFinanceStore()
+const ledgerStore = useLedgerStore()
 const toast = useToastStore()
 
 const showTelegramModal = ref(false)
@@ -503,6 +590,7 @@ const shortcutKey = isMac ? '⌘K' : 'Ctrl+K'
 // Accordion Expand/Collapse State
 const expandedGroups = ref<Record<string, boolean>>({
   finance: true,
+  ledger: true,
   portfolio: true
 })
 
@@ -516,6 +604,9 @@ watch(
   (path) => {
     if (path.startsWith('/finance')) {
       expandedGroups.value.finance = true
+    }
+    if (path.startsWith('/ledger')) {
+      expandedGroups.value.ledger = true
     }
     if (path.startsWith('/portfolio')) {
       expandedGroups.value.portfolio = true
@@ -593,6 +684,38 @@ const financeNavItems: NavSubItem[] = [
   }
 ]
 
+// Sub-navigation for Cash Flow & Ledger
+const ledgerNavItems: NavSubItem[] = [
+  {
+    path: '/ledger',
+    label: 'Cash Flow Radar',
+    icon: LayoutDashboard,
+  },
+  {
+    path: '/ledger/transactions',
+    label: 'Transaction Ledger',
+    icon: Receipt,
+  },
+  {
+    path: '/ledger/accounts',
+    label: 'Accounts & Wallets',
+    icon: Wallet,
+    badge: () => ledgerStore.accounts.length > 0 ? `${ledgerStore.accounts.length}` : undefined,
+  },
+  {
+    path: '/ledger/splits',
+    label: 'Shared Bill Splits',
+    icon: Users,
+    badge: () => ledgerStore.pendingSplits.length > 0 ? `${ledgerStore.pendingSplits.length} pending` : undefined,
+    badgeClass: 'bg-zinc-900 text-amber-400 border-zinc-800'
+  },
+  {
+    path: '/ledger/budgets',
+    label: 'Category Budgets',
+    icon: PieChart,
+  }
+]
+
 // Sub-navigation for Wealth & Portfolio
 const portfolioNavItems: NavSubItem[] = [
   {
@@ -626,6 +749,7 @@ const portfolioNavItems: NavSubItem[] = [
 const currentDomainLabel = computed(() => {
   const p = route.path
   if (p.startsWith('/finance')) return 'Financial Radar'
+  if (p.startsWith('/ledger')) return 'Cash Flow & Ledger'
   if (p.startsWith('/portfolio')) return 'Wealth & Portfolio'
   if (p.startsWith('/workspace')) return 'Workspace'
   if (p.startsWith('/settings')) return 'Settings'
@@ -643,6 +767,8 @@ const currentSubdomainLabel = computed(() => {
   if (p.startsWith('/finance/debts/')) return 'Debt Dossier'
   if (p === '/finance/subscriptions/new') return 'New Subscription'
   if (p.startsWith('/finance/subscriptions/')) return 'Subscription Dossier'
+  if (p === '/ledger/accounts/new') return 'New Account'
+  if (p.startsWith('/ledger/accounts/')) return 'Account Statement'
   if (p === '/portfolio/accounts/new') return 'New Brokerage Basket'
   if (p.startsWith('/portfolio/accounts/')) return 'Account Dossier'
   if (p === '/portfolio/executions/import') return 'Import CSV Statement'
@@ -650,6 +776,8 @@ const currentSubdomainLabel = computed(() => {
   if (p.startsWith('/portfolio/news/')) return 'News Briefing'
   const fMatch = financeNavItems.find(i => i.path === p)
   if (fMatch) return fMatch.label
+  const lMatch = ledgerNavItems.find(i => i.path === p)
+  if (lMatch) return lMatch.label
   const pMatch = portfolioNavItems.find(i => i.path === p)
   if (pMatch) return pMatch.label
   if (p.includes('/asset/')) return `Asset: ${route.params.ticker || ''}`
@@ -684,6 +812,9 @@ onMounted(() => {
   // Prefetch finance overview for badges
   financeStore.fetchOverview().catch(() => {})
   financeStore.fetchObligations().catch(() => {})
+  // Prefetch ledger accounts & pending splits for badges
+  ledgerStore.fetchAccounts().catch(() => {})
+  ledgerStore.fetchPendingSplits().catch(() => {})
 })
 
 onUnmounted(() => {

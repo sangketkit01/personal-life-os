@@ -467,7 +467,7 @@
       <!-- TAB 4: Document & Contract Vault -->
       <div v-if="activeTab === 'DOCUMENTS'" class="space-y-4">
         <div class="p-5 rounded-xl bg-zinc-900/30 border border-zinc-800/80 space-y-4">
-          <div class="flex items-center justify-between pb-3 border-b border-zinc-800/80">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800/80">
             <div>
               <h2 class="text-sm font-semibold text-zinc-100 flex items-center gap-2">
                 <FileText class="w-4 h-4 text-zinc-400" />
@@ -478,7 +478,7 @@
             <button
               @click="showUploadModal = true"
               type="button"
-              class="px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+              class="self-start sm:self-auto px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
               <UploadCloud class="w-3.5 h-3.5 text-zinc-950" />
               <span>Upload Document</span>
@@ -633,6 +633,26 @@
           </div>
 
           <div class="space-y-1">
+            <div class="flex items-center justify-between">
+              <label class="text-zinc-400 block">Deduct from Account</label>
+              <span class="text-[10px] text-zinc-500">Ledger 2-Way Sync</span>
+            </div>
+            <select
+              v-model="payForm.account_id"
+              class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 outline-none focus:border-zinc-500"
+            >
+              <option value="">-- No Account Link --</option>
+              <option
+                v-for="acc in ledgerStore.activeAccounts"
+                :key="acc.id"
+                :value="acc.id"
+              >
+                {{ acc.name }} ({{ acc.currency }} {{ Number(acc.current_balance).toLocaleString('en-US', { minimumFractionDigits: 2 }) }})
+              </option>
+            </select>
+          </div>
+
+          <div class="space-y-1">
             <label class="text-zinc-400 block">Note / Transaction Ref</label>
             <input
               v-model="payForm.note"
@@ -735,6 +755,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useInstallments, type InstallmentScheduleItem } from '../../composables/finance/useInstallments'
+import { useLedgerStore } from '../../stores/ledger'
 import { useToastStore } from '../../stores/toast'
 import type { FinancialObligation } from '../../types/finance'
 import {
@@ -754,6 +775,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const toast = useToastStore()
+const ledgerStore = useLedgerStore()
 
 const {
   fetchInstallmentById,
@@ -783,6 +805,7 @@ const payForm = ref({
   term_number: 1,
   paid_amount: 0,
   note: '',
+  account_id: '',
   slip_file: undefined as File | undefined
 })
 
@@ -918,7 +941,11 @@ function openPayModal() {
     term_number: Math.min(totalTermsCount.value, nextTerm),
     paid_amount: Number(contract.value?.amount || 0),
     note: `Term #${nextTerm} installment payment`,
+    account_id: '',
     slip_file: undefined
+  }
+  if (ledgerStore.accounts.length === 0) {
+    ledgerStore.fetchAccounts().catch(() => {})
   }
   showPayModalState.value = true
 }
@@ -928,7 +955,11 @@ function openPayModalForTerm(termNumber: number, amount: number) {
     term_number: termNumber,
     paid_amount: amount,
     note: `Term #${termNumber} installment payment`,
+    account_id: '',
     slip_file: undefined
+  }
+  if (ledgerStore.accounts.length === 0) {
+    ledgerStore.fetchAccounts().catch(() => {})
   }
   showPayModalState.value = true
 }
@@ -947,8 +978,13 @@ async function handleProcessPayment() {
       paid_amount: payForm.value.paid_amount,
       term_number: payForm.value.term_number,
       note: payForm.value.note,
-      slip_file: payForm.value.slip_file
+      slip_file: payForm.value.slip_file,
+      account_id: payForm.value.account_id || undefined
     })
+    if (payForm.value.account_id) {
+      ledgerStore.fetchAccounts().catch(() => {})
+      ledgerStore.fetchSummary().catch(() => {})
+    }
     toast.success('Payment recorded successfully')
     showPayModalState.value = false
     await loadContractDetails()

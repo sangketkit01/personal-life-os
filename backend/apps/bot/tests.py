@@ -22,27 +22,27 @@ class TelegramBotTestCase(TestCase):
         self.user.save()
 
     async def test_pairing_by_token(self):
-        """ทดสอบการจับคู่ Chat ID ด้วย One-Time Token"""
+        """Test pairing Chat ID using One-Time Token."""
         paired_user = await pair_user_by_token('TEST_PAIR_TOKEN_99', 123456789)
         self.assertIsNotNone(paired_user)
         self.assertEqual(paired_user.telegram_chat_id, '123456789')
         self.assertIsNone(paired_user.telegram_connect_token)
 
-        # ทดสอบค้นหาด้วย chat_id
+        # Test lookup by chat_id
         found_user = await get_user_by_chat_id(123456789)
         self.assertEqual(found_user.id, self.user.id)
 
     def test_parse_quick_text_patterns(self):
-        """ทดสอบการวิเคราะห์ข้อความภาษาคน (Quick-Capture)"""
-        # 1. ผ่อน tiktok
-        p1 = parse_quick_text('ผ่อน tiktok 450 3 งวด')
+        """Test parsing user text for Quick-Capture feature."""
+        # 1. Installment
+        p1 = parse_quick_text('installment tiktok 450 3 terms')
         self.assertIsNotNone(p1)
         self.assertEqual(p1['type'], ObligationType.INSTALLMENT)
         self.assertEqual(p1['amount'], Decimal('450'))
         self.assertEqual(p1['metadata']['total_terms'], 3)
 
         # 2. Free Trial
-        p2 = parse_quick_text('trial canva 499 เมล work@gmail.com')
+        p2 = parse_quick_text('trial canva 499 email work@gmail.com')
         self.assertIsNotNone(p2)
         self.assertEqual(p2['type'], ObligationType.FREE_TRIAL)
         self.assertEqual(p2['amount'], Decimal('499'))
@@ -55,20 +55,20 @@ class TelegramBotTestCase(TestCase):
         self.assertEqual(p3['amount'], Decimal('419'))
 
         # 4. Debt
-        p4 = parse_quick_text('หนี้ ตั้ม 500')
+        p4 = parse_quick_text('debt John 500')
         self.assertIsNotNone(p4)
         self.assertEqual(p4['type'], ObligationType.DEBT)
         self.assertEqual(p4['amount'], Decimal('500'))
-        self.assertEqual(p4['metadata']['counterparty'], 'ตั้ม')
+        self.assertEqual(p4['metadata']['counterparty'], 'John')
 
     async def test_callback_pay_installment(self):
-        """ทดสอบกดปุ่ม [จ่ายแล้ว] จาก Telegram"""
+        """Test clicking [Paid] action button from Telegram."""
         self.user.telegram_chat_id = '999888'
         await self.user.asave()
 
         moto = await FinancialObligation.objects.acreate(
             user=self.user,
-            title='ผ่อนมอไซค์',
+            title='Motorcycle Installment',
             type=ObligationType.INSTALLMENT,
             amount=Decimal('2800.00'),
             metadata={'total_terms': 36, 'current_term': 14}
@@ -79,7 +79,7 @@ class TelegramBotTestCase(TestCase):
         self.assertEqual(res['summary']['current_term'], 15)
 
     async def test_callback_cancel_trial(self):
-        """ทดสอบกดปุ่ม [กดยกเลิกแล้ว] จาก Telegram"""
+        """Test clicking [Mark Cancelled] button from Telegram."""
         self.user.telegram_chat_id = '999888'
         await self.user.asave()
 
@@ -97,11 +97,11 @@ class TelegramBotTestCase(TestCase):
         self.assertEqual(updated.status, ObligationStatus.CANCELLED)
 
     async def test_portfolio_summary_for_bot(self):
-        """ทดสอบการดึงข้อมูลพอร์ตส่งให้บอทแสดงผล"""
+        """Test retrieving portfolio summary for Telegram bot."""
         holding = await StockHolding.objects.acreate(
             user=self.user,
             ticker='PTT.BK',
-            name='ปตท.'
+            name='PTT Public Company Limited'
         )
         await StockTransaction.objects.acreate(
             holding=holding,

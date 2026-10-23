@@ -15,8 +15,8 @@
           <FolderInput class="w-4 h-4 text-zinc-300" />
           <h2 class="text-base font-semibold text-zinc-100 tracking-tight">Move Asset to Portfolio</h2>
         </div>
-        <p class="text-xs text-zinc-500 mt-1">
-          Transfer <span class="font-mono text-zinc-200 font-bold">{{ holding.ticker }}</span> and its entire transaction history to another sub-portfolio.
+        <p class="text-xs text-zinc-500 mt-0.5">
+          Transfer <span class="font-mono text-zinc-200 font-bold">{{ holding.ticker }}</span> and its transaction history to another portfolio.
         </p>
       </div>
 
@@ -39,8 +39,13 @@
 
         <div class="text-right">
           <div class="text-[10px] font-mono uppercase text-zinc-500">Current Basket</div>
-          <div class="text-xs font-semibold text-zinc-200 mt-0.5">
-            {{ currentPortfolioName }}
+          <div class="text-xs font-semibold text-zinc-200 mt-0.5 flex items-center justify-end gap-1.5">
+            <span
+              v-if="currentPortfolio"
+              class="w-2 h-2 rounded-full shrink-0 shadow-sm"
+              :style="{ backgroundColor: getPortfolioColor(currentPortfolio.color) }"
+            ></span>
+            <span>{{ currentPortfolioName }}</span>
           </div>
         </div>
       </div>
@@ -56,10 +61,15 @@
           <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">
             Destination Portfolio <span class="text-rose-400">*</span>
           </label>
-          <div class="relative">
+          <div class="relative flex items-center">
+            <span
+              v-if="selectedTargetPortfolio"
+              class="w-2.5 h-2.5 rounded-full absolute left-3 pointer-events-none z-10 shadow-sm"
+              :style="{ backgroundColor: getPortfolioColor(selectedTargetPortfolio.color) }"
+            ></span>
             <select
               v-model="targetPortfolioId"
-              class="w-full px-3 py-2.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-sans focus:outline-none focus:border-zinc-600 transition-colors appearance-none cursor-pointer pr-8"
+              class="w-full pl-8 pr-8 py-2.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-sans focus:outline-none focus:border-zinc-600 transition-colors appearance-none cursor-pointer"
             >
               <option
                 v-for="p in availablePortfolios"
@@ -111,7 +121,7 @@
 import { ref, computed, watch } from 'vue'
 import { usePortfolioStore } from '../../stores/portfolio'
 import { useToastStore } from '../../stores/toast'
-import type { StockHolding } from '../../types/portfolio'
+import { getPortfolioColor, type StockHolding } from '../../types/portfolio'
 import { X, FolderInput, ChevronDown, ArrowRightLeft, Loader2 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -131,14 +141,21 @@ const targetPortfolioId = ref('')
 const isSubmitting = ref(false)
 const errorMessage = ref<string | null>(null)
 
+const currentPortfolio = computed(() => {
+  if (!props.holding?.portfolio) return null
+  return portfolioStore.portfolios.find(item => item.id === props.holding?.portfolio) || null
+})
+
 const currentPortfolioName = computed(() => {
-  if (!props.holding?.portfolio) return 'Main Portfolio'
-  const p = portfolioStore.portfolios.find(item => item.id === props.holding?.portfolio)
-  return p?.name || props.holding.portfolio_name || 'Main Portfolio'
+  return currentPortfolio.value?.name || props.holding?.portfolio_name || 'Main Portfolio'
 })
 
 const availablePortfolios = computed(() => {
   return portfolioStore.portfolios
+})
+
+const selectedTargetPortfolio = computed(() => {
+  return portfolioStore.portfolios.find(p => p.id === targetPortfolioId.value) || null
 })
 
 watch(

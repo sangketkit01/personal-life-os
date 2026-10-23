@@ -187,6 +187,65 @@ class BillSplitServiceTests(APITestCase):
         self.assertEqual(ball_split.debtor_obligation.status, ObligationStatus.COMPLETED)
         self.assertTrue(PaymentHistory.objects.filter(obligation=ball_split.debtor_obligation).exists())
 
+    def test_harntung_itemized_split_bill_with_taxes(self):
+        """User Domain Test: Harntung-style itemized split with SC 10%, VAT 7%, dish assignments."""
+        harntung_meta = {
+            'mode': 'ITEMIZED',
+            'service_charge_pct': '10.00',
+            'vat_pct': '7.00',
+            'payer_name': 'Me',
+            'items': [
+                {'name': 'Salmon Sashimi', 'price': '350.00', 'quantity': 1, 'consumers': ['Ball', 'Earth']},
+                {'name': 'Craft Beer', 'price': '200.00', 'quantity': 1, 'consumers': ['Ball']},
+                {'name': 'Wagyu Steak', 'price': '600.00', 'quantity': 1, 'consumers': ['Me', 'Earth']},
+                {'name': 'Garden Salad', 'price': '150.00', 'quantity': 1, 'consumers': ['Me']},
+            ],
+            'participants': [
+                {'name': 'Me', 'contact': ''},
+                {'name': 'Ball', 'contact': '081-111-1111'},
+                {'name': 'Earth', 'contact': '082-222-2222'},
+            ]
+        }
+        # Subtotal: 350 + 200 + 600 + 150 = 1,300
+        # Tax factor = 1.10 * 1.07 = 1.177
+        # Total = 1,300 * 1.177 = 1,530.10
+        gross_total = Decimal('1530.10')
+
+        tx = BillSplitService.create_split_transaction(
+            user=self.user,
+            account=self.account,
+            category=self.category,
+            gross_amount=gross_total,
+            net_amount=Decimal('0.00'), # Auto calculated from Harntung
+            title="Izakaya Harntung Dinner",
+            transaction_date=timezone.now().date(),
+            splits_data=[],
+            auto_create_radar_debtors=True,
+            split_metadata=harntung_meta
+        )
+
+        self.assertEqual(tx.gross_amount, Decimal('1530.10'))
+        # My share: (300 Steak + 150 Salad) * 1.177 = 529.65
+        self.assertAlmostEqual(float(tx.net_amount), 529.65, places=1)
+        self.assertEqual(tx.splits.count(), 2) # Ball and Earth
+
+        ball_split = tx.splits.get(counterparty_name='Ball')
+        earth_split = tx.splits.get(counterparty_name='Earth')
+
+        # Ball ate Salmon (175) + Beer (200) = 375 * 1.177 = 441.38
+        self.assertAlmostEqual(float(ball_split.amount), 441.38, places=1)
+        self.assertEqual(len(ball_split.items_detail), 2)
+        self.assertEqual(ball_split.items_detail[0]['name'], 'Salmon Sashimi')
+        self.assertEqual(ball_split.items_detail[1]['name'], 'Craft Beer')
+
+        # Earth ate Salmon (175) + Steak (300) = 475 * 1.177 = 559.08
+        self.assertAlmostEqual(float(earth_split.amount), 559.08, places=1)
+        self.assertEqual(len(earth_split.items_detail), 2)
+
+        # Radar Debtor check
+        self.assertIsNotNone(ball_split.debtor_obligation)
+        self.assertEqual(ball_split.debtor_obligation.direction, 'INFLOW')
+
 
 class LedgerAPITests(APITestCase):
     def setUp(self):
@@ -261,8 +320,8 @@ class LedgerAPITests(APITestCase):
         self.assertEqual(Decimal(data['total_inflow']), Decimal('30000.00'))
         self.assertEqual(Decimal(data['total_gross_outflow']), Decimal('3000.00'))
         self.assertEqual(Decimal(data['total_net_outflow']), Decimal('1000.00'))
-        # Net cash flow should be 30,000 - 1,000 (net personal spend) = 29,000
-        self.assertEqual(Decimal(data['net_cash_flow']), Decimal('29000.00'))
+        # Pure pocket net cash flow: 30,000 - 3,000 (gross out-of-pocket outflow) = 27,000
+        self.assertEqual(Decimal(data['net_cash_flow']), Decimal('27000.00'))
         self.assertEqual(Decimal(data['pending_splits_amount']), Decimal('2000.00'))
         self.assertEqual(data['pending_splits_count'], 2)
 
@@ -480,3 +539,278 @@ class LedgerAPITests(APITestCase):
         del_resp = self.client.delete(f'/api/ledger/accounts/{self.account.id}/')
         self.assertEqual(del_resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('Cannot delete an account', del_resp.data['error'])
+
+    def test_audit_transfer_cross_currency_rejection(self):
+        """Audit P1: Cross-currency transfer must be rejected."""
+        usd_account = Account.objects.create(
+            user=self.user,
+            name="USD Savings",
+            account_type=AccountType.BANK,
+            currency="USD",
+            initial_balance=Decimal('100.00'),
+            current_balance=Decimal('100.00')
+        )
+        resp = self.client.post('/api/ledger/accounts/transfer/', {
+            'source_account_id': str(self.account.id),
+            'target_account_id': str(usd_account.id),
+            'amount': '50.00',
+            'transaction_date': str(timezone.now().date())
+        })
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Cross-currency transfers are not supported', resp.data['error'])
+
+    def test_audit_transfer_overdraft_prevention(self):
+        """Audit P1: Non-credit account transfer exceeding balance must be rejected."""
+        dest_account = Account.objects.create(
+            user=self.user,
+            name="SCB Savings",
+            account_type=AccountType.BANK,
+            currency="THB",
+            initial_balance=Decimal('1000.00'),
+            current_balance=Decimal('1000.00')
+        )
+        # Attempt to transfer 99999 when balance is 10000
+        resp = self.client.post('/api/ledger/accounts/transfer/', {
+            'source_account_id': str(self.account.id),
+            'target_account_id': str(dest_account.id),
+            'amount': '99999.00',
+            'transaction_date': str(timezone.now().date())
+        })
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Insufficient funds', resp.data['error'])
+
+    def test_audit_transfer_amount_mutation_rejection(self):
+        """Audit P1: Paired transfer amount cannot be modified directly via PATCH."""
+        dest_account = Account.objects.create(
+            user=self.user,
+            name="SCB Savings",
+            account_type=AccountType.BANK,
+            currency="THB",
+            initial_balance=Decimal('1000.00'),
+            current_balance=Decimal('1000.00')
+        )
+        out_tx, in_tx = AccountBalanceService.execute_transfer(
+            user=self.user,
+            source_account=self.account,
+            target_account=dest_account,
+            amount=Decimal('500.00'),
+            transaction_date=timezone.now().date()
+        )
+        patch_resp = self.client.patch(f'/api/ledger/transactions/{out_tx.id}/', {
+            'gross_amount': '900.00'
+        })
+        self.assertEqual(patch_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('gross_amount', patch_resp.data)
+
+    def test_audit_cascade_reversal_on_transfer_deletion(self):
+        """Audit P1: Deleting one transfer leg cascades to peer and restores balances."""
+        dest_account = Account.objects.create(
+            user=self.user,
+            name="SCB Savings",
+            account_type=AccountType.BANK,
+            currency="THB",
+            initial_balance=Decimal('1000.00'),
+            current_balance=Decimal('1000.00')
+        )
+        out_tx, in_tx = AccountBalanceService.execute_transfer(
+            user=self.user,
+            source_account=self.account,
+            target_account=dest_account,
+            amount=Decimal('500.00'),
+            transaction_date=timezone.now().date()
+        )
+        self.account.refresh_from_db()
+        dest_account.refresh_from_db()
+        self.assertEqual(self.account.current_balance, Decimal('49500.00'))
+        self.assertEqual(dest_account.current_balance, Decimal('1500.00'))
+
+        del_resp = self.client.delete(f'/api/ledger/transactions/{out_tx.id}/')
+        self.assertEqual(del_resp.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.account.refresh_from_db()
+        dest_account.refresh_from_db()
+        self.assertEqual(self.account.current_balance, Decimal('50000.00'))
+        self.assertEqual(dest_account.current_balance, Decimal('1000.00'))
+        self.assertFalse(Transaction.objects.filter(id=in_tx.id).exists())
+
+    def test_audit_cascade_reversal_on_master_split_deletion(self):
+        """Audit P1: Deleting a master split transaction cleans up auto-generated radar debtors."""
+        tx = BillSplitService.create_split_transaction(
+            user=self.user,
+            account=self.account,
+            category=self.food_category,
+            gross_amount=Decimal('1200.00'),
+            net_amount=Decimal('600.00'),
+            title="Dinner Split",
+            transaction_date=timezone.now().date(),
+            splits_data=[{'counterparty_name': 'Bob', 'amount': '600.00'}],
+            auto_create_radar_debtors=True
+        )
+        split = tx.splits.first()
+        self.assertIsNotNone(split.debtor_obligation)
+        debtor_id = split.debtor_obligation.id
+        self.assertTrue(FinancialObligation.objects.filter(id=debtor_id).exists())
+
+        del_resp = self.client.delete(f'/api/ledger/transactions/{tx.id}/')
+        self.assertEqual(del_resp.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(FinancialObligation.objects.filter(id=debtor_id).exists())
+
+    def test_audit_accounting_equation_validation(self):
+        """Audit P1: Negative gross or net > gross transactions must be rejected."""
+        # 1. Gross <= 0
+        resp1 = self.client.post('/api/ledger/transactions/', {
+            'account': str(self.account.id),
+            'transaction_type': TransactionType.INFLOW,
+            'gross_amount': '-100.00',
+            'net_amount': '-100.00',
+            'title': 'Invalid Negative',
+            'transaction_date': str(timezone.now().date())
+        })
+        self.assertEqual(resp1.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # 2. Net > Gross
+        resp2 = self.client.post('/api/ledger/transactions/', {
+            'account': str(self.account.id),
+            'transaction_type': TransactionType.OUTFLOW,
+            'gross_amount': '500.00',
+            'net_amount': '600.00',
+            'title': 'Net Exceeds Gross',
+            'transaction_date': str(timezone.now().date())
+        })
+        self.assertEqual(resp2.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_audit_account_initial_balance_mutation(self):
+        """Audit P1: Updating initial balance adjusts current balance by exact delta."""
+        patch_resp = self.client.patch(f'/api/ledger/accounts/{self.account.id}/', {
+            'initial_balance': '15000.00'
+        })
+        self.assertEqual(patch_resp.status_code, status.HTTP_200_OK)
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.initial_balance, Decimal('15000.00'))
+        self.assertEqual(self.account.current_balance, Decimal('15000.00'))
+
+    def test_audit_summary_pure_pocket_cashflow_and_credit_card_positive_balance(self):
+        """Audit P1 & P2: Pure pocket cashflow and positive credit card balance is not debt."""
+        card = Account.objects.create(
+            user=self.user,
+            name="Positive Credit Card",
+            account_type=AccountType.CREDIT_CARD,
+            currency="THB",
+            initial_balance=Decimal('500.00'),
+            current_balance=Decimal('500.00')
+        )
+        today = timezone.localtime().date()
+        current_month = today.strftime('%Y-%m')
+
+        resp = self.client.get(f'/api/ledger/transactions/summary/?month={current_month}')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        # Positive credit card balance should NOT be counted as credit debt
+        self.assertEqual(Decimal(resp.data['total_credit_debt']), Decimal('0.00'))
+
+    def test_audit_delete_split_with_settled_children_rejected(self):
+        """Audit P1: Deleting a split bill that has already been settled must be rejected."""
+        tx = BillSplitService.create_split_transaction(
+            user=self.user,
+            account=self.account,
+            category=self.food_category,
+            gross_amount=Decimal('1000.00'),
+            net_amount=Decimal('500.00'),
+            title="Shared Meal",
+            transaction_date=timezone.now().date(),
+            splits_data=[{'counterparty_name': 'Friend A', 'amount': '500.00'}],
+            auto_create_radar_debtors=True
+        )
+        split = tx.splits.first()
+        BillSplitService.settle_split(
+            split=split,
+            deposit_account=self.account,
+            settlement_date=timezone.now().date()
+        )
+        split.refresh_from_db()
+        self.assertTrue(split.is_settled)
+
+        del_resp = self.client.delete(f'/api/ledger/transactions/{tx.id}/')
+        self.assertEqual(del_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('already been settled', str(del_resp.data))
+
+    def test_audit_split_patch_net_amount_mismatch_rejected(self):
+        """Audit P1: Modifying net_amount on a split bill to violate split parity is rejected."""
+        tx = BillSplitService.create_split_transaction(
+            user=self.user,
+            account=self.account,
+            category=self.food_category,
+            gross_amount=Decimal('1200.00'),
+            net_amount=Decimal('400.00'),
+            title="Dinner Party",
+            transaction_date=timezone.now().date(),
+            splits_data=[
+                {'counterparty_name': 'A', 'amount': '400.00'},
+                {'counterparty_name': 'B', 'amount': '400.00'}
+            ],
+            auto_create_radar_debtors=True
+        )
+        patch_resp = self.client.patch(f'/api/ledger/transactions/{tx.id}/', {
+            'net_amount': '1.00'
+        })
+        self.assertEqual(patch_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('net_amount', patch_resp.data)
+
+    def test_audit_regular_transaction_cannot_set_transfer_destination(self):
+        """Audit P1: Regular transactions cannot set transfer_destination without transfer flow."""
+        other_acc = Account.objects.create(
+            user=self.user,
+            name="Other Bank",
+            account_type=AccountType.BANK,
+            currency="THB",
+            initial_balance=Decimal('1000.00'),
+            current_balance=Decimal('1000.00')
+        )
+        resp = self.client.post('/api/ledger/transactions/', {
+            'account': str(self.account.id),
+            'transaction_type': TransactionType.OUTFLOW,
+            'gross_amount': '200.00',
+            'net_amount': '200.00',
+            'title': 'Bogus Transfer Outflow',
+            'transaction_date': str(timezone.now().date()),
+            'transfer_destination': str(other_acc.id)
+        })
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('transfer_destination', resp.data)
+
+    def test_audit_summary_currency_isolation_without_filter(self):
+        """Audit P1: Summary without explicit currency param isolates to default currency (no cross-currency sum)."""
+        usd_account = Account.objects.create(
+            user=self.user,
+            name="USD Wallet",
+            account_type=AccountType.BANK,
+            currency="USD",
+            initial_balance=Decimal('100.00'),
+            current_balance=Decimal('100.00')
+        )
+        today = timezone.localtime().date()
+        current_month = today.strftime('%Y-%m')
+
+        Transaction.objects.create(
+            user=self.user,
+            account=self.account,
+            transaction_type=TransactionType.INFLOW,
+            gross_amount=Decimal('2000.00'),
+            net_amount=Decimal('2000.00'),
+            title="THB Inflow",
+            transaction_date=today
+        )
+        Transaction.objects.create(
+            user=self.user,
+            account=usd_account,
+            transaction_type=TransactionType.INFLOW,
+            gross_amount=Decimal('100.00'),
+            net_amount=Decimal('100.00'),
+            title="USD Inflow",
+            transaction_date=today
+        )
+
+        resp = self.client.get(f'/api/ledger/transactions/summary/?month={current_month}')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        # Must isolate to THB: 2000.00 (not 2100.00)
+        self.assertEqual(Decimal(resp.data['total_inflow']), Decimal('2000.00'))
+        self.assertEqual(resp.data['currency'], 'THB')

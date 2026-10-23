@@ -82,11 +82,11 @@ export const useLedgerStore = defineStore('ledger', () => {
     }
   }
 
-  async function fetchSummary(month?: string) {
+  async function fetchSummary(month?: string, currency?: string) {
     isSummaryLoading.value = true
     try {
       const targetMonth = month || activeMonth.value
-      const data = await ledgerApi.getCashFlowSummary(targetMonth)
+      const data = await ledgerApi.getCashFlowSummary(targetMonth, currency)
       summary.value = data
       return data
     } finally {
@@ -148,6 +148,12 @@ export const useLedgerStore = defineStore('ledger', () => {
   async function deleteTransaction(id: string) {
     await ledgerApi.deleteTransaction(id)
     await Promise.all([fetchAccounts(), fetchSummary(), fetchPendingSplits()])
+    try {
+      const { useFinanceStore } = await import('./finance')
+      await useFinanceStore().fetchOverview()
+    } catch (e) {
+      // Ignored if finance store not mounted
+    }
   }
 
   async function createAccount(payload: CreateAccountPayload) {
@@ -176,6 +182,12 @@ export const useLedgerStore = defineStore('ledger', () => {
   async function settleSplit(splitId: string, payload: SettleSplitPayload) {
     const res = await ledgerApi.settleSplit(splitId, payload)
     await Promise.all([fetchAccounts(), fetchSummary(), fetchPendingSplits()])
+    try {
+      const { useFinanceStore } = await import('./finance')
+      await useFinanceStore().fetchOverview()
+    } catch (e) {
+      // Ignored if finance store not mounted
+    }
     return res
   }
 

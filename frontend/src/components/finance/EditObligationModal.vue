@@ -10,7 +10,7 @@
       </button>
 
       <!-- Modal Title -->
-      <div class="mb-5">
+      <div class="mb-4">
         <div class="flex items-center gap-2 mb-1">
           <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border bg-zinc-900 text-zinc-400 border-zinc-800">
             {{ obligation.type }}
@@ -20,8 +20,10 @@
           </span>
           <span class="text-xs text-zinc-500 font-mono">ID: {{ obligation.id.slice(0, 8) }}</span>
         </div>
-        <h2 class="text-base font-semibold text-zinc-100 tracking-tight">Edit Obligation</h2>
-        <p class="text-xs text-zinc-500 mt-0.5">Update recurring parameters, terms, or counterparty metadata</p>
+        <h2 class="text-base font-semibold text-zinc-100 tracking-tight flex items-center gap-2">
+          <span>Edit Obligation</span>
+          <span class="text-xs font-normal text-zinc-500 font-mono">Edit Obligation</span>
+        </h2>
       </div>
 
       <!-- Error message -->
@@ -322,16 +324,16 @@
           <button
             type="button"
             @click="emit('close')"
-            class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors"
+            class="px-3.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-all active:scale-[0.98]"
           >
             Cancel
           </button>
           <button
             type="submit"
             :disabled="isSubmitting"
-            class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors disabled:opacity-50"
+            class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-50 shadow-sm"
           >
-            {{ isSubmitting ? 'Saving...' : 'Update Obligation' }}
+            {{ isSubmitting ? 'Saving...' : 'Save Changes' }}
           </button>
         </div>
       </form>

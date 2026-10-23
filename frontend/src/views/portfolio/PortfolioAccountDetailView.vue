@@ -13,6 +13,11 @@
 
         <div>
           <div class="flex items-center gap-2">
+            <span
+              v-if="currentPortfolio"
+              class="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
+              :style="{ backgroundColor: getPortfolioColor(currentPortfolio.color) }"
+            ></span>
             <span class="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800 font-semibold">
               {{ currentPortfolio?.currency || 'THB' }} ACCOUNT
             </span>
@@ -429,7 +434,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePortfolioStore } from '../../stores/portfolio'
 import { useToastStore } from '../../stores/toast'
-import type { StockHolding, PortfolioOverview } from '../../types/portfolio'
+import { getPortfolioColor, type StockHolding, type PortfolioOverview } from '../../types/portfolio'
 import apiClient from '../../api/client'
 import MarketStatusBar from '../../components/portfolio/MarketStatusBar.vue'
 import AddTransactionModal from '../../components/portfolio/AddTransactionModal.vue'

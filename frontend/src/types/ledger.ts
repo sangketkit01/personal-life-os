@@ -48,12 +48,17 @@ export interface TransactionSplitItem {
   debtor_id?: string | null
   debtor_status?: string | null
   notes: string
+  items_detail?: Array<{ name: string; price: number; quantity?: number; consumer_count?: number; share: number }>
 }
 
 export interface TransactionAttachmentItem {
   id: string
   transaction: string
-  file: string
+  file?: string
+  file_url?: string
+  drive_file_id?: string
+  drive_view_link?: string
+  drive_download_link?: string
   file_name: string
   file_type: string
   file_size: number
@@ -76,6 +81,7 @@ export interface LedgerTransaction {
   notes: string
   transaction_date: string
   is_split: boolean
+  split_metadata?: Record<string, any>
   splits?: TransactionSplitItem[]
   attachments?: TransactionAttachmentItem[]
   obligation?: string | null

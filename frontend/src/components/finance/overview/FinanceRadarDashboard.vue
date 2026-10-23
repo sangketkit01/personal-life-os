@@ -3,80 +3,80 @@
     <!-- 4 High-Level Metric Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
       <!-- 1. Monthly Outflow Burn -->
-      <div class="p-4 rounded-lg bg-zinc-900/40 border border-zinc-800/80">
-        <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-500">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm hover:shadow-md">
+        <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-400">
           <span>Fixed Monthly Burn</span>
-          <span class="text-rose-400/80">Outflow</span>
+          <span class="px-1.5 py-0.5 rounded text-[9px] bg-rose-500/10 text-rose-400 border border-rose-500/20 font-semibold">Outflow</span>
         </div>
         <div class="mt-2.5 flex items-baseline gap-1.5 font-mono">
-          <span class="text-xl font-semibold text-zinc-100 tabular-nums">
+          <span class="text-xl font-bold text-zinc-100 tabular-nums">
             ฿{{ Number(financeStore.overview?.confirmed_burn_rate || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
           </span>
           <span class="text-[11px] text-zinc-500">/ mo</span>
         </div>
         <div class="mt-3 text-[11px] text-zinc-500 flex items-center justify-between border-t border-zinc-800/50 pt-2.5">
-          <span>Fixed commitments</span>
-          <button @click="emit('switchTab', 'SUBSCRIPTION')" class="text-zinc-400 hover:text-zinc-200 transition-colors font-mono text-[10px]">
-            View Subscriptions &rarr;
+          <span>Monthly recurring burn</span>
+          <button @click="emit('switchTab', 'SUBSCRIPTION')" class="text-zinc-400 hover:text-zinc-200 active:scale-95 transition-all font-mono text-[10px]">
+            Subscriptions &rarr;
           </button>
         </div>
       </div>
 
       <!-- 2. Expected Inflow (Debtors) -->
-      <div class="p-4 rounded-lg bg-zinc-900/40 border border-zinc-800/80">
-        <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-500">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm hover:shadow-md">
+        <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-400">
           <span>Expected Inflow</span>
-          <span class="text-emerald-400/80">Receivables</span>
+          <span class="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">Receivables</span>
         </div>
         <div class="mt-2.5 flex items-baseline gap-1.5 font-mono">
-          <span class="text-xl font-semibold text-emerald-400 tabular-nums">
+          <span class="text-xl font-bold text-emerald-400 tabular-nums">
             +฿{{ Number(financeStore.overview?.expected_inflow_amount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
           </span>
           <span class="text-[11px] text-zinc-500">({{ activeDebtorsCount }} debtors)</span>
         </div>
         <div class="mt-3 text-[11px] text-zinc-500 flex items-center justify-between border-t border-zinc-800/50 pt-2.5">
-          <span>Money lent to others</span>
-          <button @click="emit('switchTab', 'DEBT')" class="text-zinc-400 hover:text-zinc-200 transition-colors font-mono text-[10px]">
-            Manage Debtors &rarr;
+          <span>Pending receivables</span>
+          <button @click="emit('switchTab', 'DEBT')" class="text-zinc-400 hover:text-zinc-200 active:scale-95 transition-all font-mono text-[10px]">
+            Debtors &rarr;
           </button>
         </div>
       </div>
 
       <!-- 3. Due in 7 Days -->
-      <div class="p-4 rounded-lg bg-zinc-900/40 border border-zinc-800/80">
-        <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-500">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm hover:shadow-md">
+        <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-400">
           <span>Due In Next 7 Days</span>
-          <span class="text-zinc-400">Upcoming</span>
+          <span class="px-1.5 py-0.5 rounded text-[9px] bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">Upcoming</span>
         </div>
         <div class="mt-2.5 flex items-baseline gap-1.5 font-mono">
-          <span class="text-xl font-semibold text-zinc-100 tabular-nums">
+          <span class="text-xl font-bold text-zinc-100 tabular-nums">
             {{ financeStore.overview?.upcoming_7_days_count || 0 }}
           </span>
           <span class="text-[11px] text-zinc-500">settlements</span>
         </div>
         <div class="mt-3 text-[11px] text-zinc-500 flex items-center gap-1.5 border-t border-zinc-800/50 pt-2.5">
-          <span class="w-1.5 h-1.5 rounded-full bg-zinc-400"></span>
-          <span>Requires settlement action</span>
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          <span>Settlements due this week</span>
         </div>
       </div>
 
       <!-- 4. Trial Trap Risk -->
-      <div class="p-4 rounded-lg bg-zinc-900/40 border border-zinc-800/80">
-        <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-500">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm hover:shadow-md">
+        <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-400">
           <span>Trial Risk</span>
-          <span class="text-rose-400/80">Liability</span>
+          <span class="px-1.5 py-0.5 rounded text-[9px] bg-rose-500/10 text-rose-400 border border-rose-500/20 font-semibold">Liability</span>
         </div>
         <div class="mt-2.5 flex items-baseline gap-1.5 font-mono">
-          <span class="text-xl font-semibold text-zinc-100 tabular-nums">
+          <span class="text-xl font-bold text-zinc-100 tabular-nums">
             ฿{{ Number(financeStore.overview?.potential_risk_amount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
           </span>
           <span class="text-[11px] text-zinc-500">({{ financeStore.overview?.active_trials_count || 0 }} trials)</span>
         </div>
         <div class="mt-3 text-[11px] text-zinc-500 flex items-center justify-between border-t border-zinc-800/50 pt-2.5">
           <span :class="(financeStore.overview?.critical_trials_count || 0) > 0 ? 'text-rose-400 font-semibold' : ''">
-            {{ (financeStore.overview?.critical_trials_count || 0) > 0 ? 'Urgent trial expiring' : 'No critical trials' }}
+            {{ (financeStore.overview?.critical_trials_count || 0) > 0 ? 'Critical trial expiry risk' : 'Auto-renew liability exposure' }}
           </span>
-          <button @click="emit('switchTab', 'SUBSCRIPTION')" class="text-zinc-400 hover:text-zinc-200 transition-colors font-mono text-[10px]">
+          <button @click="emit('switchTab', 'SUBSCRIPTION')" class="text-zinc-400 hover:text-zinc-200 active:scale-95 transition-all font-mono text-[10px]">
             Hunter &rarr;
           </button>
         </div>
@@ -86,7 +86,7 @@
     <!-- Active Radar Alerts: Settlements Due in Next 7 Days -->
     <div
       v-if="financeStore.overview?.upcoming_7_days && financeStore.overview.upcoming_7_days.length > 0"
-      class="p-4 rounded-lg bg-zinc-900/30 border border-zinc-800/80 space-y-3"
+      class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-3"
     >
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
@@ -102,7 +102,7 @@
         <div
           v-for="item in financeStore.overview.upcoming_7_days"
           :key="item.id"
-          class="p-3 rounded-md bg-zinc-900/70 border border-zinc-800/80 flex items-center justify-between gap-3 text-xs font-mono hover:border-zinc-700/80 transition-colors"
+          class="p-3 rounded-lg bg-zinc-900/80 border border-zinc-800/80 flex items-center justify-between gap-3 text-xs font-mono hover:border-zinc-700 hover:bg-zinc-800/50 transition-all duration-150"
         >
           <div class="space-y-0.5 truncate">
             <div class="font-medium text-zinc-100 font-sans truncate">{{ item.title }}</div>
@@ -111,7 +111,7 @@
               <span>•</span>
               <span
                 class="px-1.5 py-0.2 rounded text-[9px] uppercase font-semibold border"
-                :class="item.days_left <= 1 ? 'bg-zinc-950 text-rose-400 border-zinc-800' : (item.days_left <= 3 ? 'bg-zinc-950 text-zinc-300 border-zinc-800' : 'bg-zinc-950 text-zinc-500 border-zinc-800')"
+                :class="item.days_left <= 1 ? 'bg-rose-950/40 text-rose-400 border-rose-500/30' : (item.days_left <= 3 ? 'bg-amber-950/30 text-amber-300 border-amber-500/30' : 'bg-zinc-950 text-zinc-400 border-zinc-800')"
               >
                 {{ item.days_left === 0 ? 'Due Today' : (item.days_left === 1 ? 'Tomorrow' : `${item.days_left}d left`) }}
               </span>
@@ -127,7 +127,7 @@
             </div>
             <button
               @click="handlePayItem(item)"
-              class="mt-1 px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 transition-colors"
+              class="mt-1 px-2.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] text-zinc-200 active:scale-95 transition-all shadow-sm"
             >
               {{ item.direction === 'INFLOW' ? 'Record' : 'Pay' }}
             </button>
@@ -141,68 +141,68 @@
       <!-- Hub 1: Installments -->
       <div
         @click="emit('switchTab', 'INSTALLMENT')"
-        class="p-4 rounded-lg bg-zinc-900/30 border border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-900/60 transition-all cursor-pointer group space-y-2"
+        class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-900/70 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer group space-y-2.5 shadow-sm hover:shadow-md"
       >
         <div class="flex items-center justify-between">
-          <div class="p-2 rounded bg-zinc-800/60 border border-zinc-700/60 text-zinc-300 group-hover:scale-105 transition-transform">
+          <div class="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 group-hover:scale-105 transition-transform">
             <Car class="w-4 h-4" />
           </div>
-          <span class="text-xs font-mono font-semibold text-zinc-400">{{ installmentCount }} active</span>
+          <span class="text-xs font-mono font-semibold text-zinc-400 group-hover:text-zinc-200 transition-colors">{{ installmentCount }} active</span>
         </div>
         <div>
-          <h3 class="text-sm font-semibold text-zinc-200">Installments & Contracts</h3>
-          <p class="text-xs text-zinc-500 mt-0.5">Hire purchase contracts, amortization schedules, and statutory early payoff simulation</p>
+          <h3 class="text-sm font-semibold text-zinc-200 group-hover:text-white transition-colors">Installments & Contracts</h3>
+          <p class="text-xs text-zinc-500 mt-0.5">Vehicle & product amortization schedules and statutory payoff math</p>
         </div>
       </div>
 
       <!-- Hub 2: BNPL -->
       <div
         @click="emit('switchTab', 'BNPL')"
-        class="p-4 rounded-lg bg-zinc-900/30 border border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-900/60 transition-all cursor-pointer group space-y-2"
+        class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-900/70 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer group space-y-2.5 shadow-sm hover:shadow-md"
       >
         <div class="flex items-center justify-between">
-          <div class="p-2 rounded bg-zinc-800/60 border border-zinc-700/60 text-zinc-300 group-hover:scale-105 transition-transform">
+          <div class="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 group-hover:scale-105 transition-transform">
             <CreditCard class="w-4 h-4" />
           </div>
-          <span class="text-xs font-mono font-semibold text-zinc-400">{{ bnplAccountCount }} accounts</span>
+          <span class="text-xs font-mono font-semibold text-zinc-400 group-hover:text-zinc-200 transition-colors">{{ bnplAccountCount }} accounts</span>
         </div>
         <div>
-          <h3 class="text-sm font-semibold text-zinc-200">Shopping Credit & BNPL</h3>
-          <p class="text-xs text-zinc-500 mt-0.5">Revolving credit lines, SPayLater/LazPayLater, installment orders & statement reconciliation</p>
+          <h3 class="text-sm font-semibold text-zinc-200 group-hover:text-white transition-colors">Shopping Credit & BNPL</h3>
+          <p class="text-xs text-zinc-500 mt-0.5">E-commerce credit lines, statements, and sub-order schedules</p>
         </div>
       </div>
 
       <!-- Hub 3: Subscriptions -->
       <div
         @click="emit('switchTab', 'SUBSCRIPTION')"
-        class="p-4 rounded-lg bg-zinc-900/30 border border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-900/60 transition-all cursor-pointer group space-y-2"
+        class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-900/70 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer group space-y-2.5 shadow-sm hover:shadow-md"
       >
         <div class="flex items-center justify-between">
-          <div class="p-2 rounded bg-zinc-800/60 border border-zinc-700/60 text-zinc-300 group-hover:scale-105 transition-transform">
+          <div class="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 group-hover:scale-105 transition-transform">
             <Repeat class="w-4 h-4" />
           </div>
-          <span class="text-xs font-mono font-semibold text-zinc-400">{{ subscriptionCount }} services</span>
+          <span class="text-xs font-mono font-semibold text-zinc-400 group-hover:text-zinc-200 transition-colors">{{ subscriptionCount }} services</span>
         </div>
         <div>
-          <h3 class="text-sm font-semibold text-zinc-200">Subscriptions & Trials</h3>
-          <p class="text-xs text-zinc-500 mt-0.5">Recurring subscriptions, annual plans, and Free Trial Hunter auto-debit protection</p>
+          <h3 class="text-sm font-semibold text-zinc-200 group-hover:text-white transition-colors">Subscriptions & Trials</h3>
+          <p class="text-xs text-zinc-500 mt-0.5">Monthly SaaS commitments and pre-billing trial alarms</p>
         </div>
       </div>
 
       <!-- Hub 4: Two-Way Debts -->
       <div
         @click="emit('switchTab', 'DEBT')"
-        class="p-4 rounded-lg bg-zinc-900/30 border border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-900/60 transition-all cursor-pointer group space-y-2"
+        class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-900/70 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer group space-y-2.5 shadow-sm hover:shadow-md"
       >
         <div class="flex items-center justify-between">
-          <div class="p-2 rounded bg-zinc-800/60 border border-zinc-700/60 text-zinc-300 group-hover:scale-105 transition-transform">
+          <div class="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 group-hover:scale-105 transition-transform">
             <HandCoins class="w-4 h-4" />
           </div>
-          <span class="text-xs font-mono font-semibold text-zinc-400">{{ debtTotalCount }} records</span>
+          <span class="text-xs font-mono font-semibold text-zinc-400 group-hover:text-zinc-200 transition-colors">{{ debtTotalCount }} records</span>
         </div>
         <div>
-          <h3 class="text-sm font-semibold text-zinc-200">Two-Way Debt Ledger</h3>
-          <p class="text-xs text-zinc-500 mt-0.5">Personal liabilities vs. debtor receivables with quick recall message templates</p>
+          <h3 class="text-sm font-semibold text-zinc-200 group-hover:text-white transition-colors">Two-Way Debt Ledger</h3>
+          <p class="text-xs text-zinc-500 mt-0.5">Debtors receivable, liabilities payable, and reminder tools</p>
         </div>
       </div>
     </div>

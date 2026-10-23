@@ -39,15 +39,15 @@ class Command(BaseCommand):
             due_items = await get_due_tomorrow_obligations_for_user(user)
 
             if not due_items:
-                # ถ้าไม่มีบิลที่ถึงกำหนดพรุ่งนี้ ให้ส่งข้อความแจ้งพร้อมคำแนะนำ
+                # If no bills are due tomorrow, dispatch a direct test ping
                 self.stdout.write(self.style.WARNING("No bills due tomorrow for this user. Sending a direct test ping..."))
                 await bot.send_message(
                     chat_id=chat_id,
                     text=(
-                        f"🔔 *ทดสอบระบบแจ้งเตือน Telegram Butler*\n\n"
-                        f"สวัสดีคุณ *{user.username}*! การเชื่อมต่อบอทพ่อบ้านทำงานได้สมบูรณ์แบบ 100% ⚡\n\n"
-                        f"ในสถานการณ์จริง ทุกเช้าเวลา *10:00 น.* หากมีบิลหรือ Free Trial ที่จะครบกำหนดในวันพรุ่งนี้ "
-                        f"บอทจะส่งข้อความแจ้งเตือนพร้อมปุ่ม [✅ จ่ายแล้ว] หรือ [🔗 ลิงก์ยกเลิก] มาในห้องแชตนี้ครับ"
+                        f"🔔 *Telegram Butler Notification Test*\n\n"
+                        f"Hello *{user.username}*! Bot connection is working properly (100%) ⚡\n\n"
+                        f"Every morning at *10:00 AM*, any bills or Free Trials expiring tomorrow will "
+                        f"be sent here with quick action buttons ([✅ Paid] or [🔗 Cancel link])."
                     ),
                     parse_mode='Markdown'
                 )

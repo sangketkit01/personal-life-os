@@ -33,7 +33,7 @@ class Command(BaseCommand):
         else:
             self.stdout.write(self.style.WARNING(f'[INFO] User {username} already exists'))
 
-        # สร้าง Master Invite Code เริ่มต้น
+        # Create Master Invite Code if not exists
         invite_code = 'LIFE-FOUNDER-2026'
         invite, inv_created = InviteCode.objects.get_or_create(
             code=invite_code,

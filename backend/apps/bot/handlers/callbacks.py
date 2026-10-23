@@ -10,19 +10,19 @@ User = get_user_model()
 
 @sync_to_async
 def process_pay_callback(obligation_id: str, chat_id: int):
-    """ประมวลผลการกดปุ่ม [จ่ายแล้ว] จาก Telegram อย่างปลอดภัย"""
+    """Safely process [Pay] button click from Telegram"""
     try:
         user = User.objects.get(telegram_chat_id=str(chat_id), is_active=True)
     except User.DoesNotExist:
-        return {'success': False, 'message': 'ไม่พบบัญชีผู้ใช้ หรือยังไม่ได้ผูกบอท'}
+        return {'success': False, 'message': 'User account not found or bot not connected.'}
 
     try:
         obligation = FinancialObligation.objects.get(id=obligation_id, user=user)
     except FinancialObligation.DoesNotExist:
-        return {'success': False, 'message': 'ไม่พบบิลนี้ หรือคุณไม่มีสิทธิ์เข้าถึง'}
+        return {'success': False, 'message': 'Obligation not found or access denied.'}
 
     strategy = ObligationStrategyFactory.get_strategy(obligation.type)
-    summary = strategy.on_paid(obligation, note='ชำระผ่านปุ่มกดใน Telegram Bot')
+    summary = strategy.on_paid(obligation, note='Settled via Telegram Bot action button')
     obligation.refresh_from_db()
 
     return {
@@ -37,19 +37,19 @@ def process_pay_callback(obligation_id: str, chat_id: int):
 
 @sync_to_async
 def process_cancel_trial_callback(obligation_id: str, chat_id: int):
-    """ประมวลผลการกดปุ่ม [กดยกเลิกแล้ว] สำหรับ Free Trial จาก Telegram"""
+    """Process [Cancel Trial] button click from Telegram"""
     try:
         user = User.objects.get(telegram_chat_id=str(chat_id), is_active=True)
     except User.DoesNotExist:
-        return {'success': False, 'message': 'ไม่พบบัญชีผู้ใช้'}
+        return {'success': False, 'message': 'User account not found.'}
 
     try:
         obligation = FinancialObligation.objects.get(id=obligation_id, user=user)
     except FinancialObligation.DoesNotExist:
-        return {'success': False, 'message': 'ไม่พบรายการ Free Trial นี้'}
+        return {'success': False, 'message': 'Free Trial not found.'}
 
     if obligation.type != ObligationType.FREE_TRIAL:
-        return {'success': False, 'message': 'รายการนี้ไม่ใช่ Free Trial'}
+        return {'success': False, 'message': 'This item is not a Free Trial.'}
 
     strategy = ObligationStrategyFactory.get_strategy(obligation.type)
     strategy.cancel(obligation)
@@ -62,19 +62,19 @@ def process_cancel_trial_callback(obligation_id: str, chat_id: int):
 
 @sync_to_async
 def process_done_task_callback(task_id: str, chat_id: int):
-    """ประมวลผลการกดปุ่ม [ทำเสร็จแล้ว] สำหรับงานเอกสารจาก Telegram"""
+    """Process [Mark Done] button click for task document from Telegram"""
     from apps.workspace.models import TaskDocument, TaskStatus
     from django.utils import timezone
 
     try:
         user = User.objects.get(telegram_chat_id=str(chat_id), is_active=True)
     except User.DoesNotExist:
-        return {'success': False, 'message': 'ไม่พบบัญชีผู้ใช้'}
+        return {'success': False, 'message': 'User account not found.'}
 
     try:
         task = TaskDocument.objects.get(id=task_id, user=user)
     except TaskDocument.DoesNotExist:
-        return {'success': False, 'message': 'ไม่พบงานเอกสารนี้'}
+        return {'success': False, 'message': 'Task document not found.'}
 
     task.status = TaskStatus.COMPLETED
     task.completed_at = timezone.now()
@@ -87,16 +87,16 @@ def process_done_task_callback(task_id: str, chat_id: int):
 
 
 async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """จัดการ Event เมื่อผู้ใช้คลิกปุ่ม Inline Button ในแชต Telegram"""
+    """Handle event when user clicks an inline keyboard button in Telegram"""
     query = update.callback_query
     if not query or not query.data or not update.effective_chat:
         return
 
-    await query.answer()  # ปิด Loading spinner บนปุ่มใน Telegram
+    await query.answer()
     chat_id = update.effective_chat.id
     data = query.data
 
-    # 1. Action ชำระเงิน / ตัดงวด
+    # 1. Action Pay / Settle Term
     if data.startswith('pay:'):
         ob_id = data.split(':')[1]
         result = await process_pay_callback(ob_id, chat_id)
@@ -104,47 +104,47 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         if result['success']:
             if result['type'] == 'INSTALLMENT':
                 new_text = (
-                    f"✅ *ชำระค่างวดสำเร็จ!*\n"
-                    f"รายการ: *{result['title']}*\n"
-                    f"• ตัดงวดที่: *{result['summary']['current_term']}/{result['summary']['total_terms']}*\n"
-                    f"• ยอดหนี้คงเหลือ: ฿{result['summary']['remaining_balance']:,.2f}\n"
+                    f"✅ *Installment Payment Recorded!*\n"
+                    f"Item: *{result['title']}*\n"
+                    f"• Term: *{result['summary']['current_term']}/{result['summary']['total_terms']}*\n"
+                    f"• Remaining Balance: ฿{result['summary']['remaining_balance']:,.2f}\n"
                 )
                 if result['status'] == 'COMPLETED':
-                    new_text += "\n🎉 *ยินดีด้วย! คุณผ่อนชำระครบทุกงวดแล้ว (ปิดหนี้เรียบร้อย)*"
+                    new_text += "\n🎉 *Congratulations! All installments have been completed.*"
                 elif result['next_due']:
-                    new_text += f"• วันครบกำหนดงวดถัดไป: *{result['next_due']}*"
+                    new_text += f"• Next Due Date: *{result['next_due']}*"
             else:
-                new_text = f"✅ *บันทึกการชำระเงินสำเร็จ!*\nรายการ: *{result['title']}*"
+                new_text = f"✅ *Payment Recorded Successfully!*\nItem: *{result['title']}*"
 
             await query.edit_message_text(new_text, parse_mode='Markdown')
         else:
             await query.edit_message_text(f"❌ {result['message']}")
 
-    # 2. Action กดยกเลิก Free Trial
+    # 2. Action Cancel Free Trial
     elif data.startswith('cancel_trial:'):
         ob_id = data.split(':')[1]
         result = await process_cancel_trial_callback(ob_id, chat_id)
 
         if result['success']:
             new_text = (
-                f"✅ *บันทึกการยกเลิกเรียบร้อย!*\n"
-                f"รายการ: *{result['title']}*\n"
-                f"สถานะเปลี่ยนเป็น: `CANCELLED` (เก็บเป็นประวัติแล้ว ไม่โดนหักเงินแน่นอน)"
+                f"✅ *Cancellation Recorded!*\n"
+                f"Item: *{result['title']}*\n"
+                f"Status updated to: `CANCELLED` (Will not be charged)"
             )
             await query.edit_message_text(new_text, parse_mode='Markdown')
         else:
             await query.edit_message_text(f"❌ {result['message']}")
 
-    # 3. Action ทำงานเอกสารเสร็จสิ้น
+    # 3. Action Complete Task Document
     elif data.startswith('done_task:'):
         task_id = data.split(':')[1]
         result = await process_done_task_callback(task_id, chat_id)
 
         if result['success']:
             new_text = (
-                f"✅ *บันทึกสถานะงานเอกสารเสร็จสิ้นเรียบร้อย!*\n"
-                f"ชื่องาน: *{result['title']}*\n"
-                f"สถานะเปลี่ยนเป็น: `COMPLETED` 🎉"
+                f"✅ *Task Document Marked Completed!*\n"
+                f"Task: *{result['title']}*\n"
+                f"Status: `COMPLETED` 🎉"
             )
             await query.edit_message_text(new_text, parse_mode='Markdown')
         else:

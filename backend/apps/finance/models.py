@@ -4,31 +4,31 @@ from django.conf import settings
 
 
 class ObligationType(models.TextChoices):
-    INSTALLMENT = 'INSTALLMENT', 'ผ่อนชำระ'
-    SUBSCRIPTION = 'SUBSCRIPTION', 'รายเดือน/รายปี'
-    FREE_TRIAL = 'FREE_TRIAL', 'ทดลองใช้ฟรี'
-    DEBT = 'DEBT', 'หนี้สิน/ยืมคืน'
+    INSTALLMENT = 'INSTALLMENT', 'Installment'
+    SUBSCRIPTION = 'SUBSCRIPTION', 'Subscription'
+    FREE_TRIAL = 'FREE_TRIAL', 'Free Trial'
+    DEBT = 'DEBT', 'Debt & Loan'
 
 
 class ObligationSubtype(models.TextChoices):
-    STANDARD = 'STANDARD', 'มาตรฐานทั่วไป'
-    HIRE_PURCHASE = 'HIRE_PURCHASE', 'สัญญาเช่าซื้อรถ/มอเตอร์ไซค์'
-    BNPL_ACCOUNT = 'BNPL_ACCOUNT', 'วงเงินเครดิตช้อปปิ้งออนไลน์ (BNPL)'
-    BNPL_ORDER = 'BNPL_ORDER', 'รายการซื้อย่อยในวงเงิน BNPL'
-    FORMAL_LOAN = 'FORMAL_LOAN', 'สินเชื่อสถาบันการเงิน/ธนาคาร'
-    INFORMAL_BORROW = 'INFORMAL_BORROW', 'ยืมเงินบุคคล/เพื่อน/ครอบครัว'
+    STANDARD = 'STANDARD', 'Standard'
+    HIRE_PURCHASE = 'HIRE_PURCHASE', 'Hire Purchase / Lease'
+    BNPL_ACCOUNT = 'BNPL_ACCOUNT', 'BNPL Revolving Credit'
+    BNPL_ORDER = 'BNPL_ORDER', 'BNPL Sub-Order'
+    FORMAL_LOAN = 'FORMAL_LOAN', 'Formal Bank Loan'
+    INFORMAL_BORROW = 'INFORMAL_BORROW', 'Informal / Peer Loan'
 
 
 class FlowDirection(models.TextChoices):
-    OUTFLOW = 'OUTFLOW', 'จ่ายออก'
-    INFLOW = 'INFLOW', 'รับเข้า'
+    OUTFLOW = 'OUTFLOW', 'Outflow'
+    INFLOW = 'INFLOW', 'Inflow'
 
 
 class ObligationStatus(models.TextChoices):
-    ACTIVE = 'ACTIVE', 'ใช้งานอยู่'
-    PAUSED = 'PAUSED', 'พักไว้'
-    COMPLETED = 'COMPLETED', 'เสร็จสิ้น'
-    CANCELLED = 'CANCELLED', 'ยกเลิก'
+    ACTIVE = 'ACTIVE', 'Active'
+    PAUSED = 'PAUSED', 'Paused'
+    COMPLETED = 'COMPLETED', 'Completed'
+    CANCELLED = 'CANCELLED', 'Cancelled'
 
 
 class FinancialObligation(models.Model):
@@ -37,21 +37,21 @@ class FinancialObligation(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='financial_obligations',
-        verbose_name="เจ้าของรายการ"
+        verbose_name="User"
     )
-    title = models.CharField(max_length=255, verbose_name="ชื่อรายการ")
+    title = models.CharField(max_length=255, verbose_name="Title")
     type = models.CharField(
         max_length=30,
         choices=ObligationType.choices,
         db_index=True,
-        verbose_name="ประเภทภาระ"
+        verbose_name="Obligation Type"
     )
     subtype = models.CharField(
         max_length=30,
         choices=ObligationSubtype.choices,
         default=ObligationSubtype.STANDARD,
         db_index=True,
-        verbose_name="ประเภทย่อย"
+        verbose_name="Obligation Subtype"
     )
     parent = models.ForeignKey(
         'self',
@@ -59,55 +59,55 @@ class FinancialObligation(models.Model):
         null=True,
         blank=True,
         related_name='sub_orders',
-        verbose_name="บัญชีหลัก (สำหรับรายการย่อย BNPL)"
+        verbose_name="Parent Obligation"
     )
     direction = models.CharField(
         max_length=10,
         choices=FlowDirection.choices,
         default=FlowDirection.OUTFLOW,
-        verbose_name="ทิศทางเงิน"
+        verbose_name="Flow Direction"
     )
     amount = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        verbose_name="จำนวนเงิน"
+        verbose_name="Amount"
     )
     currency = models.CharField(
         max_length=3,
         default='THB',
-        verbose_name="สกุลเงิน"
+        verbose_name="Currency"
     )
     status = models.CharField(
         max_length=20,
         choices=ObligationStatus.choices,
         default=ObligationStatus.ACTIVE,
         db_index=True,
-        verbose_name="สถานะ"
+        verbose_name="Status"
     )
     due_date = models.DateField(
         null=True,
         blank=True,
         db_index=True,
-        verbose_name="วันครบกำหนดถัดไป / วันหมดอายุ Trial"
+        verbose_name="Next Due Date / Trial Expiration"
     )
     billing_day = models.PositiveSmallIntegerField(
         null=True,
         blank=True,
-        verbose_name="วันที่ตัดรอบในแต่ละเดือน (1-31)"
+        verbose_name="Billing Day of Month (1-31)"
     )
     metadata = models.JSONField(
         default=dict,
         blank=True,
-        verbose_name="ข้อมูลเฉพาะ (JSONB)"
+        verbose_name="Metadata"
     )
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="สร้างเมื่อ")
-    updated_at = models.DateTimeField(auto_now=True, verbose_name="แก้ไขล่าสุด")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated At")
 
     class Meta:
         db_table = 'financial_obligations'
         ordering = ['due_date', '-created_at']
-        verbose_name = 'ภาระทางการเงิน'
-        verbose_name_plural = 'ภาระทางการเงินทั้งหมด'
+        verbose_name = 'Financial Obligation'
+        verbose_name_plural = 'Financial Obligations'
         indexes = [
             models.Index(fields=['user', 'status', 'due_date'], name='fin_ob_user_stat_due_idx'),
         ]
@@ -125,39 +125,44 @@ class PaymentHistory(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='payment_histories',
-        verbose_name="เจ้าของรายการ"
+        verbose_name="User"
     )
     obligation = models.ForeignKey(
         FinancialObligation,
         on_delete=models.CASCADE,
         related_name='payment_histories',
-        verbose_name="ภาระผูกพัน"
+        verbose_name="Obligation"
     )
     paid_amount = models.DecimalField(
         max_digits=12,
         decimal_places=2,
-        verbose_name="ยอดที่จ่ายจริง"
+        verbose_name="Paid Amount"
     )
     paid_at = models.DateTimeField(
         auto_now_add=True,
-        verbose_name="วันเวลาที่จ่าย"
+        verbose_name="Paid At"
     )
     term_number = models.PositiveIntegerField(
         null=True,
         blank=True,
-        verbose_name="งวดที่ (สำหรับ Installment)"
+        verbose_name="Term Number"
     )
     note = models.TextField(
         blank=True,
         default='',
-        verbose_name="บันทึกเพิ่มเติม"
+        verbose_name="Note"
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Reversal & Audit Metadata"
     )
 
     class Meta:
         db_table = 'payment_histories'
         ordering = ['-paid_at']
-        verbose_name = 'ประวัติการชำระเงิน'
-        verbose_name_plural = 'ประวัติการชำระเงินทั้งหมด'
+        verbose_name = 'Payment History'
+        verbose_name_plural = 'Payment Histories'
         constraints = [
             models.CheckConstraint(condition=models.Q(paid_amount__gt=0), name='payment_hist_positive_amount'),
         ]
@@ -167,11 +172,11 @@ class PaymentHistory(models.Model):
 
 
 class AttachmentType(models.TextChoices):
-    CONTRACT = 'CONTRACT', 'สัญญา/เอกสารประกอบ'
-    SLIP = 'SLIP', 'สลิปโอนเงิน'
-    STATEMENT = 'STATEMENT', 'ใบแจ้งยอดชำระ'
-    SCREENSHOT = 'SCREENSHOT', 'ภาพแคปหน้าจอ'
-    OTHER = 'OTHER', 'อื่นๆ'
+    CONTRACT = 'CONTRACT', 'Contract Document'
+    SLIP = 'SLIP', 'Payment Slip'
+    STATEMENT = 'STATEMENT', 'Billing Statement'
+    SCREENSHOT = 'SCREENSHOT', 'Screenshot'
+    OTHER = 'OTHER', 'Other'
 
 
 class ObligationAttachment(models.Model):
@@ -180,13 +185,13 @@ class ObligationAttachment(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='obligation_attachments',
-        verbose_name="เจ้าของไฟล์"
+        verbose_name="User"
     )
     obligation = models.ForeignKey(
         FinancialObligation,
         on_delete=models.CASCADE,
         related_name='attachments',
-        verbose_name="ภาระผูกพัน"
+        verbose_name="Obligation"
     )
     payment_history = models.ForeignKey(
         PaymentHistory,
@@ -194,36 +199,56 @@ class ObligationAttachment(models.Model):
         null=True,
         blank=True,
         related_name='attachments',
-        verbose_name="ประวัติการชำระเงินที่เกี่ยวข้อง"
+        verbose_name="Related Payment History"
     )
     file = models.FileField(
         upload_to='finance/attachments/%Y/%m/',
-        verbose_name="ไฟล์แนบ"
+        verbose_name="File",
+        null=True,
+        blank=True
+    )
+    drive_file_id = models.CharField(
+        max_length=128,
+        blank=True,
+        default='',
+        verbose_name="Google Drive File ID"
+    )
+    drive_view_link = models.URLField(
+        max_length=500,
+        blank=True,
+        default='',
+        verbose_name="Google Drive View Link"
+    )
+    drive_download_link = models.URLField(
+        max_length=500,
+        blank=True,
+        default='',
+        verbose_name="Google Drive Download Link"
     )
     file_name = models.CharField(
         max_length=255,
-        verbose_name="ชื่อไฟล์ต้นฉบับ"
+        verbose_name="Original File Name"
     )
     file_type = models.CharField(
         max_length=20,
         choices=AttachmentType.choices,
         default=AttachmentType.OTHER,
-        verbose_name="ประเภทเอกสาร"
+        verbose_name="Document Type"
     )
     file_size = models.PositiveIntegerField(
         default=0,
-        verbose_name="ขนาดไฟล์ (bytes)"
+        verbose_name="File Size (bytes)"
     )
     uploaded_at = models.DateTimeField(
         auto_now_add=True,
-        verbose_name="เวลาที่อัปโหลด"
+        verbose_name="Uploaded At"
     )
 
     class Meta:
         db_table = 'obligation_attachments'
         ordering = ['-uploaded_at']
-        verbose_name = 'เอกสารแนบภาระทางการเงิน'
-        verbose_name_plural = 'เอกสารแนบภาระทางการเงินทั้งหมด'
+        verbose_name = 'Obligation Attachment'
+        verbose_name_plural = 'Obligation Attachments'
 
     def __str__(self):
         return f"{self.file_name} ({self.get_file_type_display()})"

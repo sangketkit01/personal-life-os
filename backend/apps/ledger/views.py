@@ -1,14 +1,14 @@
 import re
 from decimal import Decimal
 from django.db import models, transaction as db_transaction
-from django.db.models import Sum, Q, Count, ProtectedError
+from django.db.models import Sum, Q, Count, ProtectedError, Prefetch
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status, exceptions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.finance.models import ObligationStatus, PaymentHistory
+from apps.finance.models import ObligationType, ObligationStatus, PaymentHistory
 from .models import (
     Account,
     AccountType,
@@ -36,7 +36,7 @@ MONTH_REGEX = re.compile(r'^\d{4}-(0[1-9]|1[0-2])$')
 
 def parse_month_param(month_str: str | None) -> tuple[int, int, str]:
     if not month_str:
-        now = timezone.now()
+        now = timezone.localtime()
         return now.year, now.month, now.strftime('%Y-%m')
     if not MONTH_REGEX.match(month_str):
         raise exceptions.ValidationError({'month': 'Month must be in format YYYY-MM (e.g. 2026-10).'})
@@ -132,11 +132,13 @@ class CategoryViewSet(viewsets.ModelViewSet):
             CategorySeedService.seed_defaults()
 
         cat_type = self.request.query_params.get('type')
-        qs = Category.objects.filter(
-            Q(is_system=True) | Q(user=self.request.user)
-        )
+        user_or_system = Q(is_system=True) | Q(user=self.request.user)
+        qs = Category.objects.filter(user_or_system)
         if self.action == 'list':
-            qs = qs.filter(parent__isnull=True).prefetch_related('subcategories')
+            sub_qs = Category.objects.filter(user_or_system).order_by('name')
+            qs = qs.filter(parent__isnull=True).prefetch_related(
+                Prefetch('subcategories', queryset=sub_qs)
+            )
         else:
             qs = qs.select_related('parent')
 
@@ -224,10 +226,95 @@ class TransactionViewSet(viewsets.ModelViewSet):
             if s.debtor_obligation:
                 ob = s.debtor_obligation
                 ob.status = ObligationStatus.ACTIVE
-                ob.save(update_fields=['status'])
-                PaymentHistory.objects.filter(obligation=ob, user=tx.user).delete()
+                ob_meta = ob.metadata or {}
+                cur_rem = Decimal(str(ob_meta.get('remaining_balance', 0)))
+                new_rem = min(ob.amount, cur_rem + tx.gross_amount)
+                ob_meta['remaining_balance'] = float(round(new_rem, 2))
+                ob.metadata = ob_meta
+                ob.save(update_fields=['status', 'metadata'])
+                if tx.payment_history_id:
+                    PaymentHistory.objects.filter(id=tx.payment_history_id).delete()
+                    tx.payment_history_id = None
+                    tx.payment_history = None
 
-        # 3. Revert account balance atomically with row lock
+        # 3. If this transaction was a master split transaction, clean up child splits' auto-generated radar debtors
+        if tx.is_split or tx.splits.exists():
+            if tx.splits.filter(is_settled=True).exists():
+                raise exceptions.ValidationError(
+                    "Cannot delete split transaction because one or more splits have already been settled. Revert or delete the settlement transactions first."
+                )
+            for s in tx.splits.all():
+                if s.debtor_obligation:
+                    debtor_ob = s.debtor_obligation
+                    s.debtor_obligation = None
+                    s.save(update_fields=['debtor_obligation'])
+                    debtor_ob.delete()
+
+        # 4. If this transaction was linked to an obligation payment, cascade reverse obligation status/term
+        hist = tx.payment_history
+        if hist:
+            ob = hist.obligation or tx.obligation
+            if ob:
+                h_meta = hist.metadata or {}
+                import datetime
+
+                # BNPL Account Reversal (revert sub-orders using recorded advances)
+                if getattr(ob, 'subtype', None) == 'BNPL_ACCOUNT' or ob.metadata.get('subtype') == 'BNPL_ACCOUNT':
+                    advances = h_meta.get('sub_order_advances', [])
+                    from apps.finance.models import FinancialObligation
+                    for item in advances:
+                        try:
+                            sub_order = FinancialObligation.objects.get(id=item['sub_order_id'])
+                            s_meta = sub_order.metadata or {}
+                            s_meta['current_term'] = item['prev_term']
+                            sub_order.metadata = s_meta
+                            sub_order.status = item.get('prev_status', ObligationStatus.ACTIVE)
+                            if item.get('prev_due_date'):
+                                sub_order.due_date = datetime.date.fromisoformat(item['prev_due_date'])
+                            else:
+                                sub_order.due_date = None
+                            sub_order.save()
+                        except FinancialObligation.DoesNotExist:
+                            pass
+
+                    # Refresh parent BNPL next due date
+                    from apps.finance.strategies import ObligationStrategyFactory
+                    parent_strategy = ObligationStrategyFactory.get_strategy(ob.type)
+                    p_summary = parent_strategy.get_summary(ob)
+                    if p_summary.get('next_due_date'):
+                        try:
+                            ob.due_date = datetime.date.fromisoformat(p_summary['next_due_date'])
+                        except Exception:
+                            pass
+                    ob.save()
+
+                elif ob.type == ObligationType.INSTALLMENT:
+                    cur_t = int(ob.metadata.get('current_term', 1))
+                    new_t = max(0, cur_t - 1)
+                    ob.metadata['current_term'] = new_t
+                    if new_t < int(ob.metadata.get('total_terms', 1)):
+                        ob.status = ObligationStatus.ACTIVE
+                    if h_meta.get('prev_due_date'):
+                        ob.due_date = datetime.date.fromisoformat(h_meta['prev_due_date'])
+                    ob.save(update_fields=['metadata', 'status', 'due_date'])
+
+                elif ob.type == ObligationType.DEBT:
+                    cur_rem = Decimal(str(ob.metadata.get('remaining_balance', 0)))
+                    new_rem = min(ob.amount, cur_rem + tx.gross_amount)
+                    ob.metadata['remaining_balance'] = float(round(new_rem, 2))
+                    if new_rem > Decimal('0.00'):
+                        ob.status = ObligationStatus.ACTIVE
+                    ob.save(update_fields=['metadata', 'status'])
+
+                elif ob.type == ObligationType.SUBSCRIPTION:
+                    if h_meta.get('prev_due_date'):
+                        ob.due_date = datetime.date.fromisoformat(h_meta['prev_due_date'])
+                        ob.save(update_fields=['due_date'])
+
+            if hist:
+                hist.delete()
+
+        # 5. Revert account balance atomically with row lock
         locked_acc = Account.objects.select_for_update().get(id=tx.account_id)
         if tx.transaction_type == TransactionType.INFLOW:
             Account.objects.filter(id=locked_acc.id).update(
@@ -240,7 +327,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 updated_at=timezone.now()
             )
 
-        # 4. Delete transaction
+        # 6. Delete transaction
         tx.delete()
 
     @action(detail=False, methods=['get'])
@@ -249,15 +336,24 @@ class TransactionViewSet(viewsets.ModelViewSet):
         Calculates executive monthly cashflow metrics:
         - Total Inflow
         - Total Gross Outflow vs Net Outflow
-        - Net Cash Flow (Inflow - Net Outflow)
+        - Net Cash Flow (Pure pocket cashflow: Total Inflow - Total Gross Outflow)
         - Total Liquid Balance across accounts
         - Pending Shared Split Receivables
         """
         user = request.user
         year, month, period_month = parse_month_param(request.query_params.get('month'))
+        currency = request.query_params.get('currency')
+        if not currency:
+            currency = (
+                Account.objects.filter(user=user, is_default=True).values_list('currency', flat=True).first()
+                or Account.objects.filter(user=user).values_list('currency', flat=True).first()
+                or 'THB'
+            )
+        currency = currency.strip().upper()
 
         tx_qs = Transaction.objects.filter(
             user=user,
+            account__currency=currency,
             transaction_date__year=year,
             transaction_date__month=month
         )
@@ -281,36 +377,44 @@ class TransactionViewSet(viewsets.ModelViewSet):
         total_gross_outflow = outflow_agg['gross']
         total_net_outflow = outflow_agg['net']
 
-        # Net cashflow is based on user's net personal expense share
-        net_cash_flow = total_inflow - total_net_outflow
+        # Pure pocket cash flow: Inflow minus Gross Outflow
+        net_cash_flow = total_inflow - total_gross_outflow
 
         # Total balances across active accounts
-        acc_qs = Account.objects.filter(user=user, is_archived=False)
+        acc_qs = Account.objects.filter(user=user, is_archived=False, currency=currency)
+
         total_liquid = acc_qs.filter(
             account_type__in=[AccountType.BANK, AccountType.E_WALLET, AccountType.CASH, AccountType.BROKERAGE_CASH]
         ).aggregate(total=Coalesce(Sum('current_balance'), Decimal('0.00')))['total']
 
+        # Credit debt reflects only negative card balances (positive balance is not debt)
         total_credit_debt = acc_qs.filter(
-            account_type=AccountType.CREDIT_CARD
+            account_type=AccountType.CREDIT_CARD,
+            current_balance__lt=Decimal('0.00')
         ).aggregate(total=Coalesce(Sum('current_balance'), Decimal('0.00')))['total']
+        total_credit_debt = abs(total_credit_debt)
 
         # Pending receivables from splits
-        pending_splits = TransactionSplit.objects.filter(
+        splits_qs = TransactionSplit.objects.filter(
             transaction__user=user,
+            transaction__account__currency=currency,
             is_settled=False
-        ).aggregate(
+        )
+
+        pending_splits = splits_qs.aggregate(
             total=Coalesce(Sum('amount'), Decimal('0.00')),
             count=Count('id')
         )
 
         return Response({
             'period_month': period_month,
+            'currency': currency,
             'total_inflow': str(total_inflow),
             'total_gross_outflow': str(total_gross_outflow),
             'total_net_outflow': str(total_net_outflow),
             'net_cash_flow': str(net_cash_flow),
             'total_liquid_balance': str(total_liquid),
-            'total_credit_debt': str(abs(total_credit_debt)),
+            'total_credit_debt': str(total_credit_debt),
             'pending_splits_amount': str(pending_splits['total']),
             'pending_splits_count': pending_splits['count']
         })

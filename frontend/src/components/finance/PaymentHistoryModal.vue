@@ -23,7 +23,7 @@
           </span>
         </div>
         <h2 class="text-base font-semibold text-zinc-100 tracking-tight">{{ obligation.title }}</h2>
-        <p class="text-xs text-zinc-500 mt-0.5">Historical payment timeline, transfer slips, and contract documents</p>
+        <p class="text-xs text-zinc-500 mt-0.5">Payment settlement logs, verified slips, and contract attachments</p>
       </div>
 
       <!-- Quick Summary Row -->
@@ -92,14 +92,14 @@
                 <a
                   v-for="att in hist.attachments"
                   :key="att.id"
-                  :href="att.file_url"
+                  :href="att.drive_view_link || att.file_url"
                   target="_blank"
                   class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors"
                   title="View Transfer Slip"
                 >
                   <FileText class="w-3 h-3 text-zinc-400" />
                   <span>Slip</span>
-                  <ExternalLink class="w-2.5 h-2.5" />
+                  <ExternalLink class="w-2.5 h-2.5 text-zinc-400" />
                 </a>
               </span>
             </div>
@@ -118,9 +118,29 @@
 
       <!-- TAB 2: ATTACHMENTS & CONTRACTS -->
       <div v-else class="space-y-3.5 max-h-80 overflow-y-auto pr-1">
-        <!-- Upload Form -->
-        <div class="p-3 rounded-lg bg-zinc-900/50 border border-zinc-800 text-xs space-y-2.5">
-          <div class="text-[11px] font-medium text-zinc-300">Upload Document / Slip / Contract</div>
+        <!-- Google Drive Connection Guard -->
+        <div
+          v-if="!storageStore.isConnected"
+          class="p-3 rounded-lg bg-zinc-900/60 border border-zinc-800 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+        >
+          <div class="flex items-center gap-2 text-zinc-400 text-xs">
+            <HardDrive class="w-4 h-4 text-zinc-500 shrink-0" />
+            <span>Google Drive connection required to attach documents and contracts</span>
+          </div>
+          <router-link
+            to="/settings"
+            class="text-xs text-zinc-200 hover:underline font-mono shrink-0 font-medium"
+          >
+            Settings &rarr;
+          </router-link>
+        </div>
+
+        <!-- Upload Form (Gated) -->
+        <div v-else class="p-3 rounded-lg bg-zinc-900/50 border border-zinc-800 text-xs space-y-2.5">
+          <div class="flex items-center justify-between text-[11px] font-medium text-zinc-300">
+            <span>Upload Document / Slip / Contract</span>
+            <span class="text-[10px] text-zinc-500 font-mono">Direct GDrive Cloud</span>
+          </div>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
               <select
@@ -136,7 +156,7 @@
             </div>
             <div class="sm:col-span-2 flex items-center gap-2">
               <label class="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded bg-zinc-900 border border-dashed border-zinc-700 hover:border-zinc-500 cursor-pointer text-xs text-zinc-400 transition-colors truncate">
-                <Upload class="w-3.5 h-3.5" />
+                <Upload class="w-3.5 h-3.5 text-zinc-400" />
                 <span class="truncate">{{ pendingDocFile ? pendingDocFile.name : 'Choose file (PDF, IMG)' }}</span>
                 <input type="file" class="hidden" @change="handleDocFileChange" />
               </label>
@@ -149,6 +169,12 @@
                 {{ isUploading ? 'Uploading...' : 'Upload' }}
               </button>
             </div>
+          </div>
+          <div v-if="storageStore.uploadProgress !== null" class="w-full bg-zinc-800 rounded-full h-1 overflow-hidden">
+            <div
+              class="bg-zinc-200 h-1 transition-all duration-150"
+              :style="{ width: `${storageStore.uploadProgress}%` }"
+            ></div>
           </div>
         </div>
 
@@ -169,7 +195,7 @@
             <FileText class="w-4 h-4 text-zinc-400 shrink-0" />
             <div class="truncate">
               <a
-                :href="att.file_url"
+                :href="att.drive_view_link || att.file_url"
                 target="_blank"
                 class="font-medium text-zinc-200 hover:text-white transition-colors truncate block"
               >
@@ -186,17 +212,17 @@
 
           <div class="flex items-center gap-1.5 shrink-0">
             <a
-              :href="att.file_url"
+              :href="att.drive_view_link || att.file_url"
               target="_blank"
               class="p-1 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
               title="Open File"
             >
-              <ExternalLink class="w-3.5 h-3.5" />
+              <ExternalLink class="w-3.5 h-3.5 text-zinc-400" />
             </a>
             <button
               type="button"
               @click="handleDeleteDoc(att.id)"
-              class="p-1 rounded text-zinc-500 hover:text-rose-400 transition-colors"
+              class="p-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors"
               title="Delete attachment"
             >
               <Trash2 class="w-3.5 h-3.5" />
@@ -225,9 +251,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useFinanceStore } from '../../stores/finance'
+import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
 import type { FinancialObligation, AttachmentType } from '../../types/finance'
-import { X, FileText, ExternalLink, Upload, Trash2 } from 'lucide-vue-next'
+import { X, FileText, ExternalLink, Upload, Trash2, HardDrive } from 'lucide-vue-next'
 
 const props = defineProps<{
   isOpen: boolean
@@ -239,6 +266,7 @@ const emit = defineEmits<{
 }>()
 
 const financeStore = useFinanceStore()
+const storageStore = useStorageStore()
 const toast = useToastStore()
 
 const activeTab = ref<'TRANSACTIONS' | 'DOCUMENTS'>('TRANSACTIONS')
@@ -267,18 +295,23 @@ function handleDocFileChange(event: Event) {
 
 async function handleUploadDoc() {
   if (!props.obligation || !pendingDocFile.value) return
+  if (!storageStore.isConnected) {
+    toast.error('Google Drive connection is required.')
+    return
+  }
   isUploading.value = true
   try {
-    await financeStore.uploadAttachment({
-      obligation_id: props.obligation.id,
-      file: pendingDocFile.value,
-      file_type: uploadDocType.value,
-    })
+    // Zero-Disk Direct GDrive Upload
+    await storageStore.uploadDirect(
+      pendingDocFile.value,
+      'finance',
+      props.obligation.id
+    )
     pendingDocFile.value = null
     await financeStore.fetchObligations()
-    toast.success('Document uploaded successfully')
+    toast.success('Document uploaded to Google Drive')
   } catch (err: any) {
-    toast.error('Failed to upload document')
+    toast.error(err?.message || 'Failed to upload document')
   } finally {
     isUploading.value = false
   }

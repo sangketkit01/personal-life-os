@@ -255,3 +255,43 @@ export interface MarketStatusResponse {
   should_poll_realtime: boolean
   holdings_status: HoldingMarketStatus[]
 }
+
+export const PORTFOLIO_COLORS = [
+  '#3B82F6', // Blue
+  '#10B981', // Emerald
+  '#8B5CF6', // Purple
+  '#F59E0B', // Amber
+  '#EC4899', // Pink
+  '#06B6D4', // Cyan
+  '#F97316', // Orange
+  '#6366F1'  // Indigo
+] as const
+
+const COLOR_NAME_MAP: Record<string, string> = {
+  blue: '#3B82F6',
+  emerald: '#10B981',
+  green: '#10B981',
+  purple: '#8B5CF6',
+  violet: '#8B5CF6',
+  amber: '#F59E0B',
+  yellow: '#F59E0B',
+  orange: '#F97316',
+  pink: '#EC4899',
+  rose: '#F43F5E',
+  red: '#EF4444',
+  cyan: '#06B6D4',
+  sky: '#0EA5E9',
+  teal: '#14B8A6',
+  indigo: '#6366F1',
+  zinc: '#71717A',
+  gray: '#71717A'
+}
+
+export function getPortfolioColor(color?: string | null): string {
+  if (!color) return '#3B82F6'
+  const trimmed = color.trim()
+  if (trimmed.startsWith('#') || trimmed.startsWith('rgb')) {
+    return trimmed
+  }
+  return COLOR_NAME_MAP[trimmed.toLowerCase()] || trimmed || '#3B82F6'
+}

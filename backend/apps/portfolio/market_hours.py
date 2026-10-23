@@ -6,7 +6,7 @@ from .models import StockPriceSnapshot
 
 
 def get_market_category(ticker: str, asset_type: Optional[str] = None) -> str:
-    """ระบุประเภทตลาดของสินทรัพย์: CRYPTO, SET, US, หรือ FOREX"""
+    """Determine market category for an asset: CRYPTO, SET, US, or FOREX."""
     if not ticker:
         return 'US'
     t = ticker.strip().upper()
@@ -21,9 +21,9 @@ def get_market_category(ticker: str, asset_type: Optional[str] = None) -> str:
 
 def get_set_market_status(now_ict: Optional[datetime] = None) -> Dict[str, Any]:
     """
-    ตรวจสอบเวลาเปิด-ปิดตลาดหลักทรัพย์แห่งประเทศไทย (SET / MAI)
-    - เวลาทำการ: จันทร์ - ศุกร์ (เสาร์-อาทิตย์ ปิด)
-    - หน้าต่างตลาดเคลื่อนไหว: 09:30 - 17:00 ICT (รวมช่วง Pre-open เช้า-บ่าย และ Run-off เย็น)
+    Check market hours for Stock Exchange of Thailand (SET / MAI).
+    - Trading days: Monday - Friday (Weekends closed)
+    - Active trading window: 09:30 - 17:00 ICT (includes morning/afternoon pre-open and evening run-off).
     """
     tz_ict = zoneinfo.ZoneInfo('Asia/Bangkok')
     if not now_ict:
@@ -34,7 +34,7 @@ def get_set_market_status(now_ict: Optional[datetime] = None) -> Dict[str, Any]:
     weekday = now_ict.weekday()  # 0=Monday, 4=Friday, 5=Saturday, 6=Sunday
     current_time = now_ict.time()
 
-    # วันหยุดสุดสัปดาห์
+    # Weekend check
     if weekday >= 5:
         days_until_mon = (7 - weekday) % 7
         next_open_dt = (now_ict + timedelta(days=days_until_mon)).replace(
@@ -50,7 +50,7 @@ def get_set_market_status(now_ict: Optional[datetime] = None) -> Dict[str, Any]:
             'hours_description': 'Mon-Fri 09:30 - 17:00 ICT'
         }
 
-    # วันธรรมดา: ช่วงเวลาตลาด
+    # Weekdays: Market session intervals
     t_pre_morning = dtime(9, 30)
     t_open_morning = dtime(10, 0)
     t_close_morning = dtime(12, 30)
@@ -119,7 +119,7 @@ def get_set_market_status(now_ict: Optional[datetime] = None) -> Dict[str, Any]:
             'hours_description': 'Mon-Fri 09:30 - 17:00 ICT'
         }
     else:
-        # หลัง 17:00 ICT
+        # After 17:00 ICT
         next_day = 'Tomorrow 09:30 ICT' if weekday < 4 else 'Mon 09:30 ICT'
         return {
             'market': 'SET',
@@ -134,12 +134,12 @@ def get_set_market_status(now_ict: Optional[datetime] = None) -> Dict[str, Any]:
 
 def get_us_market_status(now_et: Optional[datetime] = None) -> Dict[str, Any]:
     """
-    ตรวจสอบเวลาเปิด-ปิดตลาดหุ้นสหรัฐอเมริกา (NYSE / NASDAQ)
-    - เวลาทำการ: จันทร์ - ศุกร์ (เสาร์-อาทิตย์ ปิด)
+    Check market hours for US equity markets (NYSE / NASDAQ).
+    - Trading days: Monday - Friday (Weekends closed)
     - Pre-Market: 04:00 - 09:30 ET
     - Regular Trading: 09:30 - 16:00 ET
     - After-Hours: 16:00 - 20:00 ET
-    - Active รวม: 04:00 - 20:00 ET (คิดเป็นเวลาไทยประมาณ 15:00 - 07:00 ICT วันถัดไป)
+    - Total active hours: 04:00 - 20:00 ET (approx 15:00 - 07:00 ICT next day).
     """
     tz_et = zoneinfo.ZoneInfo('America/New_York')
     if not now_et:
@@ -220,7 +220,7 @@ def get_us_market_status(now_et: Optional[datetime] = None) -> Dict[str, Any]:
 
 
 def get_crypto_market_status() -> Dict[str, Any]:
-    """Crypto ตลาดเปิดตลอด 24 ชั่วโมง 7 วัน"""
+    """Crypto markets operate 24/7 continuously."""
     return {
         'market': 'CRYPTO',
         'name': 'Crypto Spot Market',
@@ -233,7 +233,7 @@ def get_crypto_market_status() -> Dict[str, Any]:
 
 
 def get_all_market_statuses() -> Dict[str, Any]:
-    """ดึงสถานะตลาดสำคัญทั้งหมดในระบบ (SET, US, CRYPTO)"""
+    """Retrieve status for all key markets (SET, US, CRYPTO)."""
     set_status = get_set_market_status()
     us_status = get_us_market_status()
     crypto_status = get_crypto_market_status()
@@ -251,7 +251,7 @@ def get_all_market_statuses() -> Dict[str, Any]:
 
 
 def is_market_open_for_ticker(ticker: str, asset_type: Optional[str] = None) -> bool:
-    """ตรวจสอบว่าตลาดของหุ้นตัวนี้กำลังเปิดอยู่หรือไม่"""
+    """Check whether the market for this ticker is currently open."""
     m = get_market_category(ticker, asset_type)
     if m == 'CRYPTO':
         return True
@@ -267,31 +267,31 @@ def is_market_open_for_ticker(ticker: str, asset_type: Optional[str] = None) -> 
 
 def should_refresh_ticker(ticker: str, asset_type: Optional[str] = None, force: bool = False) -> bool:
     """
-    ตรวจสอบอย่างชาญฉลาดว่าควรยิง API ดึงราคาหุ้นตัวนี้หรือไม่
-    1. ถ้า force=True: ยิงเสมอ
-    2. ถ้าตลาดของสินทรัพย์เปิดอยู่: ยิงได้ (เพราะราคาเปลี่ยนแปลงตามจริง)
-    3. ถ้าตลาดปิดอยู่:
-       - หากยังไม่เคยมี Snapshot ในฐานข้อมูลเลย: ให้ดึง 1 ครั้งเพื่อบันทึกราคาปิดล่าสุด
-       - หากเคยมี Snapshot แล้วและเพิ่งดึงไปไม่เกิน 4 ชั่วโมง: ไม่ต้องยิงซ้ำ (ประหยัดโควตาและลดภาระเซิร์ฟเวอร์)
+    Smart evaluation of whether an asset price should be refreshed via market API.
+    1. If force=True: Always fetch.
+    2. If the asset's market is open: Fetch according to schedule.
+    3. If the market is closed:
+       - If no snapshot exists in DB: Fetch once to establish baseline price.
+       - If snapshot exists and was fetched recently: Skip to conserve API quota and reduce load.
     """
     if force:
         return True
 
-    # 1. ถ้าตลาดเปิด ดึงได้ตลอดตามรอบ
+    # 1. If market is open, allow routine refresh
     if is_market_open_for_ticker(ticker, asset_type):
         return True
 
-    # 2. ถ้าตลาดปิด ตรวจสอบประวัติ Snapshot
+    # 2. If market is closed, inspect snapshot freshness
     snap = StockPriceSnapshot.objects.filter(ticker=ticker).first()
     if not snap:
-        # ยังไม่มีข้อมูลราคาในระบบ ให้ดึง 1 ครั้ง
+        # No price data exists yet, fetch once
         return True
 
-    # ถ้าตลาดปิดและมีข้อมูลที่ดึงไว้ ให้ใช้ TTL ตามประเภทตลาดและวัน
+    # Apply market-specific TTL when closed
     now = timezone.now()
     m = get_market_category(ticker, asset_type)
     if m == 'US' and now.weekday() < 5:
-        # ในวันธรรมดาสำหรับหุ้นสหรัฐฯ มีการซื้อขาย Post-Market & Night Market ต่อเนื่อง ให้แคชไว้เพียง 15 นาที
+        # On weekdays for US equities, post-market & overnight activity: cache for 15 minutes
         if (now - snap.fetched_at) < timedelta(minutes=15):
             return False
     else:

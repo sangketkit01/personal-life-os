@@ -152,7 +152,7 @@
             @click="copyRecallMessage"
             class="py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-colors flex items-center gap-1.5"
           >
-            <Check v-if="copiedRecall" class="w-3.5 h-3.5 text-emerald-400" />
+            <Check v-if="copiedRecall" class="w-3.5 h-3.5 text-zinc-300" />
             <Copy v-else class="w-3.5 h-3.5 text-zinc-400" />
             <span>{{ copiedRecall ? 'Copied to Clipboard!' : 'Copy Text' }}</span>
           </button>
@@ -248,7 +248,7 @@
                   </td>
                   <td class="py-2.5 text-right pr-4">
                     <span v-if="p.attachments && p.attachments.length > 0" class="text-zinc-300">
-                      <a :href="p.attachments[0].file_url || p.attachments[0].file" target="_blank" class="hover:underline flex items-center justify-end gap-1 text-[11px]">
+                      <a :href="p.attachments[0].drive_view_link || p.attachments[0].file_url || p.attachments[0].file" target="_blank" class="hover:underline flex items-center justify-end gap-1 text-[11px]">
                         <FileText class="w-3 h-3 text-zinc-400" />
                         <span>Slip</span>
                       </a>
@@ -324,16 +324,40 @@
               </p>
             </div>
 
-            <label class="px-3.5 py-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-mono transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm">
-              <Upload class="w-3.5 h-3.5 text-zinc-400" />
-              <span>{{ isActionLoading ? 'Uploading...' : 'Upload Document' }}</span>
-              <input
-                type="file"
-                class="hidden"
-                accept=".pdf,.png,.jpg,.jpeg,.webp"
-                @change="handleFileUpload"
-              />
-            </label>
+            <div
+              v-if="!storageStore.isConnected"
+              class="p-2.5 rounded bg-zinc-950/60 border border-zinc-800 text-xs flex items-center justify-between gap-3 font-mono"
+            >
+              <div class="flex items-center gap-2 text-zinc-400">
+                <HardDrive class="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                <span>Google Drive required to upload documents</span>
+              </div>
+              <router-link
+                to="/settings"
+                class="text-zinc-200 hover:underline font-mono text-xs font-medium shrink-0"
+              >
+                Settings &rarr;
+              </router-link>
+            </div>
+
+            <div v-else class="space-y-2">
+              <label class="px-3.5 py-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-mono transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm">
+                <Upload class="w-3.5 h-3.5 text-zinc-400" />
+                <span>{{ isActionLoading ? 'Uploading...' : 'Upload Document' }}</span>
+                <input
+                  type="file"
+                  class="hidden"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp"
+                  @change="handleFileUpload"
+                />
+              </label>
+              <div v-if="storageStore.uploadProgress !== null" class="w-full bg-zinc-800 rounded-full h-1 overflow-hidden">
+                <div
+                  class="bg-zinc-200 h-1 transition-all duration-150"
+                  :style="{ width: `${storageStore.uploadProgress}%` }"
+                ></div>
+              </div>
+            </div>
           </div>
 
           <div v-if="!debt.attachments || debt.attachments.length === 0" class="p-8 text-center text-xs font-mono text-zinc-500 bg-zinc-950/40 rounded-lg border border-zinc-800">
@@ -350,7 +374,7 @@
                 <FileText class="w-4 h-4 text-zinc-400 shrink-0" />
                 <div class="truncate">
                   <a
-                    :href="att.file_url || att.file"
+                    :href="att.drive_view_link || att.file_url || att.file"
                     target="_blank"
                     class="text-zinc-200 hover:underline truncate block font-medium"
                   >
@@ -364,7 +388,7 @@
 
               <div class="flex items-center gap-1.5">
                 <a
-                  :href="att.file_url || att.file"
+                  :href="att.drive_download_link || att.drive_view_link || att.file_url || att.file"
                   target="_blank"
                   download
                   class="p-1 rounded text-zinc-400 hover:text-white transition-colors"
@@ -407,6 +431,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDebts } from '../../composables/finance/useDebts'
+import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
 import PayModal from '../../components/finance/PayModal.vue'
 import EditObligationModal from '../../components/finance/EditObligationModal.vue'
@@ -421,19 +446,20 @@ import {
   History,
   FileText,
   Upload,
-  Download
+  Download,
+  HardDrive
 } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToastStore()
+const storageStore = useStorageStore()
 const {
   currentDebt: debt,
   isLoading,
   isActionLoading,
   fetchDebtById,
   deleteDebt,
-  uploadAttachment,
   deleteAttachment
 } = useDebts()
 
@@ -501,13 +527,18 @@ async function handleFileUpload(e: Event) {
   const target = e.target as HTMLInputElement
   const file = target.files?.[0]
   if (!file) return
+  if (!storageStore.isConnected) {
+    toast.error('Google Drive connection is required')
+    return
+  }
 
   try {
-    await uploadAttachment(debtId.value, file, 'CONTRACT')
-    toast.success('Document uploaded to vault')
+    await storageStore.uploadDirect(file, 'finance', debtId.value)
+    toast.success('Document uploaded to Google Drive vault')
     target.value = ''
+    await refreshDebt()
   } catch (err: any) {
-    toast.error('Failed to upload file')
+    toast.error(err?.message || 'Failed to upload file')
   }
 }
 

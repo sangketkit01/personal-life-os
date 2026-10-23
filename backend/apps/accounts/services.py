@@ -12,7 +12,7 @@ def log_activity(
     status: str = 'SUCCESS'
 ) -> ActivityLog:
     """
-    บันทึกกิจกรรมความปลอดภัยลง Audit Log (Security & Activity Trail)
+    Record security and user activity event in Audit Log (Security & Activity Trail).
     """
     ip_address = get_client_ip(request) if request else None
     device_name = get_device_name(request) if request else ''

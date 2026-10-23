@@ -16,11 +16,10 @@
       <div class="mb-4">
         <div class="flex items-center gap-2">
           <ArrowRightLeft class="w-4 h-4 text-zinc-400" />
-          <h3 class="text-base font-semibold text-zinc-100 tracking-tight">Transfer Between Accounts</h3>
+          <h3 class="text-base font-semibold text-zinc-100 tracking-tight">
+            Transfer Between Accounts
+          </h3>
         </div>
-        <p class="text-xs text-zinc-500 mt-0.5">
-          Atomic double-entry movement between your wallets without inflating income or expenses
-        </p>
       </div>
 
       <div v-if="errorMessage" class="mb-4 p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
@@ -30,11 +29,11 @@
       <form @submit.prevent="handleTransfer" class="space-y-4 text-xs font-mono">
         <!-- Source Account -->
         <div>
-          <label class="block text-[10px] uppercase text-zinc-400 mb-1 font-semibold">Source Account (From) <span class="text-rose-400">*</span></label>
+          <label class="block text-[11px] text-zinc-300 mb-1 font-medium">Source Account <span class="text-rose-400">*</span></label>
           <select
             v-model="form.source_account_id"
             required
-            class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 focus:outline-none focus:border-zinc-600 font-mono"
+            class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
           >
             <option
               v-for="acc in ledgerStore.accounts"
@@ -49,11 +48,11 @@
 
         <!-- Target Account -->
         <div>
-          <label class="block text-[10px] uppercase text-zinc-400 mb-1 font-semibold">Destination Account (To) <span class="text-rose-400">*</span></label>
+          <label class="block text-[11px] text-zinc-300 mb-1 font-medium">Target Account <span class="text-rose-400">*</span></label>
           <select
             v-model="form.target_account_id"
             required
-            class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 focus:outline-none focus:border-zinc-600 font-mono"
+            class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
           >
             <option
               v-for="acc in ledgerStore.accounts"
@@ -68,7 +67,7 @@
 
         <!-- Amount -->
         <div>
-          <label class="block text-[10px] uppercase text-zinc-400 mb-1 font-semibold">Transfer Amount (฿) <span class="text-rose-400">*</span></label>
+          <label class="block text-[11px] text-zinc-300 mb-1 font-medium">Transfer Amount (฿) <span class="text-rose-400">*</span></label>
           <div class="relative">
             <span class="absolute left-3 top-2 text-zinc-500">฿</span>
             <input
@@ -78,7 +77,7 @@
               min="0.01"
               required
               placeholder="0.00"
-              class="w-full pl-7 pr-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 font-mono text-sm font-semibold"
+              class="w-full pl-7 pr-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono text-sm font-semibold transition-colors"
             />
           </div>
         </div>
@@ -86,21 +85,21 @@
         <!-- Date & Title -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-[10px] uppercase text-zinc-400 mb-1 font-semibold">Date</label>
+            <label class="block text-[11px] text-zinc-300 mb-1 font-medium">Transfer Date</label>
             <input
               v-model="form.transaction_date"
               type="date"
               required
-              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 focus:outline-none focus:border-zinc-600 font-mono"
+              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
             />
           </div>
           <div>
-            <label class="block text-[10px] uppercase text-zinc-400 mb-1 font-semibold">Transfer Note / Memo</label>
+            <label class="block text-[11px] text-zinc-300 mb-1 font-medium">Note / Description (Optional)</label>
             <input
               v-model="form.title"
               type="text"
-              placeholder="e.g. Credit Card Payment"
-              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+              placeholder="e.g. Credit Card Settlement"
+              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 transition-colors"
             />
           </div>
         </div>
@@ -110,17 +109,17 @@
           <button
             type="button"
             @click="emit('close')"
-            class="px-3.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-sans text-zinc-300 transition-colors"
+            class="px-3.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-sans text-zinc-300 transition-all active:scale-[0.98]"
           >
             Cancel
           </button>
           <button
             type="submit"
             :disabled="isSubmitting || !form.source_account_id || !form.target_account_id || !form.amount"
-            class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-sans font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5"
+            class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-sans font-semibold transition-all active:scale-[0.98] disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
           >
             <ArrowRightLeft class="w-3.5 h-3.5" />
-            <span>{{ isSubmitting ? 'Transferring...' : 'Execute Transfer' }}</span>
+            <span>{{ isSubmitting ? 'Transferring...' : 'Confirm Transfer' }}</span>
           </button>
         </div>
       </form>

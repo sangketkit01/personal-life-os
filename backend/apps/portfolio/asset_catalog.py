@@ -3,48 +3,48 @@ from typing import List, Dict, Any, Optional
 from .models import AssetType
 
 
-# ฐานข้อมูลสินทรัพย์อ้างอิงเริ่มต้น (Instant Sub-millisecond Lookup)
+# Default Reference Asset Database (Instant Sub-millisecond Lookup)
 MASTER_ASSET_CATALOG: List[Dict[str, Any]] = [
-    # --- หุ้นไทย SET50 / SET100 ยอดนิยม ---
-    {'ticker': 'PTT.BK', 'name': 'PTT Public Company Limited (ปตท.)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'DELTA.BK', 'name': 'Delta Electronics (Thailand) (เดลต้า อีเลคโทรนิคส์)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'AOT.BK', 'name': 'Airports of Thailand (ท่าอากาศยานไทย)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'CPALL.BK', 'name': 'CP ALL Public Company Limited (ซีพี ออลล์)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'ADVANC.BK', 'name': 'Advanced Info Service (แอดวานซ์ อินโฟร์ เซอร์วิส - AIS)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'GULF.BK', 'name': 'Gulf Energy Development (กัลฟ์ เอ็นเนอร์จี)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'SCB.BK', 'name': 'SCB X Public Company Limited (เอสซีบี เอกซ์)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'KBANK.BK', 'name': 'Kasikornbank (ธนาคารกสิกรไทย)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'BBL.BK', 'name': 'Bangkok Bank (ธนาคารกรุงเทพ)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'KTB.BK', 'name': 'Krungthai Bank (ธนาคารกรุงไทย)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'BDMS.BK', 'name': 'Bangkok Dusit Medical Services (กรุงเทพดุสิตเวชการ)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'BH.BK', 'name': 'Bumrungrad Hospital (โรงพยาบาลบำรุงราษฎร์)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'SCC.BK', 'name': 'Siam Cement (ปูนซิเมนต์ไทย)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'CPN.BK', 'name': 'Central Pattana (เซ็นทรัลพัฒนา)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'CRC.BK', 'name': 'Central Retail Corporation (เซ็นทรัล รีเทล)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'MINT.BK', 'name': 'Minor International (ไมเนอร์ อินเตอร์เนชั่นแนล)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'TRUE.BK', 'name': 'True Corporation (ทรู คอร์ปอเรชั่น)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'INTUCH.BK', 'name': 'Intouch Holdings (อินทัช โฮลดิ้งส์)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'HMPRO.BK', 'name': 'Home Product Center (โฮม โปรดักส์ เซ็นเตอร์)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'WHA.BK', 'name': 'WHA Corporation (ดับบลิวเอชเอ คอร์ปอเรชั่น)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'BEM.BK', 'name': 'Bangkok Expressway and Metro (ทางด่วนและรถไฟฟ้ากรุงเทพ)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'BTS.BK', 'name': 'BTS Group Holdings (บีทีเอส กรุ๊ป)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'BANPU.BK', 'name': 'Banpu Public Company Limited (บ้านปู)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'IVL.BK', 'name': 'Indorama Ventures (อินโดรามา เวนเจอร์ส)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'KTC.BK', 'name': 'Krungthai Card (บัตรกรุงไทย)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'MTC.BK', 'name': 'Muangthai Capital (เมืองไทย แคปปิตอล)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'SAWAD.BK', 'name': 'Srisawad Corporation (ศรีสวัสดิ์ คอร์ปอเรชั่น)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'OSP.BK', 'name': 'Osotspa (โอสถสภา)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'CBG.BK', 'name': 'Carabao Group (คาราบาวกรุ๊ป)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'BGRIM.BK', 'name': 'B.Grimm Power (บี.กริม เพาเวอร์)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'GPSC.BK', 'name': 'Global Power Synergy (โกลบอล เพาเวอร์ ซินเนอร์ยี่)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'TOP.BK', 'name': 'Thai Oil (ไทยออยล์)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'IRPC.BK', 'name': 'IRPC Public Company Limited (ไออาร์พีซี)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'PTTEP.BK', 'name': 'PTT Exploration and Production (ปตท.สผ.)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'TU.BK', 'name': 'Thai Union Group (ไทยยูเนี่ยน กรุ๊ป)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'LH.BK', 'name': 'Land and Houses (แลนด์แอนด์เฮ้าส์)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
-    {'ticker': 'OR.BK', 'name': 'PTT Oil and Retail Business (ปตท. น้ำมันและการค้าปลีก)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    # --- Popular Thai Equities (SET50 / SET100) ---
+    {'ticker': 'PTT.BK', 'name': 'PTT Public Company Limited', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'DELTA.BK', 'name': 'Delta Electronics (Thailand)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'AOT.BK', 'name': 'Airports of Thailand', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'CPALL.BK', 'name': 'CP ALL Public Company Limited', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'ADVANC.BK', 'name': 'Advanced Info Service (AIS)', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'GULF.BK', 'name': 'Gulf Energy Development', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'SCB.BK', 'name': 'SCB X Public Company Limited', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'KBANK.BK', 'name': 'Kasikornbank', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'BBL.BK', 'name': 'Bangkok Bank', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'KTB.BK', 'name': 'Krungthai Bank', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'BDMS.BK', 'name': 'Bangkok Dusit Medical Services', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'BH.BK', 'name': 'Bumrungrad Hospital', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'SCC.BK', 'name': 'Siam Cement', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'CPN.BK', 'name': 'Central Pattana', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'CRC.BK', 'name': 'Central Retail Corporation', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'MINT.BK', 'name': 'Minor International', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'TRUE.BK', 'name': 'True Corporation', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'INTUCH.BK', 'name': 'Intouch Holdings', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'HMPRO.BK', 'name': 'Home Product Center', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'WHA.BK', 'name': 'WHA Corporation', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'BEM.BK', 'name': 'Bangkok Expressway and Metro', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'BTS.BK', 'name': 'BTS Group Holdings', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'BANPU.BK', 'name': 'Banpu Public Company Limited', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'IVL.BK', 'name': 'Indorama Ventures', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'KTC.BK', 'name': 'Krungthai Card', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'MTC.BK', 'name': 'Muangthai Capital', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'SAWAD.BK', 'name': 'Srisawad Corporation', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'OSP.BK', 'name': 'Osotspa', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'CBG.BK', 'name': 'Carabao Group', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'BGRIM.BK', 'name': 'B.Grimm Power', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'GPSC.BK', 'name': 'Global Power Synergy', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'TOP.BK', 'name': 'Thai Oil', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'IRPC.BK', 'name': 'IRPC Public Company Limited', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'PTTEP.BK', 'name': 'PTT Exploration and Production', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'TU.BK', 'name': 'Thai Union Group', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'LH.BK', 'name': 'Land and Houses', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
+    {'ticker': 'OR.BK', 'name': 'PTT Oil and Retail Business', 'asset_type': AssetType.STOCK, 'currency': 'THB', 'exchange': 'SET'},
 
-    # --- หุ้นสหรัฐฯ US Mega Tech & Blue Chips ---
+    # --- US Equities: Mega Tech & Blue Chips ---
     {'ticker': 'AAPL', 'name': 'Apple Inc.', 'asset_type': AssetType.STOCK, 'currency': 'USD', 'exchange': 'NASDAQ'},
     {'ticker': 'NVDA', 'name': 'NVIDIA Corporation', 'asset_type': AssetType.STOCK, 'currency': 'USD', 'exchange': 'NASDAQ'},
     {'ticker': 'MSFT', 'name': 'Microsoft Corporation', 'asset_type': AssetType.STOCK, 'currency': 'USD', 'exchange': 'NASDAQ'},
@@ -89,37 +89,37 @@ MASTER_ASSET_CATALOG: List[Dict[str, Any]] = [
     {'ticker': 'TLT', 'name': 'iShares 20+ Year Treasury Bond ETF', 'asset_type': AssetType.FUND, 'currency': 'USD', 'exchange': 'NASDAQ'},
     {'ticker': 'ARKK', 'name': 'ARK Innovation ETF', 'asset_type': AssetType.FUND, 'currency': 'USD', 'exchange': 'NYSE'},
 
-    # --- Cryptocurrencies (เหรียญคริปโต) ---
-    {'ticker': 'BTC-USD', 'name': 'Bitcoin (บิตคอยน์)', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
-    {'ticker': 'ETH-USD', 'name': 'Ethereum (อีเธอเรียม)', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
-    {'ticker': 'SOL-USD', 'name': 'Solana (โซลานา)', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
-    {'ticker': 'BNB-USD', 'name': 'Binance Coin (ไบแนนซ์คอยน์)', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
-    {'ticker': 'XRP-USD', 'name': 'XRP (ริปเปิล)', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
-    {'ticker': 'DOGE-USD', 'name': 'Dogecoin (โดชคอยน์)', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
-    {'ticker': 'ADA-USD', 'name': 'Cardano (คาร์ดาโน)', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
-    {'ticker': 'AVAX-USD', 'name': 'Avalanche (อะวาแลนช์)', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
-    {'ticker': 'SUI-USD', 'name': 'Sui Network (ซุย)', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
-    {'ticker': 'LINK-USD', 'name': 'Chainlink (เชนลิงก์)', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
-    {'ticker': 'PEPE-USD', 'name': 'Pepe (เปเป้)', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
-    {'ticker': 'SHIB-USD', 'name': 'Shiba Inu (ชิบะอินุ)', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
+    # --- Cryptocurrencies ---
+    {'ticker': 'BTC-USD', 'name': 'Bitcoin', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
+    {'ticker': 'ETH-USD', 'name': 'Ethereum', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
+    {'ticker': 'SOL-USD', 'name': 'Solana', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
+    {'ticker': 'BNB-USD', 'name': 'Binance Coin', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
+    {'ticker': 'XRP-USD', 'name': 'XRP', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
+    {'ticker': 'DOGE-USD', 'name': 'Dogecoin', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
+    {'ticker': 'ADA-USD', 'name': 'Cardano', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
+    {'ticker': 'AVAX-USD', 'name': 'Avalanche', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
+    {'ticker': 'SUI-USD', 'name': 'Sui Network', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
+    {'ticker': 'LINK-USD', 'name': 'Chainlink', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
+    {'ticker': 'PEPE-USD', 'name': 'Pepe', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
+    {'ticker': 'SHIB-USD', 'name': 'Shiba Inu', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
     {'ticker': 'NEAR-USD', 'name': 'NEAR Protocol', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
-    {'ticker': 'DOT-USD', 'name': 'Polkadot (โพลคาด็อต)', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
+    {'ticker': 'DOT-USD', 'name': 'Polkadot', 'asset_type': AssetType.CRYPTO, 'currency': 'USD', 'exchange': 'Crypto'},
 
-    # --- กองทุนรวมไทย (Mutual Funds) ---
-    {'ticker': 'B-INNOTECH', 'name': 'กองทุนเปิดบัวหลวงอินโนเวชั่น (B-INNOTECH)', 'asset_type': AssetType.FUND, 'currency': 'THB', 'exchange': 'BBLAM'},
-    {'ticker': 'SCBDV', 'name': 'กองทุนเปิดไทยพาณิชย์ปันผลหุ้นระยะยาว (SCBDV)', 'asset_type': AssetType.FUND, 'currency': 'THB', 'exchange': 'SCBAM'},
-    {'ticker': 'KF-GTECH', 'name': 'กองทุนเปิดกรุงศรีโกลบอลเทคโนโลยีอิควิตี้ (KF-GTECH)', 'asset_type': AssetType.FUND, 'currency': 'THB', 'exchange': 'KSAM'},
-    {'ticker': 'ONE-UGG-RA', 'name': 'วรรณ อัลติเมท โกลบอล โกรว์ธ (ONE-UGG-RA)', 'asset_type': AssetType.FUND, 'currency': 'THB', 'exchange': 'ONEAM'},
-    {'ticker': 'KT-ENERGY', 'name': 'กองทุนเปิดเคแทม เอนเนอร์จี แอนด์ โครงสร้างพื้นฐาน (KT-ENERGY)', 'asset_type': AssetType.FUND, 'currency': 'THB', 'exchange': 'KTAM'}
+    # --- Thai Mutual Funds ---
+    {'ticker': 'B-INNOTECH', 'name': 'Bualuang Innovation Mutual Fund (B-INNOTECH)', 'asset_type': AssetType.FUND, 'currency': 'THB', 'exchange': 'BBLAM'},
+    {'ticker': 'SCBDV', 'name': 'SCB Dividend Stock Long Term Fund (SCBDV)', 'asset_type': AssetType.FUND, 'currency': 'THB', 'exchange': 'SCBAM'},
+    {'ticker': 'KF-GTECH', 'name': 'Krungsri Global Technology Equity Fund (KF-GTECH)', 'asset_type': AssetType.FUND, 'currency': 'THB', 'exchange': 'KSAM'},
+    {'ticker': 'ONE-UGG-RA', 'name': 'One Ultimate Global Growth Fund (ONE-UGG-RA)', 'asset_type': AssetType.FUND, 'currency': 'THB', 'exchange': 'ONEAM'},
+    {'ticker': 'KT-ENERGY', 'name': 'KTAM Energy and Infrastructure Fund (KT-ENERGY)', 'asset_type': AssetType.FUND, 'currency': 'THB', 'exchange': 'KTAM'}
 ]
 
 
 def search_market_assets(query: str, asset_type: Optional[str] = None, limit: int = 12) -> List[Dict[str, Any]]:
     """
-    ฟังก์ชันค้นหาสินทรัพย์สำหรับการกรอกข้อมูลแบบ Autocomplete
-    - ค้นหาจาก Master Catalog ท้องถิ่นก่อนเพื่อความเร็วในระดับมิลลิวินาที
-    - หากค้นหาไม่พบ หรือผลลัพธ์น้อย ให้เชื่อมโยง yfinance Search สดจากตลาดโลก
-    - กรองแยกประเภทสินทรัพย์ (STOCK, CRYPTO, FUND, OTHER) ตามที่ระบุ
+    Asset search function for autocomplete input
+    - Searches local Master Catalog first for sub-millisecond response
+    - If not found or low results, queries live global market via yfinance Search
+    - Filters asset categories (STOCK, CRYPTO, FUND, OTHER) as specified
     """
     clean_q = query.strip()
     if not clean_q:
@@ -132,7 +132,7 @@ def search_market_assets(query: str, asset_type: Optional[str] = None, limit: in
     matched_results: List[Dict[str, Any]] = []
     seen_tickers = set()
 
-    # 1. ค้นหาในแคตาล็อกท้องถิ่นก่อน
+    # 1. Search in local catalog first
     for item in MASTER_ASSET_CATALOG:
         t_clean = item['ticker'].upper()
         n_clean = item['name'].upper()
@@ -146,7 +146,7 @@ def search_market_assets(query: str, asset_type: Optional[str] = None, limit: in
             if len(matched_results) >= limit:
                 return matched_results
 
-    # 2. หากผลลัพธ์ยังน้อย ให้ถาม yfinance Search สด
+    # 2. If results are few, query live yfinance Search
     if len(matched_results) < limit:
         try:
             import yfinance as yf
@@ -171,7 +171,7 @@ def search_market_assets(query: str, asset_type: Optional[str] = None, limit: in
                 if asset_type and asset_type.upper() != 'ALL' and atype != asset_type.upper():
                     continue
 
-                # เดาสกุลเงิน
+                # Infer currency
                 is_thb = sym.endswith('.BK') or (q.get('exchange') or '').upper() == 'SET'
                 curr = 'THB' if is_thb else 'USD'
                 name_str = q.get('shortname') or q.get('longname') or sym
@@ -190,7 +190,7 @@ def search_market_assets(query: str, asset_type: Optional[str] = None, limit: in
         except Exception:
             pass
 
-    # ดึงราคาตลาดล่าสุดจาก StockPriceSnapshot มาเติมในผลการค้นหา
+    # Fetch latest market price from StockPriceSnapshot to populate search results
     try:
         from .models import StockPriceSnapshot
         tickers_list = [r['ticker'] for r in matched_results]
@@ -215,20 +215,20 @@ def search_market_assets(query: str, asset_type: Optional[str] = None, limit: in
 
 def verify_ticker_exists(ticker_str: str) -> Optional[Dict[str, Any]]:
     """
-    ตรวจสอบอย่างเข้มงวดว่า Ticker มีอยู่จริงในตลาดหรือไม่
-    หากไม่มีอยู่จริง คืนค่า None เพื่อป้องกันการกรอกมั่ว
+    Strictly verify whether ticker exists in market
+    Returns None if not found to prevent invalid tickers
     """
     from .models import StockPriceSnapshot, StockHolding
     clean = ticker_str.strip().upper()
     if not clean:
         return None
 
-    # 1. ตรวจใน Master Catalog
+    # 1. Check in Master Catalog
     for item in MASTER_ASSET_CATALOG:
         if item['ticker'].upper() == clean:
             return item
 
-    # 2. ตรวจใน StockPriceSnapshot หรือ StockHolding
+    # 2. Check in StockPriceSnapshot or StockHolding
     if StockPriceSnapshot.objects.filter(ticker__iexact=clean).exists():
         snap = StockPriceSnapshot.objects.filter(ticker__iexact=clean).first()
         return {
@@ -239,12 +239,12 @@ def verify_ticker_exists(ticker_str: str) -> Optional[Dict[str, Any]]:
             'exchange': 'Market'
         }
 
-    # 3. ลองเช็กสดผ่าน yfinance
+    # 3. Check live via yfinance
     try:
         import yfinance as yf
         stock = yf.Ticker(clean)
 
-        # 3.1 ตรวจสอบผ่าน fast_info
+        # 3.1 Verify via fast_info
         fast_info = getattr(stock, 'fast_info', None)
         if fast_info:
             try:
@@ -261,7 +261,7 @@ def verify_ticker_exists(ticker_str: str) -> Optional[Dict[str, Any]]:
             except Exception:
                 pass
 
-        # 3.2 Fallback ตรวจสอบผ่าน history ถ้า fast_info โหลดไม่ได้
+        # 3.2 Fallback check via history if fast_info fails
         try:
             hist = stock.history(period='2d')
             if hist is not None and not hist.empty and len(hist) > 0:

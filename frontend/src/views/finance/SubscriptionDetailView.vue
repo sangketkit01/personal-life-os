@@ -63,9 +63,9 @@
           @click="handleCancelTrial"
           :disabled="isActionLoading"
           type="button"
-          class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-rose-400 hover:text-rose-300 text-xs font-medium transition-colors flex items-center gap-1.5"
+          class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-medium transition-colors flex items-center gap-1.5"
         >
-          <ShieldAlert class="w-3.5 h-3.5 text-rose-400" />
+          <ShieldAlert class="w-3.5 h-3.5 text-zinc-400" />
           <span>Mark Cancelled</span>
         </button>
 
@@ -115,7 +115,7 @@
     >
       <div class="flex items-start gap-3">
         <div class="w-9 h-9 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0">
-          <ShieldAlert class="w-4 h-4 text-rose-400" />
+          <ShieldAlert class="w-4 h-4 text-zinc-400" />
         </div>
         <div>
           <div class="flex items-center gap-2">
@@ -352,7 +352,10 @@
                 Document Vault
               </h2>
             </div>
-            <label class="text-xs font-mono text-zinc-300 hover:text-white cursor-pointer transition-colors">
+            <label
+              v-if="storageStore.isConnected"
+              class="text-xs font-mono text-zinc-300 hover:text-white cursor-pointer transition-colors"
+            >
               <span>+ Upload</span>
               <input
                 type="file"
@@ -360,6 +363,13 @@
                 @change="handleFileUpload"
               />
             </label>
+            <router-link
+              v-else
+              to="/settings"
+              class="text-[11px] font-mono text-zinc-400 hover:text-zinc-200 underline"
+            >
+              Connect Drive
+            </router-link>
           </div>
 
           <p class="text-xs text-zinc-500">
@@ -367,8 +377,14 @@
           </p>
 
           <!-- Upload Status Indicator -->
-          <div v-if="isUploading" class="p-2.5 rounded bg-zinc-950 border border-zinc-800 text-xs font-mono text-zinc-400 text-center">
-            Uploading document...
+          <div v-if="isUploading" class="p-2.5 rounded bg-zinc-950 border border-zinc-800 text-xs font-mono text-zinc-400 text-center space-y-1.5">
+            <div>Uploading document to Google Drive...</div>
+            <div v-if="storageStore.uploadProgress !== null" class="w-full bg-zinc-800 rounded-full h-1 overflow-hidden">
+              <div
+                class="bg-zinc-200 h-1 transition-all duration-150"
+                :style="{ width: `${storageStore.uploadProgress}%` }"
+              ></div>
+            </div>
           </div>
 
           <!-- Attachments List -->
@@ -382,7 +398,7 @@
                 <FileText class="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                 <div class="truncate text-xs font-mono">
                   <a
-                    :href="att.file_url || att.file"
+                    :href="att.drive_view_link || att.file_url || att.file"
                     target="_blank"
                     class="text-zinc-200 hover:text-white hover:underline truncate block"
                   >
@@ -392,11 +408,11 @@
                 </div>
               </div>
               <a
-                :href="att.file_url || att.file"
+                :href="att.drive_download_link || att.drive_view_link || att.file_url || att.file"
                 download
                 target="_blank"
                 class="p-1 text-zinc-400 hover:text-zinc-100"
-                title="Download"
+                title="Download / Open"
               >
                 <Download class="w-3.5 h-3.5" />
               </a>
@@ -462,8 +478,19 @@
           </div>
 
           <div>
-            <label class="block text-zinc-400 mb-1">Upload Receipt Slip (Optional)</label>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-zinc-400 text-xs">Upload Receipt Slip (Optional)</label>
+              <span v-if="storageStore.isConnected" class="text-[10px] text-zinc-500 font-mono">Direct GDrive</span>
+            </div>
+            <div
+              v-if="!storageStore.isConnected"
+              class="p-2 rounded bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between"
+            >
+              <span>Connect Drive to attach slips</span>
+              <router-link to="/settings" class="text-zinc-200 underline font-mono">Settings &rarr;</router-link>
+            </div>
             <input
+              v-else
               type="file"
               @change="(e: any) => paySlipFile = e.target.files[0]"
               class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-400 text-xs file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-zinc-800 file:text-zinc-200"
@@ -560,6 +587,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSubscriptions } from '../../composables/finance/useSubscriptions'
 import { useLedgerStore } from '../../stores/ledger'
+import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import {
@@ -590,12 +618,12 @@ const {
   renewSubscription,
   cancelTrial,
   convertToSubscription,
-  uploadDocument,
   deleteSubscription
 } = useSubscriptions()
 
 const toast = useToastStore()
 const ledgerStore = useLedgerStore()
+const storageStore = useStorageStore()
 const subscriptionId = computed(() => route.params.id as string)
 const subscription = computed(() => currentSubscription.value)
 
@@ -689,12 +717,29 @@ async function handleCancelTrial() {
 async function submitRenewal() {
   isSubmittingPay.value = true
   try {
+    let driveData = undefined
+    if (paySlipFile.value) {
+      if (!storageStore.isConnected) {
+        toast.error('Google Drive connection is required to attach slips')
+        return
+      }
+      const uploaded = await storageStore.uploadDirect(paySlipFile.value, 'finance')
+      driveData = {
+        drive_file_id: uploaded.drive_file_id,
+        drive_view_link: uploaded.web_view_link,
+        drive_download_link: uploaded.web_content_link,
+        file_name: uploaded.file_name,
+        file_size: uploaded.file_size
+      }
+    }
+
     await renewSubscription(
       subscriptionId.value,
       payAmount.value,
       payNote.value,
-      paySlipFile.value || undefined,
-      payAccountId.value || undefined
+      undefined,
+      payAccountId.value || undefined,
+      driveData
     )
     if (payAccountId.value) {
       ledgerStore.fetchAccounts().catch(() => {})
@@ -705,8 +750,8 @@ async function submitRenewal() {
     paySlipFile.value = null
     payNote.value = ''
     payAccountId.value = ''
-  } catch {
-    toast.error('Failed to record subscription payment')
+  } catch (err: any) {
+    toast.error(err?.message || 'Failed to record subscription payment')
   } finally {
     isSubmittingPay.value = false
   }
@@ -732,14 +777,19 @@ async function handleFileUpload(e: Event) {
   const target = e.target as HTMLInputElement
   const file = target.files?.[0]
   if (!file) return
+  if (!storageStore.isConnected) {
+    toast.error('Google Drive connection is required')
+    return
+  }
 
   isUploading.value = true
   try {
-    await uploadDocument(subscriptionId.value, file, 'STATEMENT')
-    toast.success('Document uploaded to vault')
+    await storageStore.uploadDirect(file, 'finance', subscriptionId.value)
+    toast.success('Document uploaded to Google Drive vault')
     target.value = ''
-  } catch {
-    toast.error('Failed to upload document')
+    await fetchSubscription(subscriptionId.value)
+  } catch (err: any) {
+    toast.error(err?.message || 'Failed to upload document')
   } finally {
     isUploading.value = false
   }

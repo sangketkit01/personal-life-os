@@ -86,7 +86,7 @@
       <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
         <div class="flex items-center justify-between">
           <span class="text-[10px] font-mono uppercase text-zinc-500">Net Cash Credited</span>
-          <div class="w-7 h-7 rounded-lg bg-zinc-800/60 border border-zinc-700/60 text-emerald-400 flex items-center justify-center">
+          <div class="w-7 h-7 rounded-lg bg-zinc-800/60 border border-zinc-700/60 text-zinc-400 flex items-center justify-center">
             <Wallet class="w-3.5 h-3.5" />
           </div>
         </div>
@@ -194,7 +194,13 @@
 
               <!-- 2. Portfolio -->
               <td class="py-3.5 px-4 font-mono text-zinc-300">
-                <span class="text-xs">{{ tx.portfolio_name || getHoldingPortfolioName(tx.holding) || 'Consolidated' }}</span>
+                <div class="flex items-center gap-1.5">
+                  <span
+                    class="w-2 h-2 rounded-full shrink-0 shadow-sm"
+                    :style="{ backgroundColor: getPortfolioColorByTx(tx) }"
+                  ></span>
+                  <span class="text-xs">{{ tx.portfolio_name || getHoldingPortfolioName(tx.holding) || 'Consolidated' }}</span>
+                </div>
               </td>
 
               <!-- 3. Ticker -->
@@ -315,7 +321,7 @@ import { useToastStore } from '../../stores/toast'
 import MarketStatusBar from '../../components/portfolio/MarketStatusBar.vue'
 import AddTransactionModal from '../../components/portfolio/AddTransactionModal.vue'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
-import type { StockTransaction } from '../../types/portfolio'
+import { getPortfolioColor, type StockTransaction } from '../../types/portfolio'
 import {
   ArrowLeft,
   Plus,
@@ -434,6 +440,12 @@ function getHoldingPortfolioName(holdingId?: string): string {
   if (!holdingId) return ''
   const h = portfolioStore.holdings.find(item => item.id === holdingId)
   return h?.portfolio_name || ''
+}
+
+function getPortfolioColorByTx(tx: StockTransaction): string {
+  const portfolioId = tx.portfolio || portfolioStore.holdings.find(h => h.id === tx.holding)?.portfolio
+  const p = portfolioStore.portfolios.find(item => item.id === portfolioId)
+  return getPortfolioColor(p?.color)
 }
 
 // Totals calculation

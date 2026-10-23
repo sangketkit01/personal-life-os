@@ -181,6 +181,11 @@ class Transaction(models.Model):
 
     # Split state
     is_split = models.BooleanField(default=False, verbose_name="Is Split with Others")
+    split_metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name="Split Metadata & Itemized Harntung Breakdown"
+    )
 
     # Cross-domain links
     obligation = models.ForeignKey(
@@ -224,6 +229,14 @@ class Transaction(models.Model):
         blank=True,
         related_name='paired_transfer',
         verbose_name="Paired Deposit/Withdrawal Transfer Record"
+    )
+    payment_history = models.ForeignKey(
+        'finance.PaymentHistory',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ledger_transactions',
+        verbose_name="Linked Obligation Payment History"
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -291,6 +304,11 @@ class TransactionSplit(models.Model):
         verbose_name="Linked Debtor in Financial Radar"
     )
     notes = models.CharField(max_length=255, blank=True, default='', verbose_name="Split Note")
+    items_detail = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Itemized Breakdown of Consumed Items"
+    )
 
     class Meta:
         db_table = 'ledger_transaction_splits'
@@ -313,7 +331,10 @@ class TransactionAttachment(models.Model):
         related_name='attachments',
         verbose_name="Parent Transaction"
     )
-    file = models.FileField(upload_to='ledger/slips/%Y/%m/', verbose_name="Slip / Receipt File")
+    file = models.FileField(upload_to='ledger/slips/%Y/%m/', verbose_name="Slip / Receipt File", null=True, blank=True)
+    drive_file_id = models.CharField(max_length=128, blank=True, default='', verbose_name="Google Drive File ID")
+    drive_view_link = models.URLField(max_length=500, blank=True, default='', verbose_name="Google Drive View Link")
+    drive_download_link = models.URLField(max_length=500, blank=True, default='', verbose_name="Google Drive Download Link")
     file_name = models.CharField(max_length=255, verbose_name="Original Filename")
     file_type = models.CharField(max_length=50, verbose_name="MIME Type")
     file_size = models.PositiveIntegerField(verbose_name="File Size in Bytes")

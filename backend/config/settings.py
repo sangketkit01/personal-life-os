@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'apps.portfolio',
     'apps.ledger',
     'apps.bot',
+    'apps.storage',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
@@ -150,7 +151,7 @@ REST_FRAMEWORK = {
     },
 }
 
-# Token Rotation Grace Period (ป้องกัน race condition ระหว่างแท็บเบราว์เซอร์หรือ concurrent network latency)
+# Token Rotation Grace Period (prevents race conditions across concurrent browser tabs or network latency)
 REFRESH_TOKEN_GRACE_PERIOD_SECONDS = 60
 
 # CORS settings for Vue frontend (Vite runs on 5173 by default)
@@ -164,4 +165,13 @@ CORS_ALLOW_CREDENTIALS = True
 
 # Telegram Bot Configuration
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
-TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', 'brandy_personal_os_bot')
+TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', '')
+
+# Google Drive Storage Configuration
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET', '')
+GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:5173/auth/google/callback')
+GOOGLE_DRIVE_SCOPES = [
+    'https://www.googleapis.com/auth/drive.file',
+    'https://www.googleapis.com/auth/userinfo.email'
+]

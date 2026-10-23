@@ -55,7 +55,19 @@ export const useFinanceStore = defineStore('finance', () => {
     return res.data
   }
 
-  async function payObligation(id: string, data: { paid_amount?: number; term_number?: number; note?: string; slip_file?: File; account_id?: string } = {}) {
+  async function payObligation(id: string, data: {
+    paid_amount?: number
+    term_number?: number
+    statement_month?: string
+    note?: string
+    slip_file?: File
+    account_id?: string
+    drive_file_id?: string
+    drive_view_link?: string
+    drive_download_link?: string
+    file_name?: string
+    file_size?: number
+  } = {}) {
     let requestData: any = data
     let headers: Record<string, string> = {}
 
@@ -64,6 +76,7 @@ export const useFinanceStore = defineStore('finance', () => {
       const formData = new FormData()
       if (data.paid_amount !== undefined) formData.append('paid_amount', String(data.paid_amount))
       if (data.term_number !== undefined) formData.append('term_number', String(data.term_number))
+      if (data.statement_month) formData.append('statement_month', data.statement_month)
       if (data.note) formData.append('note', data.note)
       if (data.account_id) formData.append('account_id', data.account_id)
       formData.append('slip_file', data.slip_file)
@@ -82,6 +95,18 @@ export const useFinanceStore = defineStore('finance', () => {
       obligations.value[idx] = res.data.obligation
     }
     await fetchOverview()
+
+    // Cross-sync: refresh ledger accounts and cash flow if payment was linked to an account
+    if (data.account_id) {
+      try {
+        const { useLedgerStore } = await import('./ledger')
+        const ledgerStore = useLedgerStore()
+        await Promise.all([ledgerStore.fetchAccounts(), ledgerStore.fetchSummary(), ledgerStore.fetchPendingSplits()])
+      } catch (err) {
+        console.warn('Could not sync ledger store after obligation payment:', err)
+      }
+    }
+
     return res.data
   }
 

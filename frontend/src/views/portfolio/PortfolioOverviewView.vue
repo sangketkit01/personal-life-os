@@ -105,7 +105,7 @@
       <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 hover:border-zinc-700/80 transition-colors shadow-sm">
         <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-500">
           <span>Dividends</span>
-          <Coins class="w-3.5 h-3.5 text-amber-400" />
+          <Coins class="w-3.5 h-3.5 text-zinc-400" />
         </div>
         <div class="mt-2.5 flex items-baseline gap-1.5">
           <span class="text-2xl font-semibold font-mono text-zinc-100 tabular-nums">
@@ -192,7 +192,8 @@
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <span
-                class="w-2 h-2 rounded-full shrink-0 bg-zinc-400"
+                class="w-2 h-2 rounded-full shrink-0 shadow-sm"
+                :style="{ backgroundColor: getPortfolioColor(p.color) }"
               ></span>
               <span class="font-semibold text-sm text-zinc-200 group-hover:text-zinc-100 transition-colors truncate">
                 {{ p.name }}
@@ -316,7 +317,7 @@ import MarketStatusBar from '../../components/portfolio/MarketStatusBar.vue'
 import AssetAllocationChart from '../../components/portfolio/AssetAllocationChart.vue'
 import AddTransactionModal from '../../components/portfolio/AddTransactionModal.vue'
 import CreatePortfolioModal from '../../components/portfolio/CreatePortfolioModal.vue'
-import type { InvestmentPortfolio } from '../../types/portfolio'
+import { getPortfolioColor, type InvestmentPortfolio } from '../../types/portfolio'
 import {
   TrendingUp,
   TrendingDown,

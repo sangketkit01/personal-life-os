@@ -9,13 +9,13 @@
             LIABILITIES & DEBTORS
           </span>
         </div>
-        <p class="text-xs text-zinc-500 mt-1">Clear two-way separation: Debts I owe (Liabilities) vs Debts owed to me (Debtors with one-click LINE recall)</p>
+        <p class="text-xs text-zinc-500 mt-1">Track liabilities payable, peer debts receivable, and payment reminders</p>
       </div>
 
       <div class="flex items-center gap-2.5 self-start sm:self-auto">
         <button
           @click="router.push('/finance/debts/new')"
-          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white active:scale-95 text-zinc-950 text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm"
         >
           <Plus class="w-3.5 h-3.5 text-zinc-950" />
           <span>New Debt Entry</span>

@@ -14,12 +14,9 @@
       </button>
 
       <div class="mb-4">
-        <h3 class="text-base font-semibold text-zinc-100 tracking-tight">
-          {{ editingAccount ? 'Edit Financial Account' : 'Add Financial Account / Wallet' }}
+        <h3 class="text-base font-semibold text-zinc-100 tracking-tight flex items-center gap-2">
+          <span>{{ editingAccount ? 'Edit Account' : 'New Account' }}</span>
         </h3>
-        <p class="text-xs text-zinc-500 mt-0.5">
-          Track real-time balances across bank accounts, cards, and investment cash baskets
-        </p>
       </div>
 
       <div v-if="errorMessage" class="mb-4 p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
@@ -29,17 +26,17 @@
       <form @submit.prevent="handleSubmit" class="space-y-4 text-xs font-mono">
         <!-- Account Type Selection -->
         <div>
-          <label class="block text-[10px] uppercase text-zinc-400 mb-1.5 font-semibold">Account Type</label>
+          <label class="block text-[11px] text-zinc-300 mb-1.5 font-medium">Account Type</label>
           <div class="grid grid-cols-3 gap-2">
             <button
               v-for="t in accountTypes"
               :key="t.value"
               type="button"
               @click="form.account_type = t.value"
-              class="p-2 rounded-lg border text-center transition-all flex flex-col items-center gap-1"
+              class="p-2 rounded-lg border text-center transition-all active:scale-[0.98] flex flex-col items-center gap-1"
               :class="form.account_type === t.value
-                ? 'bg-zinc-800 text-zinc-100 border-zinc-600 font-semibold'
-                : 'bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:text-zinc-200'"
+                ? 'bg-zinc-800 text-zinc-100 border-zinc-600 font-semibold shadow-sm'
+                : 'bg-zinc-900/50 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:bg-zinc-800/40'"
             >
               <component :is="t.icon" class="w-3.5 h-3.5" />
               <span class="text-[10px]">{{ t.label }}</span>
@@ -49,34 +46,34 @@
 
         <!-- Account Name -->
         <div>
-          <label class="block text-[10px] uppercase text-zinc-400 mb-1 font-semibold">Account Name <span class="text-rose-400">*</span></label>
+          <label class="block text-[11px] text-zinc-300 mb-1 font-medium">Account Name <span class="text-rose-400">*</span></label>
           <input
             v-model="form.name"
             type="text"
             required
-            placeholder="e.g. KBANK Main Payroll, Dime! Cash, KTC Card"
-            class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 font-mono"
+            placeholder="e.g. Payroll Account, Cash Wallet"
+            class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
           />
         </div>
 
         <!-- Institution Name & Masked Ref -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-[10px] uppercase text-zinc-400 mb-1 font-semibold">Institution / Bank</label>
+            <label class="block text-[11px] text-zinc-300 mb-1 font-medium">Financial Institution / Bank</label>
             <input
               v-model="form.institution_name"
               type="text"
-              placeholder="e.g. Kasikornbank, SCB"
-              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+              placeholder="e.g. KBank, SCB"
+              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 transition-colors"
             />
           </div>
           <div>
-            <label class="block text-[10px] uppercase text-zinc-400 mb-1 font-semibold">Masked Number (Optional)</label>
+            <label class="block text-[11px] text-zinc-300 mb-1 font-medium">Last 4 Digits (Optional)</label>
             <input
               v-model="form.account_number"
               type="text"
-              placeholder="xxx-x-x1234"
-              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
+              placeholder="1234"
+              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 transition-colors"
             />
           </div>
         </div>
@@ -84,8 +81,8 @@
         <!-- Initial Balance & Currency -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-[10px] uppercase text-zinc-400 mb-1 font-semibold">
-              {{ editingAccount ? 'Initial Balance' : 'Opening Balance' }} <span class="text-rose-400">*</span>
+            <label class="block text-[11px] text-zinc-300 mb-1 font-medium">
+              {{ editingAccount ? 'Opening Balance' : 'Initial Balance' }} <span class="text-rose-400">*</span>
             </label>
             <div class="relative">
               <span class="absolute left-3 top-2 text-zinc-500">฿</span>
@@ -95,15 +92,15 @@
                 step="0.01"
                 required
                 placeholder="0.00"
-                class="w-full pl-7 pr-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 font-mono"
+                class="w-full pl-7 pr-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
               />
             </div>
           </div>
           <div>
-            <label class="block text-[10px] uppercase text-zinc-400 mb-1 font-semibold">Currency</label>
+            <label class="block text-[11px] text-zinc-300 mb-1 font-medium">Currency</label>
             <select
               v-model="form.currency"
-              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 focus:outline-none focus:border-zinc-600"
+              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 transition-colors"
             >
               <option value="THB">THB (฿)</option>
               <option value="USD">USD ($)</option>
@@ -113,13 +110,13 @@
 
         <!-- Credit Limit (Only for Credit Card) -->
         <div v-if="form.account_type === 'CREDIT_CARD'">
-          <label class="block text-[10px] uppercase text-zinc-400 mb-1 font-semibold">Approved Credit Limit (฿)</label>
+          <label class="block text-[11px] text-zinc-300 mb-1 font-medium">Credit Limit (฿)</label>
           <input
             v-model.number="form.credit_limit"
             type="number"
             step="100"
-            placeholder="50000"
-            class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 font-mono"
+            placeholder="0.00"
+            class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
           />
         </div>
 
@@ -130,7 +127,7 @@
             type="checkbox"
             class="rounded bg-zinc-900 border-zinc-700 text-zinc-100 accent-zinc-500 w-3.5 h-3.5"
           />
-          <span class="text-zinc-300 text-xs">Set as default account for transactions</span>
+          <span class="text-zinc-300 text-xs">Set as default account for new transactions</span>
         </label>
 
         <!-- Form Actions -->
@@ -138,14 +135,14 @@
           <button
             type="button"
             @click="emit('close')"
-            class="px-3.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-sans text-zinc-300 transition-colors"
+            class="px-3.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-sans text-zinc-300 transition-all active:scale-[0.98]"
           >
             Cancel
           </button>
           <button
             type="submit"
             :disabled="isSubmitting"
-            class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-sans font-semibold transition-colors disabled:opacity-50"
+            class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-sans font-semibold transition-all active:scale-[0.98] disabled:opacity-50 shadow-sm"
           >
             {{ isSubmitting ? 'Saving...' : (editingAccount ? 'Save Changes' : 'Create Account') }}
           </button>

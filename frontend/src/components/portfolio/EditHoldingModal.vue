@@ -17,7 +17,7 @@
             {{ holding.ticker }}
           </span>
         </div>
-        <p class="text-xs text-zinc-500 mt-0.5">Configure asset denomination currency, metadata, and asset classification</p>
+        <p class="text-xs text-zinc-500 mt-0.5">Edit asset details and denomination</p>
       </div>
 
       <!-- Error message -->
@@ -60,7 +60,7 @@
           <input
             v-model="form.name"
             type="text"
-            placeholder="e.g. Apple Inc, PTT Public Company"
+            placeholder="Asset full name"
             class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
           />
         </div>
@@ -84,10 +84,15 @@
           <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">
             Target Portfolio
           </label>
-          <div class="relative">
+          <div class="relative flex items-center">
+            <span
+              v-if="selectedPortfolio"
+              class="w-2.5 h-2.5 rounded-full absolute left-3 pointer-events-none z-10 shadow-sm"
+              :style="{ backgroundColor: getPortfolioColor(selectedPortfolio.color) }"
+            ></span>
             <select
               v-model="form.portfolio"
-              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600 transition-colors cursor-pointer pr-8 font-sans"
+              class="w-full pl-8 pr-8 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600 transition-colors cursor-pointer font-sans appearance-none"
             >
               <option
                 v-for="p in portfolioStore.portfolios"
@@ -101,9 +106,9 @@
           </div>
           <p
             v-if="form.portfolio && holding.portfolio && form.portfolio !== holding.portfolio"
-            class="text-[10px] text-amber-400/90 font-sans mt-1.5 flex items-center gap-1.5 p-2 rounded bg-amber-500/10 border border-amber-500/20"
+            class="text-[10px] text-zinc-400 font-sans mt-1.5 flex items-center gap-1.5 p-2 rounded bg-zinc-900 border border-zinc-800"
           >
-            <ArrowRightLeft class="w-3.5 h-3.5 flex-shrink-0 text-amber-400" />
+            <ArrowRightLeft class="w-3.5 h-3.5 flex-shrink-0 text-zinc-400" />
             <span>Moving this asset will transfer all trade history to the new portfolio. If the destination portfolio already holds this asset, their transactions will automatically merge.</span>
           </p>
         </div>
@@ -142,10 +147,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { usePortfolioStore } from '../../stores/portfolio'
 import { useToastStore } from '../../stores/toast'
-import type { StockHolding, AssetType } from '../../types/portfolio'
+import { getPortfolioColor, type StockHolding, type AssetType } from '../../types/portfolio'
 import { X, ChevronDown, ArrowRightLeft } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -170,6 +175,10 @@ const form = ref({
   asset_type: 'STOCK' as AssetType,
   portfolio: '',
   notes: ''
+})
+
+const selectedPortfolio = computed(() => {
+  return portfolioStore.portfolios.find(p => p.id === form.value.portfolio) || null
 })
 
 watch(

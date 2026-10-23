@@ -47,6 +47,12 @@ class TaskDocumentSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'completed_at', 'created_at', 'updated_at')
 
     def get_deadline_info(self, obj):
+        if obj.status in [TaskStatus.COMPLETED, TaskStatus.ARCHIVED]:
+            return {
+                'is_overdue': False,
+                'urgency': 'NORMAL',
+                'label': 'Completed' if obj.status == TaskStatus.COMPLETED else 'Archived'
+            }
         return calculate_deadline_info(obj.deadline)
 
     def validate_project(self, value):
@@ -56,11 +62,21 @@ class TaskDocumentSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
-        # ถ้าสร้างด้วยสถานะ COMPLETED ทันที ให้แสตมป์เวลา
+        # Set completed_at timestamp if created directly as COMPLETED
         if validated_data.get('status') == TaskStatus.COMPLETED:
             from django.utils import timezone
             validated_data['completed_at'] = timezone.now()
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        from django.utils import timezone
+        if 'status' in validated_data:
+            new_status = validated_data['status']
+            if new_status == TaskStatus.COMPLETED and instance.status != TaskStatus.COMPLETED:
+                validated_data['completed_at'] = timezone.now()
+            elif new_status != TaskStatus.COMPLETED and instance.status == TaskStatus.COMPLETED:
+                validated_data['completed_at'] = None
+        return super().update(instance, validated_data)
 
 
 class MoveTaskStatusSerializer(serializers.Serializer):

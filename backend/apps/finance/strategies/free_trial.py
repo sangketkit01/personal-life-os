@@ -85,7 +85,7 @@ class FreeTrialStrategy(BaseObligationStrategy):
         obligation.save(update_fields=['status', 'updated_at'])
         return self.get_summary(obligation)
 
-    def on_paid(self, obligation, paid_amount: Decimal = None, term_number: int = None, note: str = '') -> Dict[str, Any]:
+    def on_paid(self, obligation, paid_amount: Decimal = None, term_number: int = None, note: str = '', **kwargs) -> Dict[str, Any]:
         from apps.finance.models import PaymentHistory
         if paid_amount is None:
             paid_amount = obligation.amount

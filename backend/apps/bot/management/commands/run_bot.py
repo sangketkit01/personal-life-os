@@ -18,19 +18,19 @@ from apps.bot.dispatcher import dispatch_daily_alerts, dispatch_morning_briefing
 
 
 async def scheduled_morning_briefing(context):
-    """Callback สำหรับ Job Queue เวลา 08:30 น. (Morning Executive Briefing)"""
+    """Job queue callback for 08:30 AM Morning Executive Briefing."""
     print(f"[{datetime.datetime.now()}] Running 08:30 AM Morning Executive Briefing...")
     await dispatch_morning_briefings(context.bot)
 
 
 async def scheduled_daily_job(context):
-    """Callback สำหรับ Job Queue เวลา 10:00 น. (บิลการเงิน & กำหนดส่งงาน)"""
+    """Job queue callback for 10:00 AM daily alerts (bills and task deadlines)."""
     print(f"[{datetime.datetime.now()}] Running 10:00 AM daily alert check...")
     await dispatch_daily_alerts(context.bot)
 
 
 async def scheduled_hourly_news_sync(context):
-    """Callback ประจำชั่วโมง ดึงข่าวและแปลภาษาอัตโนมัติสำหรับหุ้นในพอร์ต"""
+    """Hourly callback to ingest and translate portfolio market news."""
     from asgiref.sync import sync_to_async
     from apps.portfolio.news_service import sync_all_portfolio_news
     print(f"[{datetime.datetime.now()}] Running Hourly Portfolio News Sync & Translation...")
@@ -49,7 +49,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Starting Telegram Butler Bot worker..."))
         self.stdout.write(f"Bot Username: @{settings.TELEGRAM_BOT_USERNAME}")
 
-        # สร้าง Application instance
+        # Create Application instance
         app = ApplicationBuilder().token(token).build()
 
         # 1. Command Handlers
@@ -66,7 +66,7 @@ class Command(BaseCommand):
         # 3. Quick-Capture Text Message Handler
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
 
-        # 4. ตั้งเวลางานเตือนประจำวันและงานดึงข่าว (Bangkok Time)
+        # 4. Register Scheduled Alerts & Hourly Ingestion (Bangkok Time)
         job_queue = app.job_queue
         if job_queue:
             bangkok_tz = ZoneInfo("Asia/Bangkok")
@@ -81,12 +81,12 @@ class Command(BaseCommand):
             job_queue.run_daily(scheduled_daily_job, time=alert_time, name="daily_10am_alert")
             self.stdout.write(self.style.SUCCESS("[OK] 10:00 AM Daily Alert Scheduler registered (Asia/Bangkok)"))
 
-            # Hourly News Ingestion & Translation (ทุก 1 ชั่วโมง)
+            # Hourly News Ingestion & Translation
             job_queue.run_repeating(scheduled_hourly_news_sync, interval=3600, first=10, name="hourly_news_sync")
             self.stdout.write(self.style.SUCCESS("[OK] Hourly News Sync & Translation Scheduler registered"))
         else:
             self.stdout.write(self.style.WARNING("JobQueue is not enabled; install python-telegram-bot[job-queue]"))
 
         self.stdout.write(self.style.SUCCESS("Bot is now listening for messages... Press Ctrl+C to stop."))
-        # เริ่มการ Polling ข้อความ
+        # Start polling
         app.run_polling(drop_pending_updates=True)

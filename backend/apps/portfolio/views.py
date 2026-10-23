@@ -29,20 +29,25 @@ from .asset_catalog import verify_ticker_exists
 
 class InvestmentPortfolioViewSet(viewsets.ModelViewSet):
     """
-    CRUD พอร์ตการลงทุนแยกแต่ละตะกร้า (เหมือน Dime Multi-Portfolio)
-    เช่น พอร์ต DCA หุ้นไทย, พอร์ตหุ้นสหรัฐฯ US Growth, พอร์ตคริปโต Moonshot
+    CRUD for investment portfolio buckets (Multi-Portfolio structure)
+    e.g. Thai DCA, US Growth, Crypto Moonshot
     """
     serializer_class = InvestmentPortfolioSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         from django.db.models import Count
-        # Ensure default main portfolio exists
-        InvestmentPortfolio.objects.get_or_create(
-            user=self.request.user,
-            is_default=True,
-            defaults={'name': 'Main Portfolio', 'currency': 'THB'}
-        )
+        # Ensure default main portfolio exists safely
+        if not InvestmentPortfolio.objects.filter(user=self.request.user, is_default=True).exists():
+            try:
+                InvestmentPortfolio.objects.create(
+                    user=self.request.user,
+                    is_default=True,
+                    name='Main Portfolio',
+                    currency='THB'
+                )
+            except Exception:
+                pass
         return InvestmentPortfolio.objects.filter(user=self.request.user).annotate(
             annotated_holdings_count=Count('holdings')
         ).order_by('-is_default', 'created_at')
@@ -57,8 +62,8 @@ class InvestmentPortfolioViewSet(viewsets.ModelViewSet):
 
 class MarketAssetSearchView(views.APIView):
     """
-    API ค้นหาสินทรัพย์สำหรับช่องกรอก Autocomplete ป้องกันการกรอกผิด
-    รองรับการค้นหาทั้งหุ้นไทย (SET), หุ้นสหรัฐฯ (US), คริปโต (Crypto), กองทุนรวม (Fund)
+    Autocomplete search API for stock, fund, and crypto ticker symbols
+    Supports Thai SET, US Equities, Crypto, and Mutual Funds
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -70,7 +75,7 @@ class MarketAssetSearchView(views.APIView):
 
 
 class PortfolioOverviewView(views.APIView):
-    """API สรุปภาพรวมมูลค่าพอร์ต และผลตอบแทน PnL รวมทั้งหมด (รองรับสลับมุมมอง THB / USD, กรองพอร์ต, กรองประเภทสินทรัพย์)"""
+    """Portfolio Overview API returning aggregate value, returns, and PnL breakdown (Supports THB/USD currency toggle)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -87,7 +92,7 @@ class PortfolioOverviewView(views.APIView):
 
 
 class PortfolioRefreshView(views.APIView):
-    """API สั่งดึงราคาตลาดล่าสุดของหุ้นในพอร์ตผ่าน yfinance พร้อมอัตราแลกเปลี่ยน USD/THB (รองรับตรวจสอบเวลาเปิด-ปิดตลาด)"""
+    """Fetch live market prices via yfinance with USD/THB exchange rates (market hours-aware)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
@@ -100,10 +105,10 @@ class PortfolioRefreshView(views.APIView):
         if isinstance(force, str):
             force = force.lower() in ('true', '1')
 
-        # ดึงราคาตลาดสดผ่าน yfinance โดยเคารพเวลาเปิด-ปิดตลาด (ถ้าไม่ได้ force)
+        # Fetch live market quotes via yfinance respecting trading hours (unless forced)
         prices = fetch_and_cache_market_prices(tickers, force=force, respect_market_hours=not force)
 
-        # ส่งข้อมูลภาพรวมพอร์ตที่อัปเดตราคาใหม่กลับไป
+        # Return updated portfolio metrics with live quotes
         currency = request.data.get('currency') or request.query_params.get('currency', 'THB')
         portfolio_id = request.data.get('portfolio_id') or request.query_params.get('portfolio_id')
         asset_type = request.data.get('asset_type') or request.query_params.get('asset_type')
@@ -118,7 +123,7 @@ class PortfolioRefreshView(views.APIView):
 
 
 class MarketStatusView(views.APIView):
-    """API ตรวจสอบสถานะเวลาทำการตลาด (SET, US, CRYPTO) และความเหมาะสมในการดึงราคา 1 นาทีแบบ Real-Time"""
+    """Market trading hours status API (SET, US, CRYPTO) and real-time refresh eligibility."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -149,7 +154,7 @@ class MarketStatusView(views.APIView):
 
 
 class StockHoldingViewSet(viewsets.ModelViewSet):
-    """CRUD สินทรัพย์ในพอร์ต (Stock Holdings)"""
+    """CRUD for portfolio stock holdings."""
     serializer_class = StockHoldingSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -200,8 +205,8 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
     def by_ticker(self, request, ticker=None):
         """
         Universal Asset Profile:
-        รองรับทั้งสินทรัพย์ที่มีในพอร์ต (is_held=True) และสินทรัพย์ใหม่ที่ยังไม่ได้ซื้อ (is_held=False)
-        F04: รองรับ holding_id หรือ portfolio_id ใน query params เพื่อให้เจาะจง holding ในพอร์ตที่ถูกต้อง
+        Supports held assets (is_held=True) and watchlist assets (is_held=False)
+        F04: Supports holding_id or portfolio_id in query params to isolate specific portfolio holdings
         """
         clean_ticker = normalize_ticker(ticker)
         holding_id = request.query_params.get('holding_id')
@@ -229,7 +234,7 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
             data = self.get_serializer(holding, context=context).data
             data['is_held'] = True
             data['is_watchlisted'] = is_watchlisted
-            # รายการพอร์ตทั้งหมดที่ถือหุ้นตัวนี้ (สำหรับสลับพอร์ตในหน้ารายละเอียด)
+            # List all portfolios holding this ticker (for portfolio switching in detail view)
             data['all_holdings'] = [
                 {
                     'id': str(h.id),
@@ -240,7 +245,7 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
             ]
             return response.Response(data)
 
-        # Universal Mode: ตรวจสอบและดึงข้อมูลตลาดของสินทรัพย์ใหม่
+        # Universal Mode: verify and fetch market quote for unheld asset
         verified = verify_ticker_exists(clean_ticker)
         if not verified and not clean_ticker.endswith('.BK') and not clean_ticker.endswith('-USD'):
             th_v = verify_ticker_exists(f"{clean_ticker}.BK")
@@ -249,7 +254,7 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
                 verified = th_v
 
         if not verified:
-            return response.Response({'detail': f"ไม่พบข้อมูลสินทรัพย์ '{clean_ticker}' ในตลาดการเงิน"}, status=status.HTTP_404_NOT_FOUND)
+            return response.Response({'detail': f"Asset '{clean_ticker}' not found in financial markets."}, status=status.HTTP_404_NOT_FOUND)
 
         fetch_and_cache_market_prices([clean_ticker])
         snapshot = StockPriceSnapshot.objects.filter(ticker=clean_ticker).first()
@@ -289,7 +294,7 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path=r'by-ticker/(?P<ticker>[^/]+)/chart')
     def chart(self, request, ticker=None):
         """
-        ดึงข้อมูลกราฟราคาย้อนหลังสไตล์ Dime:
+        Fetch historical candlestick chart data:
         Period options: 1D, 5D, 1M, 6M, 1Y, ALL
         """
         clean_ticker = normalize_ticker(ticker)
@@ -408,9 +413,9 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='move')
     def move(self, request, pk=None):
         """
-        ย้ายหุ้นและประวัติการเทรดทั้งหมดไปยังพอร์ตการลงทุนอื่น (Dime Multi-Portfolio)
-        - ถ้าพอร์ตเป้าหมายยังไม่มีหุ้นตัวนี้: อัปเดต holding.portfolio ไปยังพอร์ตใหม่
-        - ถ้าพอร์ตเป้าหมายมีหุ้นตัวนี้อยู่แล้ว: ผนวกประวัติการเทรด (Merge transactions) ทั้งหมดเข้ากับ holding ปลายทางอัตโนมัติ แล้วลบ holding เดิม
+        Move holding and execution history to another portfolio (Multi-Portfolio)
+        - If destination portfolio does not have this ticker: move holding to destination
+        - If destination portfolio already holds ticker: merge transaction records and remove source holding
         """
         holding = self.get_object()
         target_portfolio_id = request.data.get('target_portfolio_id') or request.data.get('portfolio')
@@ -446,7 +451,7 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
                 'merged': False
             })
 
-        # ตรวจสอบว่าพอร์ตเป้าหมายมีหุ้น Ticker นี้อยู่แล้วหรือไม่
+        # Check if destination portfolio already holds this ticker
         existing_target_holding = StockHolding.objects.filter(
             user=request.user,
             portfolio=target_portfolio,
@@ -483,7 +488,7 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
 
 
 class StockTransactionViewSet(viewsets.ModelViewSet):
-    """CRUD ประวัติรายการซื้อขายหุ้น (Transactions)"""
+    """CRUD for stock buy/sell executions and dividend transactions."""
     serializer_class = StockTransactionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -612,10 +617,10 @@ class StockTransactionViewSet(viewsets.ModelViewSet):
 
 class StockNewsViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    API แสดงข่าวสารสินทรัพย์และการแปลภาษาไทย
-    - กรองตาม Ticker: ?ticker=NVDA
-    - เฉพาะข่าววันนี้: ?today_only=true
-    - เรียงตาม published_at ล่าสุด
+    Financial news feed API
+    - Filter by ticker: ?ticker=NVDA
+    - Today only: ?today_only=true
+    - Order by published_at desc
     """
     serializer_class = StockNewsArticleSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -631,7 +636,7 @@ class StockNewsViewSet(viewsets.ReadOnlyModelViewSet):
         if ticker:
             clean_ticker = normalize_ticker(ticker)
             qs = qs.filter(ticker__iexact=clean_ticker)
-            # On-demand News Ingestion: หากยังไม่มีข่าวของหุ้นตัวนี้ในระบบ ให้ดึงใน Background Worker
+            # On-demand news ingestion in background worker
             if not qs.exists():
                 import threading
                 def _bg_ingest(sym):
@@ -646,7 +651,7 @@ class StockNewsViewSet(viewsets.ReadOnlyModelViewSet):
 
                 threading.Thread(target=_bg_ingest, args=(clean_ticker,), daemon=True).start()
             else:
-                # ส่งต่อให้ Background Worker เติมเนื้อหาและแปลไทยสำหรับข่าวที่ยังค้างอยู่
+                # Background task for full-content extraction and summary
                 import re
                 untranslated_ids = [a.id for a in qs[:3] if not bool(re.search(r'[\u0e00-\u0e7f]', a.title_th or ''))]
                 if untranslated_ids:
@@ -680,7 +685,7 @@ class StockNewsViewSet(viewsets.ReadOnlyModelViewSet):
         return qs.order_by('-published_at', '-created_at')
 
     def retrieve(self, request, *args, **kwargs):
-        """ดึงรายละเอียดข่าว พร้อม Lazy Backfill เนื้อหาฉบับเต็มหากยังไม่มีหรือแปลไม่ครบ 100%"""
+        """Retrieve news detail and trigger backfill for full content if needed."""
         import re
         instance = self.get_object()
         has_thai_title = bool(re.search(r'[\u0e00-\u0e7f]', instance.title_th or ''))
@@ -695,17 +700,17 @@ class StockNewsViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='sync')
     def sync(self, request):
-        """Action สั่งดึงและแปลข่าวใหม่ล่าสุดของหุ้นในพอร์ตทันที"""
+        """Action trigger syncing and translating portfolio news immediately"""
         from .news_service import sync_all_portfolio_news
         result = sync_all_portfolio_news(user=request.user)
         return response.Response({
-            'message': 'ซิงค์และแปลข่าวสารล่าสุดเรียบร้อยแล้ว',
+            'message': 'Latest news synchronized and translated successfully.',
             'details': result
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='translate')
     def translate(self, request, pk=None):
-        """Action แปลข่าวเป็นภาษาไทยและดึงเนื้อหาฉบับเต็ม On-demand"""
+        """On-demand news translation and article backfill action."""
         article = self.get_object()
         from .news_service import enrich_article_if_empty
         article = enrich_article_if_empty(article)
@@ -714,7 +719,7 @@ class StockNewsViewSet(viewsets.ReadOnlyModelViewSet):
 
 class StockWatchlistViewSet(viewsets.ModelViewSet):
     """
-    CRUD รายการสินทรัพย์เฝ้าดู (Watchlist) สำหรับศึกษาและติดตามราคาก่อนซื้อ
+    CRUD for watchlist assets tracking prices prior to execution
     """
     serializer_class = StockWatchlistSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -725,7 +730,7 @@ class StockWatchlistViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         ticker_input = request.data.get('ticker', '')
         if not ticker_input:
-            return response.Response({'ticker': 'กรุณาระบุสัญลักษณ์สินทรัพย์'}, status=status.HTTP_400_BAD_REQUEST)
+            return response.Response({'ticker': 'Asset ticker is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         clean_ticker = normalize_ticker(ticker_input)
         verified = verify_ticker_exists(clean_ticker)
@@ -758,10 +763,10 @@ class StockWatchlistViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='toggle')
     def toggle(self, request):
-        """Toggle watchlist status: สลับเพิ่มหรือเอาออกจาก Watchlist"""
+        """Toggle watchlist status"""
         ticker_input = request.data.get('ticker', '')
         if not ticker_input:
-            return response.Response({'ticker': 'กรุณาระบุสัญลักษณ์สินทรัพย์'}, status=status.HTTP_400_BAD_REQUEST)
+            return response.Response({'ticker': 'Asset ticker is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         clean_ticker = normalize_ticker(ticker_input)
         existing = StockWatchlist.objects.filter(user=request.user, ticker__iexact=clean_ticker).first()
@@ -770,7 +775,7 @@ class StockWatchlistViewSet(viewsets.ModelViewSet):
             return response.Response({
                 'is_watchlisted': False,
                 'ticker': clean_ticker,
-                'message': f'นำ {clean_ticker} ออกจาก Watchlist เรียบร้อยแล้ว'
+                'message': f'Removed {clean_ticker} from watchlist.'
             }, status=status.HTTP_200_OK)
 
         verified = verify_ticker_exists(clean_ticker)
@@ -799,5 +804,5 @@ class StockWatchlistViewSet(viewsets.ModelViewSet):
             'is_watchlisted': True,
             'ticker': clean_ticker,
             'data': self.get_serializer(created).data,
-            'message': f'เพิ่ม {clean_ticker} ลงใน Watchlist เรียบร้อยแล้ว'
+            'message': f'Added {clean_ticker} to watchlist.'
         }, status=status.HTTP_201_CREATED)

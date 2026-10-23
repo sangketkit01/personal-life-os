@@ -128,7 +128,7 @@
               class="px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-mono text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1"
               :title="copied ? 'Article text copied' : 'Copy article text'"
             >
-              <Check v-if="copied" class="w-3.5 h-3.5 text-emerald-400" />
+              <Check v-if="copied" class="w-3.5 h-3.5 text-zinc-300" />
               <Copy v-else class="w-3.5 h-3.5" />
               <span>{{ copied ? 'Copied' : 'Copy Text' }}</span>
             </button>

@@ -9,26 +9,20 @@
             class="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-400 hover:text-zinc-200 transition-colors"
           >
             <ArrowLeft class="w-3.5 h-3.5" />
-            <span>Cash Flow Radar</span>
+            <span>Cash Flow Ledger</span>
           </RouterLink>
           <span class="text-zinc-600">/</span>
           <span class="text-xs font-mono text-zinc-300">Accounts & Wallets</span>
         </div>
         <div class="flex items-center gap-2.5">
-          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">Financial Accounts & Wallets</h1>
-          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-zinc-900 text-zinc-400 border border-zinc-800">
-            MULTI-WALLET RECONCILIATION
-          </span>
+          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">Accounts & Wallets</h1>
         </div>
-        <p class="text-xs text-zinc-500 mt-1">
-          Manage real-world bank accounts, brokerage cash balances, credit lines, and cash reserves
-        </p>
       </div>
 
       <div class="flex items-center gap-2.5 self-start sm:self-auto">
         <button
           @click="showTransferModal = true"
-          class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors flex items-center gap-1.5"
+          class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 hover:border-zinc-700 border border-zinc-800 text-xs font-medium text-zinc-300 transition-all active:scale-[0.98] flex items-center gap-1.5"
         >
           <ArrowRightLeft class="w-3.5 h-3.5 text-zinc-400" />
           <span>Transfer</span>
@@ -36,7 +30,7 @@
 
         <button
           @click="openCreateAccount"
-          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-all active:scale-[0.98] flex items-center gap-1.5 shadow-sm hover:shadow-white/10"
         >
           <Plus class="w-3.5 h-3.5 text-zinc-950" />
           <span>+ Add Account</span>
@@ -46,28 +40,28 @@
 
     <!-- Summary KPI Strip -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 font-mono text-xs">
-        <span class="text-[10px] uppercase text-zinc-500 block">Total Liquid Deposits</span>
-        <div class="text-xl font-bold text-zinc-100 mt-2 tabular-nums">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 font-mono text-xs">
+        <span class="text-[10px] uppercase text-zinc-400 font-semibold block">Total Liquid Cash</span>
+        <div class="text-2xl font-bold text-zinc-100 mt-2 tabular-nums tracking-tight">
           ฿{{ Number(ledgerStore.totalLiquidCash).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[10px] text-zinc-500 block mt-1">Available across checking & cash</span>
+        <span class="text-[11px] text-zinc-400 block mt-1.5">Checking, savings, and cash reserves</span>
       </div>
 
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 font-mono text-xs">
-        <span class="text-[10px] uppercase text-zinc-500 block">Active Credit Card Debt</span>
-        <div class="text-xl font-bold text-zinc-300 mt-2 tabular-nums">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 font-mono text-xs">
+        <span class="text-[10px] uppercase text-zinc-400 font-semibold block">Total Credit Card Balance</span>
+        <div class="text-2xl font-bold text-zinc-200 mt-2 tabular-nums tracking-tight">
           ฿{{ Number(ledgerStore.totalCreditDebt).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[10px] text-zinc-500 block mt-1">Unsettled credit card balances</span>
+        <span class="text-[11px] text-zinc-400 block mt-1.5">Outstanding balances awaiting billing settlement</span>
       </div>
 
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 font-mono text-xs">
-        <span class="text-[10px] uppercase text-zinc-500 block">Active Wallets Tracked</span>
-        <div class="text-xl font-bold text-zinc-100 mt-2 tabular-nums">
-          {{ ledgerStore.accounts.length }} Accounts
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 font-mono text-xs">
+        <span class="text-[10px] uppercase text-zinc-400 font-semibold block">Total Accounts</span>
+        <div class="text-2xl font-bold text-zinc-100 mt-2 tabular-nums tracking-tight">
+          {{ ledgerStore.accounts.length }} accounts
         </div>
-        <span class="text-[10px] text-zinc-500 block mt-1">Bank, Brokerage, Cards & Cash</span>
+        <span class="text-[11px] text-zinc-400 block mt-1.5">Banks, portfolios, cards, and wallets</span>
       </div>
     </div>
 
@@ -90,29 +84,30 @@
       <div
         v-for="acc in ledgerStore.accounts"
         :key="acc.id"
-        class="p-5 rounded-xl bg-zinc-900/30 border border-zinc-800/80 hover:border-zinc-700/80 transition-all flex flex-col justify-between space-y-4"
+        class="p-5 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 flex flex-col justify-between space-y-4 group"
       >
         <div>
           <!-- Top Row -->
           <div class="flex items-start justify-between">
-            <span class="text-[9px] font-mono uppercase px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800 font-semibold">
+            <span class="text-[9px] font-mono uppercase px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800 font-semibold group-hover:border-zinc-700 transition-colors">
               {{ acc.account_type }}
             </span>
+
             <div class="flex items-center gap-1.5">
-              <span v-if="acc.is_default" class="text-[9px] font-mono text-zinc-400 border border-zinc-700/60 px-1 rounded">
+              <span v-if="acc.is_default" class="text-[9px] font-mono text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 px-1.5 rounded font-semibold">
                 Default
               </span>
               <button
                 @click="openEditAccount(acc)"
-                class="p-1 rounded text-zinc-500 hover:text-zinc-200"
+                class="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 active:scale-[0.95] transition-all"
                 title="Edit Account"
               >
                 <Edit2 class="w-3.5 h-3.5" />
               </button>
               <button
                 @click="handleRecalculate(acc.id)"
-                class="p-1 rounded text-zinc-500 hover:text-zinc-200"
-                title="Recalculate Ledger Balance"
+                class="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 active:scale-[0.95] transition-all"
+                title="Recalculate balance from history"
               >
                 <RefreshCw class="w-3.5 h-3.5" />
               </button>
@@ -120,8 +115,8 @@
           </div>
 
           <!-- Account Identity -->
-          <h3 class="text-base font-semibold text-zinc-100 mt-2 font-sans">{{ acc.name }}</h3>
-          <div class="text-xs text-zinc-500 font-mono mt-0.5">
+          <h3 class="text-base font-semibold text-zinc-100 mt-2 font-sans group-hover:text-white transition-colors">{{ acc.name }}</h3>
+          <div class="text-xs text-zinc-400 font-mono mt-0.5">
             {{ acc.institution_name || 'Personal Wallet' }}
             <span v-if="acc.account_number"> • {{ acc.account_number }}</span>
           </div>
@@ -138,26 +133,26 @@
 
           <!-- Credit Card Limit & Utilization Meter -->
           <div v-if="acc.credit_limit && Number(acc.credit_limit) > 0" class="space-y-1.5 pt-1">
-            <div class="flex justify-between text-[11px] text-zinc-500">
+            <div class="flex justify-between text-[11px] text-zinc-400">
               <span>Limit: ฿{{ Number(acc.credit_limit).toLocaleString('en-US') }}</span>
-              <span class="font-bold text-zinc-400">
+              <span class="font-bold text-zinc-300">
                 {{ Math.min(100, Math.round((Math.abs(Number(acc.current_balance || 0)) / Number(acc.credit_limit)) * 100)) }}% used
               </span>
             </div>
-            <div class="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+            <div class="w-full bg-zinc-800/80 h-1.5 rounded-full overflow-hidden">
               <div
                 class="h-full rounded-full transition-all duration-300"
-                :class="(Math.abs(Number(acc.current_balance || 0)) / Number(acc.credit_limit)) > 0.8 ? 'bg-amber-400' : 'bg-zinc-400'"
+                :class="(Math.abs(Number(acc.current_balance || 0)) / Number(acc.credit_limit)) > 0.8 ? 'bg-amber-400' : 'bg-emerald-400'"
                 :style="{ width: `${Math.min(100, (Math.abs(Number(acc.current_balance || 0)) / Number(acc.credit_limit)) * 100)}%` }"
               />
             </div>
           </div>
 
           <div class="pt-2 flex items-center justify-between text-xs">
-            <span class="text-[10px] text-zinc-500">{{ acc.transaction_count || 0 }} transactions</span>
+            <span class="text-[10px] text-zinc-500">{{ acc.transaction_count || 0 }} items</span>
             <RouterLink
               :to="`/ledger/accounts/${acc.id}`"
-              class="text-xs text-zinc-300 hover:text-white font-medium flex items-center gap-1"
+              class="text-xs text-zinc-300 hover:text-white font-medium flex items-center gap-1 hover:underline transition-colors"
             >
               <span>View Statement</span>
               <ArrowRight class="w-3.5 h-3.5 text-zinc-400" />

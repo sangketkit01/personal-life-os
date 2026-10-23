@@ -6,7 +6,7 @@ from .models import WorkspaceProject, TaskDocument, TaskStatus, Note
 
 
 def calculate_deadline_info(deadline) -> Dict[str, Any]:
-    """คำนวณระยะเวลาคงเหลือก่อนถึงกำหนดส่ง"""
+    """Calculate remaining time and urgency indicator for a deadline."""
     if not deadline:
         return {
             'days_left': None,
@@ -59,7 +59,7 @@ def calculate_deadline_info(deadline) -> Dict[str, Any]:
 
 
 def transition_task_status(task: TaskDocument, new_status: str) -> TaskDocument:
-    """เปลี่ยนสถานะเอกสาร/งาน พร้อมปรับปรุง completed_at อัตโนมัติ"""
+    """Transition task/document status and automatically update completed_at timestamp."""
     if new_status not in TaskStatus.values:
         raise ValueError(f"Invalid task status: {new_status}")
 
@@ -67,7 +67,7 @@ def transition_task_status(task: TaskDocument, new_status: str) -> TaskDocument:
     if new_status == TaskStatus.COMPLETED:
         task.completed_at = timezone.now()
     else:
-        # ถ้าดึงกลับมาทำใหม่ ให้เคลียร์เวลาเสร็จสิ้น
+        # Reset completed_at if moved back to in-progress
         task.completed_at = None
 
     task.save()
@@ -75,12 +75,12 @@ def transition_task_status(task: TaskDocument, new_status: str) -> TaskDocument:
 
 
 def get_workspace_overview(user, project_id: str = None) -> Dict[str, Any]:
-    """ดึงข้อมูลภาพรวมของ Workspace ประจำผู้ใช้"""
+    """Retrieve workspace summary and active pipelines for user."""
     tasks_qs = TaskDocument.objects.filter(user=user)
     if project_id:
         tasks_qs = tasks_qs.filter(project_id=project_id)
 
-    # นับจำนวนตามสถานะ
+    # Status counts
     drafting_count = tasks_qs.filter(status=TaskStatus.DRAFTING).count()
     waiting_count = tasks_qs.filter(status=TaskStatus.WAITING).count()
     completed_count = tasks_qs.filter(status=TaskStatus.COMPLETED).count()
@@ -89,13 +89,13 @@ def get_workspace_overview(user, project_id: str = None) -> Dict[str, Any]:
     now = timezone.now()
     next_7_days = now + timedelta(days=7)
 
-    # ดึงงานที่ยังไม่เสร็จ (Drafting หรือ Waiting)
+    # Active tasks (Drafting or Waiting)
     active_tasks = tasks_qs.filter(status__in=[TaskStatus.DRAFTING, TaskStatus.WAITING])
 
-    # งานที่เลยกำหนด (Overdue)
+    # Overdue tasks
     overdue_count = active_tasks.filter(deadline__lt=now).count()
 
-    # งานที่จะถึงกำหนดใน 7 วันข้างหน้า (select_related ป้องกัน N+1)
+    # Upcoming tasks in 7 days (select_related avoids N+1)
     upcoming_tasks = active_tasks.filter(
         deadline__gte=now,
         deadline__lte=next_7_days
@@ -117,7 +117,7 @@ def get_workspace_overview(user, project_id: str = None) -> Dict[str, Any]:
             'deadline_info': dl_info
         })
 
-    # โน้ตที่ปักหมุด (select_related ป้องกัน N+1)
+    # Pinned notes (select_related avoids N+1)
     pinned_notes = Note.objects.filter(user=user, is_pinned=True).select_related('project').order_by('-updated_at')[:5]
     pinned_notes_list = [
         {
@@ -130,7 +130,7 @@ def get_workspace_overview(user, project_id: str = None) -> Dict[str, Any]:
         for n in pinned_notes
     ]
 
-    # โปรเจกต์ทั้งหมดพร้อมนับงานที่ยังค้าง (Annotate ครั้งเดียวในระดับ SQL ป้องกัน N+1)
+    # Projects annotated with pending task count (Single query avoiding N+1)
     projects = WorkspaceProject.objects.filter(user=user, is_archived=False).annotate(
         pending_tasks_count=Count(
             'documents',

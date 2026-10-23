@@ -5,43 +5,49 @@ from django.conf import settings
 
 
 class AssetType(models.TextChoices):
-    STOCK = 'STOCK', 'หุ้น (Stock)'
-    CRYPTO = 'CRYPTO', 'คริปโต (Crypto)'
-    FUND = 'FUND', 'กองทุนรวม (Mutual Fund)'
-    OTHER = 'OTHER', 'สินทรัพย์อื่นๆ'
+    STOCK = 'STOCK', 'Stock'
+    CRYPTO = 'CRYPTO', 'Crypto'
+    FUND = 'FUND', 'Mutual Fund'
+    OTHER = 'OTHER', 'Other'
 
 
 class TransactionType(models.TextChoices):
-    BUY = 'BUY', 'ซื้อ (Buy)'
-    SELL = 'SELL', 'ขาย (Sell)'
-    DIVIDEND = 'DIVIDEND', 'เงินปันผล (Dividend)'
+    BUY = 'BUY', 'Buy'
+    SELL = 'SELL', 'Sell'
+    DIVIDEND = 'DIVIDEND', 'Dividend'
 
 
 class InvestmentPortfolio(models.Model):
     """
-    พอร์ตการลงทุนแยกแต่ละตะกร้า (Multi-Portfolio Architecture เหมือน Dime)
-    เช่น พอร์ต DCA หุ้นไทย, พอร์ตหุ้นสหรัฐฯ US Growth, พอร์ตคริปโต Moonshot
+    Investment portfolio basket (Multi-Portfolio Architecture).
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='investment_portfolios',
-        verbose_name="เจ้าของพอร์ต"
+        verbose_name="User"
     )
-    name = models.CharField(max_length=100, verbose_name="ชื่อพอร์ต (เช่น Dime US, DCA หุ้นไทย, Crypto)")
-    description = models.TextField(blank=True, default='', verbose_name="คำอธิบาย/เป้าหมายพอร์ต")
-    currency = models.CharField(max_length=5, default='THB', verbose_name="สกุลเงินหลักประจำพอร์ต")
-    color = models.CharField(max_length=20, default='blue', verbose_name="สีประจำพอร์ต")
-    is_default = models.BooleanField(default=False, verbose_name="เป็นพอร์ตหลัก")
+    name = models.CharField(max_length=100, verbose_name="Portfolio Name")
+    description = models.TextField(blank=True, default='', verbose_name="Description / Strategy")
+    currency = models.CharField(max_length=5, default='THB', verbose_name="Base Currency")
+    color = models.CharField(max_length=20, default='blue', verbose_name="Color")
+    is_default = models.BooleanField(default=False, verbose_name="Is Default")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = 'investment_portfolios'
         ordering = ['-is_default', 'created_at']
-        verbose_name = 'พอร์ตการลงทุน'
-        verbose_name_plural = 'พอร์ตการลงทุนทั้งหมด'
+        verbose_name = 'Investment Portfolio'
+        verbose_name_plural = 'Investment Portfolios'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user'],
+                condition=models.Q(is_default=True),
+                name='unique_default_portfolio_per_user'
+            )
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.user.username})"
@@ -53,7 +59,7 @@ class StockHolding(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='stock_holdings',
-        verbose_name="เจ้าของพอร์ต"
+        verbose_name="User"
     )
     portfolio = models.ForeignKey(
         InvestmentPortfolio,
@@ -61,22 +67,22 @@ class StockHolding(models.Model):
         null=True,
         blank=True,
         related_name='holdings',
-        verbose_name="สังกัดพอร์ตการลงทุน"
+        verbose_name="Portfolio"
     )
     ticker = models.CharField(
         max_length=30,
         db_index=True,
-        verbose_name="Ticker สัญลักษณ์ (เช่น PTT.BK, DELTA.BK, AAPL, BTC-USD)"
+        verbose_name="Ticker Symbol"
     )
-    name = models.CharField(max_length=255, blank=True, default='', verbose_name="ชื่อเต็มสินทรัพย์")
+    name = models.CharField(max_length=255, blank=True, default='', verbose_name="Asset Name")
     asset_type = models.CharField(
         max_length=20,
         choices=AssetType.choices,
         default=AssetType.STOCK,
-        verbose_name="ประเภทสินทรัพย์"
+        verbose_name="Asset Type"
     )
-    currency = models.CharField(max_length=5, default='THB', verbose_name="สกุลเงิน")
-    notes = models.TextField(blank=True, default='', verbose_name="บันทึกส่วนตัว")
+    currency = models.CharField(max_length=5, default='THB', verbose_name="Currency")
+    notes = models.TextField(blank=True, default='', verbose_name="Notes")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -84,14 +90,14 @@ class StockHolding(models.Model):
         db_table = 'stock_holdings'
         unique_together = ('user', 'portfolio', 'ticker')
         ordering = ['ticker']
-        verbose_name = 'สินทรัพย์ในพอร์ต'
-        verbose_name_plural = 'สินทรัพย์ในพอร์ตทั้งหมด'
+        verbose_name = 'Stock Holding'
+        verbose_name_plural = 'Stock Holdings'
 
     def __str__(self):
         return f"{self.ticker} ({self.user.username})"
 
     def calculate_position(self):
-        """คำนวณจำนวนหน่วยคงเหลือ, ต้นทุนเฉลี่ย, และเงินลงทุนสุทธิ"""
+        """Calculate remaining units, average cost, and net invested capital."""
         transactions = self.transactions.all().order_by('executed_at')
         total_shares = Decimal('0')
         total_cost = Decimal('0')
@@ -132,50 +138,50 @@ class StockTransaction(models.Model):
         StockHolding,
         on_delete=models.CASCADE,
         related_name='transactions',
-        verbose_name="สินทรัพย์"
+        verbose_name="Holding"
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='stock_transactions',
-        verbose_name="ผู้ทำรายการ"
+        verbose_name="User"
     )
     transaction_type = models.CharField(
         max_length=15,
         choices=TransactionType.choices,
         default=TransactionType.BUY,
-        verbose_name="ประเภทรายการ"
+        verbose_name="Transaction Type"
     )
     shares = models.DecimalField(
         max_digits=24,
         decimal_places=8,
-        verbose_name="จำนวนหน่วย/หุ้น (ทศนิยมสูงสุด 8 ตำแหน่ง)"
+        verbose_name="Shares / Units"
     )
     price_per_share = models.DecimalField(
         max_digits=24,
         decimal_places=8,
-        verbose_name="ราคาต่อหน่วย (ทศนิยมสูงสุด 8 ตำแหน่ง)"
+        verbose_name="Price per Share"
     )
     fee = models.DecimalField(
         max_digits=16,
         decimal_places=4,
         default=Decimal('0.0000'),
-        verbose_name="ค่าธรรมเนียม/ภาษี"
+        verbose_name="Fee / Tax"
     )
     currency = models.CharField(
         max_length=5,
         default='THB',
-        verbose_name="สกุลเงินที่ทำรายการ (THB / USD)"
+        verbose_name="Transaction Currency"
     )
-    executed_at = models.DateTimeField(verbose_name="วันเวลาที่ทำรายการ")
-    notes = models.TextField(blank=True, default='', verbose_name="บันทึก")
+    executed_at = models.DateTimeField(verbose_name="Executed At")
+    notes = models.TextField(blank=True, default='', verbose_name="Notes")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'stock_transactions'
         ordering = ['-executed_at']
-        verbose_name = 'ประวัติรายการซื้อขายหุ้น'
-        verbose_name_plural = 'ประวัติรายการซื้อขายทั้งหมด'
+        verbose_name = 'Stock Transaction'
+        verbose_name_plural = 'Stock Transactions'
         indexes = [
             models.Index(fields=['user', '-executed_at'], name='stock_tx_user_exec_idx'),
             models.Index(fields=['holding', '-executed_at'], name='stock_tx_hold_exec_idx'),
@@ -192,67 +198,67 @@ class StockTransaction(models.Model):
 
 class StockPriceSnapshot(models.Model):
     ticker = models.CharField(max_length=30, primary_key=True, verbose_name="Ticker")
-    price = models.DecimalField(max_digits=24, decimal_places=8, verbose_name="ราคาตลาดล่าสุด (ทศนิยมสูงสุด 8 ตำแหน่ง)")
+    price = models.DecimalField(max_digits=24, decimal_places=8, verbose_name="Latest Market Price")
     change_amount = models.DecimalField(
         max_digits=24,
         decimal_places=8,
         default=Decimal('0.0000'),
-        verbose_name="เปลี่ยนแปลงรายวัน (จำนวนเงิน)"
+        verbose_name="Daily Change Amount"
     )
     change_pct = models.DecimalField(
         max_digits=8,
         decimal_places=4,
         default=Decimal('0.0000'),
-        verbose_name="เปลี่ยนแปลง %"
+        verbose_name="Daily Change %"
     )
     previous_close = models.DecimalField(
         max_digits=24,
         decimal_places=8,
         null=True,
         blank=True,
-        verbose_name="ราคาปิดวันก่อนหน้า"
+        verbose_name="Previous Close Price"
     )
-    currency = models.CharField(max_length=5, default='THB', verbose_name="สกุลเงิน")
+    currency = models.CharField(max_length=5, default='THB', verbose_name="Currency")
     market_session = models.CharField(
         max_length=20,
         default='REGULAR',
         blank=True,
-        verbose_name="ช่วงเวลาตลาดล่าสุด (REGULAR, PRE, POST)"
+        verbose_name="Market Session"
     )
     regular_price = models.DecimalField(
         max_digits=24,
         decimal_places=8,
         null=True,
         blank=True,
-        verbose_name="ราคาปิดตลาดปกติ"
+        verbose_name="Regular Market Price"
     )
     extended_price = models.DecimalField(
         max_digits=24,
         decimal_places=8,
         null=True,
         blank=True,
-        verbose_name="ราคา Pre-Market หรือ Post-Market"
+        verbose_name="Extended Market Price"
     )
     extended_change = models.DecimalField(
         max_digits=24,
         decimal_places=8,
         null=True,
         blank=True,
-        verbose_name="เปลี่ยนแปลง Extended (จำนวนเงิน)"
+        verbose_name="Extended Change Amount"
     )
     extended_change_pct = models.DecimalField(
         max_digits=8,
         decimal_places=4,
         null=True,
         blank=True,
-        verbose_name="เปลี่ยนแปลง Extended (%)"
+        verbose_name="Extended Change %"
     )
-    fetched_at = models.DateTimeField(auto_now=True, verbose_name="อัปเดตล่าสุดเมื่อ")
+    fetched_at = models.DateTimeField(auto_now=True, verbose_name="Last Fetched At")
 
     class Meta:
         db_table = 'stock_price_snapshots'
-        verbose_name = 'ราคาตลาดสินทรัพย์'
-        verbose_name_plural = 'ราคาตลาดสินทรัพย์ทั้งหมด'
+        verbose_name = 'Stock Price Snapshot'
+        verbose_name_plural = 'Stock Price Snapshots'
 
     def __str__(self):
         return f"{self.ticker}: {self.price} ({self.change_pct}%)"
@@ -260,31 +266,31 @@ class StockPriceSnapshot(models.Model):
 
 class StockNewsArticle(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    ticker = models.CharField(max_length=30, db_index=True, verbose_name="สัญลักษณ์หุ้น")
-    title = models.CharField(max_length=500, verbose_name="พาดหัวข่าว (EN)")
-    title_th = models.CharField(max_length=500, blank=True, default='', verbose_name="พาดหัวข่าวแปลไทย (TH)")
-    summary = models.TextField(blank=True, default='', verbose_name="สรุปข่าว (EN)")
-    summary_th = models.TextField(blank=True, default='', verbose_name="บทสรุปผลกระทบต่อราคาหุ้น (TH)")
-    content = models.TextField(blank=True, default='', verbose_name="เนื้อหาข่าวภาษาอังกฤษฉบับเต็ม")
-    content_th = models.TextField(blank=True, default='', verbose_name="เนื้อหาข่าวแปลไทยฉบับเต็ม")
-    source = models.CharField(max_length=100, default='Yahoo Finance', verbose_name="สำนักข่าว")
-    url = models.URLField(max_length=1000, db_index=True, verbose_name="ลิงก์ข่าว")
-    published_at = models.DateTimeField(db_index=True, verbose_name="เวลาที่เผยแพร่")
+    ticker = models.CharField(max_length=30, db_index=True, verbose_name="Ticker")
+    title = models.CharField(max_length=500, verbose_name="News Headline (EN)")
+    title_th = models.CharField(max_length=500, blank=True, default='', verbose_name="Translated Headline (TH)")
+    summary = models.TextField(blank=True, default='', verbose_name="News Summary (EN)")
+    summary_th = models.TextField(blank=True, default='', verbose_name="Translated Summary (TH)")
+    content = models.TextField(blank=True, default='', verbose_name="Full Content (EN)")
+    content_th = models.TextField(blank=True, default='', verbose_name="Translated Full Content (TH)")
+    source = models.CharField(max_length=100, default='Yahoo Finance', verbose_name="News Source")
+    url = models.URLField(max_length=1000, db_index=True, verbose_name="Article URL")
+    published_at = models.DateTimeField(db_index=True, verbose_name="Published At")
     sentiment = models.CharField(
         max_length=20,
-        choices=[('BULLISH', 'Bullish (บวก)'), ('BEARISH', 'Bearish (ลบ)'), ('NEUTRAL', 'Neutral (กลาง)')],
+        choices=[('BULLISH', 'Bullish'), ('BEARISH', 'Bearish'), ('NEUTRAL', 'Neutral')],
         default='NEUTRAL',
-        verbose_name="ทิศทางข่าว (Sentiment)"
+        verbose_name="Sentiment"
     )
-    thumbnail_url = models.URLField(max_length=1000, blank=True, default='', verbose_name="รูปภาพประกอบ")
+    thumbnail_url = models.URLField(max_length=1000, blank=True, default='', verbose_name="Thumbnail URL")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'stock_news_articles'
         ordering = ['-published_at', '-created_at']
         unique_together = ('ticker', 'url')
-        verbose_name = 'ข่าวสารสินทรัพย์'
-        verbose_name_plural = 'ข่าวสารสินทรัพย์ทั้งหมด'
+        verbose_name = 'Stock News Article'
+        verbose_name_plural = 'Stock News Articles'
         indexes = [
             models.Index(fields=['ticker', '-published_at'], name='stock_news_tick_pub_idx'),
         ]
@@ -299,26 +305,26 @@ class StockWatchlist(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='stock_watchlist',
-        verbose_name="ผู้ใช้"
+        verbose_name="User"
     )
     ticker = models.CharField(max_length=30, db_index=True, verbose_name="Ticker")
-    name = models.CharField(max_length=255, blank=True, default='', verbose_name="ชื่อสินทรัพย์")
+    name = models.CharField(max_length=255, blank=True, default='', verbose_name="Asset Name")
     asset_type = models.CharField(
         max_length=20,
         choices=AssetType.choices,
         default=AssetType.STOCK,
-        verbose_name="ประเภทสินทรัพย์"
+        verbose_name="Asset Type"
     )
-    currency = models.CharField(max_length=5, default='USD', verbose_name="สกุลเงิน")
-    notes = models.TextField(blank=True, default='', verbose_name="บันทึก/เป้าหมายการเข้าซื้อ")
+    currency = models.CharField(max_length=5, default='USD', verbose_name="Currency")
+    notes = models.TextField(blank=True, default='', verbose_name="Notes / Price Target")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'stock_watchlist'
         unique_together = ('user', 'ticker')
         ordering = ['-created_at']
-        verbose_name = 'รายการสินทรัพย์เฝ้าดู (Watchlist)'
-        verbose_name_plural = 'รายการสินทรัพย์เฝ้าดูทั้งหมด'
+        verbose_name = 'Stock Watchlist'
+        verbose_name_plural = 'Stock Watchlists'
 
     def __str__(self):
         return f"{self.user.username} watching {self.ticker}"

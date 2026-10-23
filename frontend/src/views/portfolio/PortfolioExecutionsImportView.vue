@@ -50,18 +50,25 @@
           <label class="block text-zinc-400 text-xs">
             Target Destination Portfolio <span class="text-rose-400">*</span>
           </label>
-          <select
-            v-model="selectedPortfolioId"
-            class="w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-100 outline-none focus:border-zinc-600 transition-colors"
-          >
-            <option
-              v-for="p in portfolioStore.portfolios"
-              :key="p.id"
-              :value="p.id"
+          <div class="relative flex items-center">
+            <span
+              v-if="selectedPortfolio"
+              class="w-2.5 h-2.5 rounded-full absolute left-3 pointer-events-none z-10 shadow-sm"
+              :style="{ backgroundColor: getPortfolioColor(selectedPortfolio.color) }"
+            ></span>
+            <select
+              v-model="selectedPortfolioId"
+              class="w-full pl-8 pr-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-100 outline-none focus:border-zinc-600 transition-colors"
             >
-              {{ p.name }} ({{ p.currency }}) {{ p.is_default ? '• Default' : '' }}
-            </option>
-          </select>
+              <option
+                v-for="p in portfolioStore.portfolios"
+                :key="p.id"
+                :value="p.id"
+              >
+                {{ p.name }} ({{ p.currency }}) {{ p.is_default ? '• Default' : '' }}
+              </option>
+            </select>
+          </div>
           <span class="text-[10px] text-zinc-500 block">
             All imported trades will be attributed to this brokerage account.
           </span>
@@ -119,8 +126,8 @@
         </p>
       </div>
 
-      <div v-if="parsedTrades.length > 0" class="inline-flex items-center gap-2 px-3 py-1 rounded bg-zinc-900 border border-zinc-800 text-xs font-mono text-emerald-400">
-        <Check class="w-3.5 h-3.5" />
+      <div v-if="parsedTrades.length > 0" class="inline-flex items-center gap-2 px-3 py-1 rounded bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-300">
+        <Check class="w-3.5 h-3.5 text-zinc-400" />
         <span>{{ parsedTrades.length }} trades ready to review</span>
       </div>
     </div>
@@ -209,10 +216,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePortfolioStore } from '../../stores/portfolio'
 import { useToastStore } from '../../stores/toast'
+import { getPortfolioColor } from '../../types/portfolio'
 import apiClient from '../../api/client'
 import {
   ArrowLeft,
@@ -227,6 +235,9 @@ const portfolioStore = usePortfolioStore()
 const toast = useToastStore()
 
 const selectedPortfolioId = ref<string>('')
+const selectedPortfolio = computed(() =>
+  portfolioStore.portfolios.find(p => p.id === selectedPortfolioId.value) || null
+)
 const selectedFormat = ref<'AUTO' | 'DIME' | 'STREAMING' | 'BITKUB' | 'GENERIC'>('AUTO')
 const isDragging = ref(false)
 const isImporting = ref(false)

@@ -89,22 +89,30 @@ class SubscriptionStrategy(BaseObligationStrategy):
             'documents': metadata.get('documents', [])
         }
 
-    def on_paid(self, obligation, paid_amount: Decimal = None, term_number: int = None, note: str = '') -> Dict[str, Any]:
+    def on_paid(self, obligation, paid_amount: Decimal = None, term_number: int = None, note: str = '', **kwargs) -> Dict[str, Any]:
         from apps.finance.models import PaymentHistory
 
+        scheduled_amount = obligation.amount
         if paid_amount is None:
-            paid_amount = obligation.amount
+            paid_amount = scheduled_amount
+        else:
+            paid_amount = Decimal(str(paid_amount))
+            if paid_amount != scheduled_amount:
+                raise ValueError(f"Full subscription payment of ฿{scheduled_amount:,.2f} is required.")
 
         metadata = obligation.metadata or {}
         billing_cycle = metadata.get('billing_cycle', 'MONTHLY').upper()
 
         with transaction.atomic():
-            # 1. Record payment history
+            # 1. Record payment history with reversal snapshot
             payment = PaymentHistory.objects.create(
                 user=obligation.user,
                 obligation=obligation,
                 paid_amount=paid_amount,
-                note=note or f"Subscription renewal ({billing_cycle})"
+                note=note or f"Subscription renewal ({billing_cycle})",
+                metadata={
+                    'prev_due_date': obligation.due_date.isoformat() if obligation.due_date else None
+                }
             )
 
             # 2. Advance due date

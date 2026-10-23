@@ -498,7 +498,7 @@
                 </div>
                 <div class="truncate">
                   <a
-                    :href="att.file_url || att.file"
+                    :href="att.drive_view_link || att.file_url || att.file"
                     target="_blank"
                     rel="noopener noreferrer"
                     class="font-medium text-zinc-100 hover:text-white transition-colors truncate block text-xs"
@@ -517,11 +517,11 @@
 
               <div class="flex items-center gap-2 shrink-0">
                 <a
-                  :href="att.file_url || att.file"
+                  :href="att.drive_download_link || att.drive_view_link || att.file_url || att.file"
                   target="_blank"
                   download
                   class="p-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
-                  title="Download File"
+                  title="Download / Open File"
                 >
                   <Download class="w-3.5 h-3.5" />
                 </a>
@@ -705,7 +705,23 @@
           </button>
         </div>
 
-        <div class="space-y-4 text-xs font-mono">
+        <div v-if="!storageStore.isConnected" class="p-4 rounded-lg bg-zinc-900 border border-zinc-800 text-xs space-y-2 font-mono">
+          <div class="flex items-center gap-2 text-zinc-300">
+            <HardDrive class="w-4 h-4 text-zinc-400 shrink-0" />
+            <span class="font-semibold">Google Drive Required</span>
+          </div>
+          <p class="text-zinc-400 text-xs font-sans leading-relaxed">
+            All files are stored directly in your Google Drive under a Zero-Disk architecture. Please connect your Google Drive account first.
+          </p>
+          <router-link
+            to="/settings"
+            class="inline-flex items-center gap-1 text-xs text-zinc-100 hover:text-white underline font-medium pt-1"
+          >
+            Open Settings &rarr;
+          </router-link>
+        </div>
+
+        <div v-else class="space-y-4 text-xs font-mono">
           <div class="space-y-1">
             <label class="text-zinc-400 block">Document Category</label>
             <select
@@ -726,6 +742,13 @@
               @change="handleDocumentFileSelected"
               class="w-full text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-zinc-800 file:text-zinc-200 hover:file:bg-zinc-700"
             />
+          </div>
+
+          <div v-if="storageStore.uploadProgress !== null" class="w-full bg-zinc-800 rounded-full h-1 overflow-hidden">
+            <div
+              class="bg-zinc-200 h-1 transition-all duration-150"
+              :style="{ width: `${storageStore.uploadProgress}%` }"
+            ></div>
           </div>
 
           <div class="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
@@ -756,6 +779,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useInstallments, type InstallmentScheduleItem } from '../../composables/finance/useInstallments'
 import { useLedgerStore } from '../../stores/ledger'
+import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
 import type { FinancialObligation } from '../../types/finance'
 import {
@@ -769,20 +793,21 @@ import {
   Download,
   Trash2,
   Scale,
-  X
+  X,
+  HardDrive
 } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToastStore()
 const ledgerStore = useLedgerStore()
+const storageStore = useStorageStore()
 
 const {
   fetchInstallmentById,
   fetchSchedule,
   payInstallment,
   deleteInstallment,
-  uploadAttachment,
   deleteAttachment,
   isActionLoading
 } = useInstallments()
@@ -1002,14 +1027,23 @@ function handleDocumentFileSelected(e: Event) {
 
 async function handleUploadDocument() {
   if (!contract.value || !selectedDocumentFile.value) return
+  if (!storageStore.isConnected) {
+    toast.error('Google Drive connection is required')
+    return
+  }
   try {
-    await uploadAttachment(contract.value.id, selectedDocumentFile.value, uploadCategory.value)
-    toast.success('Document uploaded to vault')
+    // Zero-Disk Direct GDrive Upload
+    await storageStore.uploadDirect(
+      selectedDocumentFile.value,
+      'finance',
+      contract.value.id
+    )
+    toast.success('Document uploaded to Google Drive vault')
     showUploadModal.value = false
     selectedDocumentFile.value = null
     await loadContractDetails()
   } catch (err: any) {
-    toast.error('Failed to upload document')
+    toast.error(err?.message || 'Failed to upload document')
   }
 }
 

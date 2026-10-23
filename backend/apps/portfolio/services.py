@@ -14,7 +14,7 @@ from .models import (
 from .asset_catalog import search_market_assets, verify_ticker_exists
 
 
-# รายชื่อ Ticker หุ้นไทย SET ยอดนิยม (เพื่อเติม .BK ให้อัตโนมัติเมื่อพิมพ์แบบย่อ)
+# Common Thai SET tickers (auto-appends .BK if omitted)
 THAI_SET_SYMBOLS = {
     'PTT', 'DELTA', 'AOT', 'CPALL', 'ADVANC', 'GULF', 'SCB', 'KBANK', 'BBL',
     'KTB', 'BDMS', 'BH', 'SCC', 'CPN', 'CRC', 'MINT', 'TRUE', 'INTUCH',
@@ -28,7 +28,7 @@ THAI_SET_SYMBOLS = {
     'TLI', 'TTB', 'VNG'
 }
 
-# รายชื่อ Crypto ยอดนิยม (เพื่อเติม -USD ให้อัตโนมัติ)
+# Common Crypto symbols (auto-appends -USD if omitted)
 CRYPTO_SYMBOLS = {
     'BTC', 'ETH', 'SOL', 'BNB', 'DOGE', 'XRP', 'ADA', 'AVAX', 'SUI',
     'LINK', 'PEPE', 'SHIB', 'NEAR', 'DOT'
@@ -37,12 +37,12 @@ CRYPTO_SYMBOLS = {
 
 def normalize_ticker(raw_ticker: str, currency: Optional[str] = None) -> str:
     """
-    จัดรูปแบบ Ticker ให้เป็นมาตรฐาน:
-    1. ถ้ามีจุด (.) หรือขีด (-) อยู่แล้ว (เช่น PTT.BK, BTC-USD, BRK.B) -> คงเดิม
-    2. ถ้าเป็น Crypto ยอดนิยม (เช่น BTC, ETH) -> เติม -USD
-    3. ถ้าสกุลเงินระบุชัดเจนว่าเป็น USD -> เป็นหุ้นต่างประเทศ ห้ามเติม .BK
-    4. ถ้าเป็นหุ้นไทยใน SET ยอดนิยม (เช่น PTT, DELTA, AOT, SCB) -> เติม .BK
-    5. อื่นๆ ให้คงเดิม (เช่น GOOG, GOOGL, PLTR, BABA, DIS, AAPL) ไม่เติม .BK มั่วซั่ว
+    Normalize ticker format to exchange standards:
+    1. Already formatted with dot or hyphen (e.g. PTT.BK, BTC-USD, BRK.B) -> keep intact
+    2. Common Crypto (e.g. BTC, ETH) -> append -USD
+    3. Specified USD currency -> US asset, never append .BK
+    4. Common Thai SET ticker (e.g. PTT, DELTA, AOT, SCB) -> append .BK
+    5. Otherwise keep original symbol (e.g. GOOG, PLTR, AAPL)
     """
     ticker = raw_ticker.strip().upper()
     if not ticker:
@@ -54,11 +54,11 @@ def normalize_ticker(raw_ticker: str, currency: Optional[str] = None) -> str:
     if ticker in CRYPTO_SYMBOLS:
         return f"{ticker}-USD"
 
-    # ถ้ากำหนดสกุลเงินเป็น USD หรือสินทรัพย์สกุลเงินดอลลาร์ -> ห้ามเติม .BK เด็ดขาด
+    # Explicitly USD -> never append .BK
     if currency and currency.upper() == 'USD':
         return ticker
 
-    # ถ้าเป็นหุ้นไทยใน SET List -> เติม .BK
+    # Known Thai SET list -> append .BK
     if ticker in THAI_SET_SYMBOLS:
         return f"{ticker}.BK"
 
@@ -71,11 +71,11 @@ def fetch_and_cache_market_prices(
     respect_market_hours: bool = True
 ) -> Dict[str, Decimal]:
     """
-    ดึงราคาตลาดปัจจุบันของหุ้น/คริปโต และเก็บ snapshot ลงฐานข้อมูล:
-    - เคารพเวลาเปิด-ปิดตลาด (Market Hours): ถ้าตลาดปิดและมีราคา Snapshot ภายใน 4 ชั่วโมง จะข้ามการยิงซ้ำ
-    - ปรับ Cache TTL เป็น 1 นาทีสำหรับการซิงค์ Real-Time 1 นาที
-    - รองรับทศนิยมสูงสุด 8 ตำแหน่งสำหรับเหรียญ Crypto และ Fractional Shares
-    - Fallback คืนค่าจาก Snapshot ในฐานข้อมูลทันทีเมื่อ API ภายนอกช้าหรือล้มเหลว
+    Fetch current market quote for stock/crypto and snapshot in database:
+    - Respect market hours: if closed and cached within 4h, skip redundant network call
+    - Cache TTL set to 1 minute for live quote synchronization
+    - Supports up to 8 decimal places for crypto and fractional executions
+    - Fallback to existing database snapshot on external timeout or failure
     """
     if not tickers:
         return {}
@@ -87,7 +87,7 @@ def fetch_and_cache_market_prices(
     now = timezone.now()
     cache_ttl = timedelta(minutes=1)
 
-    # 1. ตรวจสอบ Snapshot ในฐานข้อมูลก่อน
+    # 1. Check existing snapshot in database
     cached_snapshots = {
         s.ticker: s for s in StockPriceSnapshot.objects.filter(ticker__in=tickers_to_fetch)
     }
@@ -96,8 +96,8 @@ def fetch_and_cache_market_prices(
     for t in tickers_to_fetch:
         snap = cached_snapshots.get(t)
 
-        # ถ้าให้เคารพเวลาเปิด-ปิดตลาด และไม่ได้บังคับ (force=False)
-        # ตรวจสอบว่าตลาดของหุ้นตัวนี้เปิดอยู่ หรือจำเป็นต้องดึงราคาหรือไม่
+        # If respecting trading hours and not forced (force=False)
+        # Verify if market is currently open for trading
         if respect_market_hours and not force and not should_refresh_ticker(t, force=False):
             if snap:
                 prices[t] = snap.price
@@ -108,7 +108,7 @@ def fetch_and_cache_market_prices(
         else:
             missing_or_stale.append(t)
 
-    # 2. ถ้ามีตัวที่ต้องดึงสด
+    # 2. Fetch live quotes for missing or stale tickers
     if missing_or_stale:
         try:
             import yfinance as yf
@@ -123,7 +123,7 @@ def fetch_and_cache_market_prices(
                     previous_close_val = None
                     session_val = 'REGULAR'
 
-                    # ดึงข้อมูลจาก stock.info เพื่อรองรับ Pre-market และ Post-market ของหุ้นสหรัฐฯ
+                    # Fetch stock.info for US Pre-market and Post-market session quotes
                     info = {}
                     try:
                         info = stock.info or {}
@@ -135,7 +135,7 @@ def fetch_and_cache_market_prices(
                     if raw_prev_close is not None:
                         previous_close_val = Decimal(str(round(raw_prev_close, 8)))
 
-                    # 2. Regular market price & change (ราคาหลักในเวลาทำการปกติ - ไม่ถูกทับโดย Pre/Post)
+                    # 2. Regular market price & change (primary regular session quote)
                     raw_reg_price = info.get('regularMarketPrice') or (fast_info.get('regularMarketPrice') if fast_info else None) or (fast_info.get('lastPrice') if fast_info else None)
                     if raw_reg_price is not None:
                         regular_price_val = Decimal(str(round(raw_reg_price, 8)))
@@ -153,7 +153,7 @@ def fetch_and_cache_market_prices(
                     elif previous_close_val and previous_close_val > Decimal('0') and price_val:
                         change_pct_val = Decimal(str(round(((price_val - previous_close_val) / previous_close_val) * 100, 4)))
 
-                    # 3. ข้อมูลแยกสำหรับ Pre-Market และ Post-Market / Night Market (Extended Hours - เหมือน Dime / Webull)
+                    # 3. Extended hours quotes for Pre-Market and Post-Market sessions
                     market_state = str(info.get('marketState', '')).upper()
                     raw_post_price = info.get('postMarketPrice')
                     raw_pre_price = info.get('preMarketPrice')
@@ -163,7 +163,7 @@ def fetch_and_cache_market_prices(
                     extended_change_pct_val = None
                     session_val = 'REGULAR'
 
-                    # ถ้าอยู่ในช่วง PRE-market และมีราคา preMarketPrice
+                    # If in PRE-market session with available preMarketPrice
                     if (market_state == 'PRE' or 'PRE' in market_state) and raw_pre_price is not None:
                         session_val = 'PRE'
                         extended_price_val = Decimal(str(round(raw_pre_price, 8)))
@@ -179,7 +179,7 @@ def fetch_and_cache_market_prices(
                         elif previous_close_val:
                             extended_change_val = extended_price_val - previous_close_val
 
-                    # ถ้าอยู่ในช่วง POST-market หรือนอกเวลาทำการ และมีราคา postMarketPrice
+                    # If in POST-market or closed session with available postMarketPrice
                     elif raw_post_price is not None and (market_state in ('POST', 'POSTPOST', 'CLOSED') or not market_state):
                         session_val = 'POST'
                         extended_price_val = Decimal(str(round(raw_post_price, 8)))
@@ -220,7 +220,7 @@ def fetch_and_cache_market_prices(
         except ImportError:
             pass
 
-    # 3. Final Fallback: เติมตัวที่ยังตกหล่นด้วย cached snapshots
+    # 3. Final Fallback: populate missing tickers from cached snapshots
     for t in tickers_to_fetch:
         if t not in prices and t in cached_snapshots:
             prices[t] = cached_snapshots[t].price
@@ -235,8 +235,8 @@ def calculate_detailed_position(
     snapshot: Optional[StockPriceSnapshot] = None
 ) -> Dict[str, Any]:
     """
-    คำนวณต้นทุนเฉลี่ย (Weighted Average Cost), มูลค่าตลาด, กำไร/ขาดทุน Realized และ Unrealized
-    พร้อมทั้งแปลงค่าเป็น Dual-Currency (THB และ USD) อย่างแม่นยำ
+    Calculate average cost (Weighted Average Cost), market value, Realized and Unrealized PnL
+    Computed with dual-currency conversion (THB and USD)
     """
     if hasattr(holding, '_prefetched_objects_cache') and 'transactions' in holding._prefetched_objects_cache:
         transactions = sorted(holding.transactions.all(), key=lambda x: x.executed_at)
@@ -250,7 +250,7 @@ def calculate_detailed_position(
 
     for tx in transactions:
         if tx.transaction_type == TransactionType.BUY:
-            # ต้นทุนรวม = (จำนวนหุ้น * ราคาต่อหุ้น) + ค่าคอม
+            # Total cost = (shares * price) + fee
             tx_cost = (tx.shares * tx.price_per_share) + tx.fee
             total_cost_basis += tx_cost
             total_shares += tx.shares
@@ -258,14 +258,14 @@ def calculate_detailed_position(
         elif tx.transaction_type == TransactionType.SELL:
             if total_shares > Decimal('0'):
                 shares_to_sell = min(tx.shares, total_shares)
-                # ราคาต้นทุนเฉลี่ยก่อนขาย
+                # Average cost per share prior to sell
                 avg_cost_before_sell = total_cost_basis / total_shares
                 cost_of_shares_sold = avg_cost_before_sell * shares_to_sell
 
-                # เงินที่ได้รับหลังหักค่าคอม = (จำนวนหุ้นที่ขายได้ * ราคาขาย) - ค่าคอม
+                # Net sell proceeds = (sold shares * sell price) - fee
                 net_proceeds = (shares_to_sell * tx.price_per_share) - tx.fee
 
-                # กำไร/ขาดทุนจริงจากไม้นี้
+                # Realized PnL from execution
                 realized_from_tx = net_proceeds - cost_of_shares_sold
                 total_realized_pnl += realized_from_tx
 
@@ -277,13 +277,13 @@ def calculate_detailed_position(
                     total_cost_basis = Decimal('0')
 
         elif tx.transaction_type == TransactionType.DIVIDEND:
-            # เงินปันผลรับ = (จำนวนหุ้น * ปันผลต่อหุ้น) - หัก ณ ที่จ่าย
+            # Net dividend = (shares * dividend per share) - withholding tax
             net_dividend = (tx.shares * tx.price_per_share) - tx.fee
             total_dividends += net_dividend
 
     avg_cost = (total_cost_basis / total_shares) if total_shares > Decimal('0') else Decimal('0')
 
-    # ราคาตลาดล่าสุด และข้อมูล Market Session (Regular, Pre-market, Post-market)
+    # Latest market price and active market session
     if snapshot is None:
         snapshot = StockPriceSnapshot.objects.filter(ticker=holding.ticker).first()
     if current_price is None:
@@ -396,9 +396,9 @@ def calculate_detailed_position(
 
 def get_usd_to_thb_rate() -> Decimal:
     """
-    ดึงอัตราแลกเปลี่ยน USD/THB ล่าสุด (เช่น 33.64)
-    - แคชใน StockPriceSnapshot เพื่อความรวดเร็วและประหยัดเน็ต
-    - Fallback ไปยัง yfinance USDTHB=X หรือค่าเฉลี่ย 34.50 ถ้าออฟไลน์
+    Fetch live USD/THB exchange rate
+    - Cache in StockPriceSnapshot for speed and network efficiency
+    - Fallback to USDTHB=X or default baseline if offline
     """
     snap = StockPriceSnapshot.objects.filter(ticker='USDTHB=X').first()
     if snap and (timezone.now() - snap.fetched_at).total_seconds() < 3600:
@@ -430,27 +430,33 @@ def get_portfolio_overview(
     asset_type: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    ดึงภาพรวมสรุปมูลค่าพอร์ตและผลตอบแทนทั้งหมดของผู้ใช้ (Optimized Prefetching)
-    - รองรับสลับมุมมองสกุลเงินสองทาง (THB <-> USD)
-    - รองรับกรองแยกตามประเภทสินทรัพย์ (STOCK, CRYPTO, FUND, OTHER)
-    - รองรับการแยกพอร์ตการลงทุนหลายพอร์ต (เหมือน Dime Multi-Portfolio)
+    Retrieve portfolio valuation and aggregate return performance (Optimized prefetching)
+    - Supports dual-currency switching (THB <-> USD)
+    - Supports asset type filtering (STOCK, CRYPTO, FUND, OTHER)
+    - Multi-Portfolio support
     """
     from django.db.models import Prefetch
 
-    # ตรวจสอบและสร้างพอร์ตเริ่มต้นถ้ายังไม่มี
-    default_pf, _ = InvestmentPortfolio.objects.get_or_create(
-        user=user,
-        is_default=True,
-        defaults={'name': 'Main Portfolio', 'currency': 'THB'}
-    )
+    # Ensure default portfolio exists safely
+    default_pf = InvestmentPortfolio.objects.filter(user=user, is_default=True).first()
+    if not default_pf:
+        try:
+            default_pf = InvestmentPortfolio.objects.create(
+                user=user,
+                is_default=True,
+                name='Main Portfolio',
+                currency='THB'
+            )
+        except Exception:
+            default_pf = InvestmentPortfolio.objects.filter(user=user, is_default=True).first()
 
     qs = StockHolding.objects.filter(user=user)
 
-    # กรองตามพอร์ตเป้าหมาย
+    # Filter by target portfolio
     if portfolio_id and portfolio_id.upper() != 'ALL':
         qs = qs.filter(portfolio_id=portfolio_id)
 
-    # กรองตามประเภทสินทรัพย์
+    # Filter by asset category
     if asset_type and asset_type.upper() != 'ALL':
         qs = qs.filter(asset_type=asset_type.upper())
 
@@ -463,13 +469,13 @@ def get_portfolio_overview(
     if selected_curr not in ('THB', 'USD'):
         selected_curr = 'THB'
 
-    # รวบรวม Tickers เพื่อดึงราคาและ Snapshot แบบ Batch ป้องกัน N+1
+    # Batch fetch tickers quotes avoiding N+1 queries
     tickers = [h.ticker for h in holdings]
     cached_snapshots = {
         s.ticker: s for s in StockPriceSnapshot.objects.filter(ticker__in=tickers)
     }
 
-    # ตัวสะสมสำหรับ THB และ USD
+    # Aggregators for THB and USD
     thb_market_value = Decimal('0.00')
     thb_cost_basis = Decimal('0.00')
     thb_realized_pnl = Decimal('0.00')
@@ -507,7 +513,7 @@ def get_portfolio_overview(
             'position': pos
         })
 
-    # ฟังก์ชันคำนวณสัดส่วน Asset Allocation ตามสกุลเงินเป้าหมาย
+    # Compute asset allocation percentages in target currency
     def calc_allocations(target_curr: str):
         alloc_map = {}
         tot_val = thb_market_value if target_curr == 'THB' else usd_market_value
@@ -567,7 +573,7 @@ def get_portfolio_overview(
 
     active_summary = summary_thb if selected_curr == 'THB' else summary_usd
 
-    # ดึงรายชื่อพอร์ตการลงทุนทั้งหมดของผู้ใช้ (สำหรับ Dime Switcher)
+    # Retrieve list of user investment portfolios (for portfolio switcher)
     all_user_portfolios = InvestmentPortfolio.objects.filter(user=user).order_by('-is_default', 'created_at')
     portfolios_data = []
     for p in all_user_portfolios:

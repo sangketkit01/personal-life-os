@@ -88,9 +88,10 @@ class LoginSerializer(serializers.Serializer):
         user = authenticate(username=username, password=password)
         if not user:
             try:
-                user_obj = User.objects.get(email__iexact=username)
-                user = authenticate(username=user_obj.username, password=password)
-            except User.DoesNotExist:
+                user_obj = User.objects.filter(email__iexact=username).first()
+                if user_obj:
+                    user = authenticate(username=user_obj.username, password=password)
+            except Exception:
                 pass
 
         if not user:

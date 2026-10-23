@@ -13,7 +13,7 @@ def custom_exception_handler(exc, context):
             # Generate a helpful top-level detail string from field errors
             messages = []
             for field, errors in response.data.items():
-                if isinstance(errors, list):
+                if isinstance(errors, list) and len(errors) > 0:
                     messages.append(f"{field}: {errors[0]}")
                 elif isinstance(errors, dict):
                     messages.append(f"{field}: {errors}")

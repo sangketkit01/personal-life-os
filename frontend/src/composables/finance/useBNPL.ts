@@ -20,7 +20,12 @@ export interface CreateBNPLOrderPayload {
   store?: string
   order_number?: string
   order_date?: string
-  total_principal?: number
+  total_price?: number
+  down_payment?: number
+  financed_amount?: number
+  interest_rate_pct?: number
+  monthly_interest?: number
+  down_payment_account_id?: string | null
 }
 
 export function useBNPL() {
@@ -186,6 +191,7 @@ export function useBNPL() {
         direction: 'OUTFLOW',
         amount: payload.monthly_amount,
         currency: 'THB',
+        down_payment_account_id: payload.down_payment_account_id || undefined,
         metadata: {
           subtype: 'BNPL_ORDER',
           total_terms: payload.total_terms,
@@ -193,7 +199,12 @@ export function useBNPL() {
           store: payload.store || '',
           order_number: payload.order_number || '',
           order_date: payload.order_date || new Date().toISOString().split('T')[0],
-          total_principal: payload.total_principal || (payload.monthly_amount * payload.total_terms)
+          total_price: payload.total_price || (payload.monthly_amount * payload.total_terms),
+          down_payment: payload.down_payment || 0,
+          financed_amount: payload.financed_amount || (payload.monthly_amount * payload.total_terms),
+          interest_rate_pct: payload.interest_rate_pct || 0,
+          monthly_interest: payload.monthly_interest || 0,
+          total_principal: payload.financed_amount || (payload.monthly_amount * payload.total_terms)
         }
       })
       subOrders.value.unshift(res.data)
@@ -203,7 +214,7 @@ export function useBNPL() {
       }
       return res.data
     } catch (err: any) {
-      error.value = err?.response?.data?.detail || 'Failed to create sub-order'
+      error.value = err?.response?.data?.detail || err?.response?.data?.down_payment || 'Failed to create sub-order'
       throw err
     } finally {
       isActionLoading.value = false
@@ -212,6 +223,8 @@ export function useBNPL() {
 
   async function payAccountBill(accountId: string, payload: {
     paid_amount?: number
+    statement_month?: string
+    account_id?: string
     note?: string
     slip_file?: File
   }) {
@@ -219,6 +232,8 @@ export function useBNPL() {
     try {
       const formData = new FormData()
       if (payload.paid_amount !== undefined) formData.append('paid_amount', payload.paid_amount.toString())
+      if (payload.statement_month) formData.append('statement_month', payload.statement_month)
+      if (payload.account_id) formData.append('account_id', payload.account_id)
       if (payload.note) formData.append('note', payload.note)
       if (payload.slip_file) formData.append('slip_file', payload.slip_file)
 

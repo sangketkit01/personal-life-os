@@ -2,29 +2,29 @@
   <div class="space-y-6 font-sans">
     <!-- Summary Header Cards for Installments -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
-        <span class="text-[10px] font-mono uppercase text-zinc-500 block">Total Remaining Debt</span>
-        <div class="mt-2 text-xl font-semibold font-mono text-zinc-100 tabular-nums">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm">
+        <span class="text-[10px] font-mono uppercase text-zinc-400 block">Total Remaining Debt</span>
+        <div class="mt-2 text-xl font-bold font-mono text-zinc-100 tabular-nums">
           ฿{{ totalRemainingInstallmentDebt.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[10px] text-zinc-500 mt-1 block">Consolidated remaining principal balance</span>
+        <span class="text-[10px] text-zinc-500 mt-1 block">Total remaining principal across contracts</span>
       </div>
 
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
-        <span class="text-[10px] font-mono uppercase text-zinc-500 block">Monthly Installment Outflow</span>
-        <div class="mt-2 text-xl font-semibold font-mono text-zinc-100 tabular-nums">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm">
+        <span class="text-[10px] font-mono uppercase text-zinc-400 block">Monthly Installment Outflow</span>
+        <div class="mt-2 text-xl font-bold font-mono text-zinc-100 tabular-nums">
           ฿{{ totalMonthlyInstallmentOutflow.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[10px] text-zinc-500 mt-1 block">Monthly installment commitment</span>
+        <span class="text-[10px] text-zinc-500 mt-1 block">Monthly installment cash outflow</span>
       </div>
 
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
-        <span class="text-[10px] font-mono uppercase text-zinc-500 block">Active Contracts</span>
-        <div class="mt-2 text-xl font-semibold font-mono text-zinc-100 tabular-nums">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm">
+        <span class="text-[10px] font-mono uppercase text-zinc-400 block">Active Contracts</span>
+        <div class="mt-2 text-xl font-bold font-mono text-zinc-100 tabular-nums">
           {{ installmentList.length }}
         </div>
         <span class="text-[10px] text-zinc-500 mt-1 block">
-          {{ hirePurchaseList.length }} Vehicle Hire Purchase • {{ generalList.length }} Fixed / 0% Loans
+          {{ hirePurchaseList.length }} Hire-Purchase • {{ generalList.length }} 0% Term Plans
         </span>
       </div>
     </div>
@@ -56,20 +56,20 @@
         <div
           v-for="hp in hirePurchaseList"
           :key="hp.id"
-          class="p-5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-4 hover:border-zinc-700/80 transition-colors"
+          class="p-5 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-4 hover:border-zinc-700/80 hover:bg-zinc-900/70 transition-all duration-200 shadow-sm hover:shadow-md"
         >
           <!-- Top Row: Vehicle title & Leasing -->
           <div class="flex items-start justify-between gap-3">
             <div>
               <div class="flex items-center gap-2">
-                <span class="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
+                <span class="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-semibold">
                   Hire Purchase
                 </span>
                 <span class="text-xs text-zinc-400 font-mono">{{ hp.metadata?.lender || 'Auto Leasing' }}</span>
               </div>
               <h3
                 @click="emit('select', hp.id)"
-                class="text-sm font-semibold text-zinc-100 mt-1 cursor-pointer hover:text-zinc-300 transition-colors"
+                class="text-sm font-semibold text-zinc-100 mt-1 cursor-pointer hover:text-white transition-colors"
               >
                 {{ hp.metadata?.vehicle_model || hp.title }}
               </h3>
@@ -79,7 +79,7 @@
             <div class="flex items-center gap-1.5">
               <button
                 @click="emit('select', hp.id)"
-                class="px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-mono transition-colors"
+                class="px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 active:scale-95 border border-zinc-800 text-zinc-300 text-xs font-mono transition-all"
                 title="View Full Contract Dossier & Amortization"
               >
                 Dossier &rarr;
@@ -87,7 +87,7 @@
               <button
                 v-if="hp.status === 'ACTIVE'"
                 @click="emit('openPay', hp)"
-                class="px-2.5 py-1 rounded bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors"
+                class="px-2.5 py-1 rounded bg-zinc-100 hover:bg-white active:scale-95 text-zinc-950 text-xs font-semibold transition-all shadow-sm"
               >
                 Pay Term
               </button>
@@ -219,7 +219,7 @@
               <tr
                 v-for="item in generalList"
                 :key="item.id"
-                class="hover:bg-zinc-900/40 transition-colors cursor-pointer"
+                class="hover:bg-zinc-800/40 transition-colors cursor-pointer"
                 @click="emit('select', item.id)"
               >
                 <td class="py-2.5 pl-4 font-sans font-medium text-zinc-100 hover:text-white">{{ item.title }}</td>
@@ -246,21 +246,21 @@
                   <div class="flex items-center justify-end gap-1.5">
                     <button
                       @click="emit('select', item.id)"
-                      class="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[10px] text-zinc-300 transition-colors"
+                      class="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 active:scale-95 border border-zinc-800 text-[10px] text-zinc-300 transition-all"
                       title="View Contract Dossier"
                     >
                       Dossier
                     </button>
                     <button
                       @click="emit('openHistory', item)"
-                      class="p-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors"
+                      class="p-1 rounded text-zinc-500 hover:text-zinc-200 active:scale-95 transition-all"
                       title="History"
                     >
                       <History class="w-3.5 h-3.5" />
                     </button>
                     <button
                       @click="emit('openEdit', item)"
-                      class="p-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors"
+                      class="p-1 rounded text-zinc-500 hover:text-zinc-200 active:scale-95 transition-all"
                       title="Edit"
                     >
                       <Edit2 class="w-3.5 h-3.5" />
@@ -268,13 +268,13 @@
                     <button
                       v-if="item.status === 'ACTIVE'"
                       @click="emit('openPay', item)"
-                      class="px-2 py-0.5 rounded bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-[10px] transition-colors"
+                      class="px-2.5 py-0.5 rounded bg-zinc-100 hover:bg-white active:scale-95 text-zinc-950 font-semibold text-[10px] transition-all shadow-sm"
                     >
                       Pay
                     </button>
                     <button
                       @click="emit('delete', item.id)"
-                      class="p-1 rounded text-zinc-600 hover:text-rose-400 transition-colors"
+                      class="p-1 rounded text-zinc-600 hover:text-rose-400 active:scale-95 transition-all"
                       title="Delete"
                     >
                       <Trash2 class="w-3.5 h-3.5" />

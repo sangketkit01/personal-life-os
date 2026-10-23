@@ -9,13 +9,13 @@
             AMORTIZATION & HP
           </span>
         </div>
-        <p class="text-xs text-zinc-500 mt-1">Vehicle hire purchase loans, Thai OCPB 2023 early payoff discount engine, and 0% card installment plans</p>
+        <p class="text-xs text-zinc-500 mt-1">Vehicle hire-purchase contracts, amortization schedules, and 0% fixed-term installments</p>
       </div>
 
       <div class="flex items-center gap-2.5 self-start sm:self-auto">
         <button
           @click="router.push('/finance/installments/new')"
-          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
+          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white active:scale-95 text-zinc-950 text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
         >
           <Plus class="w-3.5 h-3.5 text-zinc-950" />
           <span>New Contract</span>

@@ -9,13 +9,13 @@
             REVOLVING CREDIT
           </span>
         </div>
-        <p class="text-xs text-zinc-500 mt-1">E-commerce buy-now-pay-later credit accounts (Shopee SPayLater, LazPayLater, TikTok Shop) and sub-orders</p>
+        <p class="text-xs text-zinc-500 mt-1">E-commerce revolving credit lines, buy-now-pay-later facilities, and active installment orders</p>
       </div>
 
       <div class="flex items-center gap-2.5 self-start sm:self-auto">
         <button
           @click="router.push('/finance/bnpl/new')"
-          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white active:scale-95 text-zinc-950 text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm"
         >
           <Plus class="w-3.5 h-3.5 text-zinc-950" />
           <span>New BNPL Line</span>

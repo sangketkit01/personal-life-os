@@ -9,57 +9,54 @@
             class="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-400 hover:text-zinc-200 transition-colors"
           >
             <ArrowLeft class="w-3.5 h-3.5" />
-            <span>Cash Flow Radar</span>
+            <span>Cash Flow Ledger</span>
           </RouterLink>
           <span class="text-zinc-600">/</span>
           <span class="text-xs font-mono text-zinc-300">Shared Bills & Splits</span>
         </div>
         <div class="flex items-center gap-2.5">
-          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">Shared Bills & Split Receivables</h1>
-          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-zinc-900 text-zinc-400 border border-zinc-800">
-            RADAR TWO-WAY SYNC
+          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">Shared Bills & Splits</h1>
+          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">
+            Radar Debtor Linked
           </span>
         </div>
-        <p class="text-xs text-zinc-500 mt-1">
-          Track group meal & travel shares owed by friends, with one-click wallet deposit and automatic Radar debtor closure
-        </p>
       </div>
 
       <div class="flex items-center gap-2.5 self-start sm:self-auto">
         <RouterLink
           to="/finance/debts"
-          class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-mono text-zinc-300 transition-colors flex items-center gap-1.5"
+          class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 hover:border-zinc-700 border border-zinc-800 text-xs font-mono text-zinc-300 transition-all active:scale-[0.98] flex items-center gap-1.5"
         >
           <HandCoins class="w-3.5 h-3.5 text-zinc-400" />
-          <span>Open Debtors Directory →</span>
+          <span>Debtors Book →</span>
         </RouterLink>
       </div>
     </div>
 
     <!-- Metric Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 font-mono text-xs">
-        <span class="text-[10px] uppercase text-zinc-500 block">Total Pending Reimbursements</span>
-        <div class="text-xl font-bold text-amber-400 mt-2 tabular-nums">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-amber-500/40 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 font-mono text-xs">
+        <span class="text-[10px] uppercase text-zinc-400 font-semibold block">Pending Reimbursements</span>
+        <div class="text-2xl font-bold text-amber-400 mt-2 tabular-nums tracking-tight">
           ฿{{ pendingTotalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[10px] text-zinc-500 block mt-1">{{ pendingCount }} friends currently owe you</span>
+        <span class="text-[11px] text-zinc-400 block mt-1.5">{{ pendingCount }} items awaiting settlement</span>
       </div>
 
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 font-mono text-xs">
-        <span class="text-[10px] uppercase text-zinc-500 block">Settled Friend Shares</span>
-        <div class="text-xl font-bold text-emerald-400 mt-2 tabular-nums">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-emerald-500/40 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 font-mono text-xs">
+        <span class="text-[10px] uppercase text-zinc-400 font-semibold block">Settled Reimbursements</span>
+        <div class="text-2xl font-bold text-emerald-400 mt-2 tabular-nums tracking-tight">
           ฿{{ settledTotalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[10px] text-zinc-500 block mt-1">{{ settledCount }} shares repaid and deposited</span>
+        <span class="text-[11px] text-zinc-400 block mt-1.5">{{ settledCount }} items received and cleared</span>
       </div>
 
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 font-mono text-xs">
-        <span class="text-[10px] uppercase text-zinc-500 block">Total Recorded Split Items</span>
-        <div class="text-xl font-bold text-zinc-100 mt-2 tabular-nums">
-          {{ splitsList.length }} Items
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 font-mono text-xs">
+        <span class="text-[10px] uppercase text-zinc-400 font-semibold block">Total Shared Items</span>
+        <div class="text-2xl font-bold text-zinc-100 mt-2 tabular-nums tracking-tight">
+          {{ splitsList.length }} items
         </div>
-        <span class="text-[10px] text-zinc-500 block mt-1">From group expenses</span>
+        <span class="text-[11px] text-zinc-400 block mt-1.5">From shared bills and split transactions</span>
       </div>
     </div>
 
@@ -68,24 +65,24 @@
       <button
         @click="statusFilter = 'ALL'"
         type="button"
-        class="px-3 py-1 rounded text-xs transition-colors"
-        :class="statusFilter === 'ALL' ? 'bg-zinc-800 text-zinc-100 font-semibold shadow-sm' : 'text-zinc-500 hover:text-zinc-300'"
+        class="px-3 py-1 rounded text-xs transition-all active:scale-[0.98]"
+        :class="statusFilter === 'ALL' ? 'bg-zinc-800 text-zinc-100 font-semibold shadow-sm' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'"
       >
         All ({{ splitsList.length }})
       </button>
       <button
         @click="statusFilter = 'PENDING'"
         type="button"
-        class="px-3 py-1 rounded text-xs transition-colors"
-        :class="statusFilter === 'PENDING' ? 'bg-zinc-800 text-amber-400 font-semibold shadow-sm' : 'text-zinc-500 hover:text-zinc-300'"
+        class="px-3 py-1 rounded text-xs transition-all active:scale-[0.98]"
+        :class="statusFilter === 'PENDING' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30 font-semibold shadow-sm' : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800/40'"
       >
-        Pending Settlement ({{ pendingCount }})
+        Pending ({{ pendingCount }})
       </button>
       <button
         @click="statusFilter = 'SETTLED'"
         type="button"
-        class="px-3 py-1 rounded text-xs transition-colors"
-        :class="statusFilter === 'SETTLED' ? 'bg-zinc-800 text-emerald-400 font-semibold shadow-sm' : 'text-zinc-500 hover:text-zinc-300'"
+        class="px-3 py-1 rounded text-xs transition-all active:scale-[0.98]"
+        :class="statusFilter === 'SETTLED' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold shadow-sm' : 'text-zinc-400 hover:text-emerald-300 hover:bg-zinc-800/40'"
       >
         Settled ({{ settledCount }})
       </button>
@@ -112,30 +109,40 @@
             <tr
               v-for="s in filteredSplits"
               :key="s.id"
-              class="hover:bg-zinc-900/40 transition-colors"
+              class="hover:bg-zinc-800/50 transition-colors duration-150 group"
             >
               <!-- Friend Name & Parent Bill Reference -->
               <td class="py-3 px-4 font-sans font-medium text-zinc-100">
                 <div class="flex items-center gap-2.5">
-                  <span class="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700/60 flex items-center justify-center text-[10px] font-bold text-zinc-300 uppercase shrink-0">
+                  <span class="w-7 h-7 rounded-full bg-zinc-800 border border-zinc-700/60 flex items-center justify-center text-[10px] font-bold text-zinc-300 uppercase shrink-0 group-hover:border-zinc-500 transition-colors">
                     {{ s.counterparty_name.slice(0, 1) }}
                   </span>
                   <div>
                     <div class="flex items-center gap-1.5">
-                      <span>{{ s.counterparty_name }}</span>
+                      <span class="group-hover:text-white transition-colors">{{ s.counterparty_name }}</span>
                       <RouterLink
                         v-if="s.debtor_id"
                         :to="`/finance/debts/${s.debtor_id}`"
-                        class="text-[9px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors"
-                        title="View linked Radar Debtor dossier"
+                        class="text-[9px] font-mono text-zinc-500 hover:text-amber-400 hover:underline transition-colors"
+                        title="View debtor in Financial Radar"
                       >
                         [Radar ↗]
                       </RouterLink>
                     </div>
-                    <div class="text-[10px] font-mono text-zinc-500 mt-0.5">
+                    <div class="text-[10px] font-mono text-zinc-400 mt-0.5">
                       <span>{{ s.transaction_title || 'Shared Bill' }}</span>
                       <span v-if="s.transaction_date"> • {{ s.transaction_date }}</span>
                       <span v-if="s.transaction_account_name"> • {{ s.transaction_account_name }}</span>
+                    </div>
+                    <!-- Harntung Consumed Dishes Breakdown -->
+                    <div v-if="s.items_detail && s.items_detail.length > 0" class="flex flex-wrap items-center gap-1 mt-1">
+                      <span
+                        v-for="(dish, dIdx) in s.items_detail"
+                        :key="dIdx"
+                        class="px-1.5 py-0.2 rounded bg-zinc-950 border border-zinc-800 text-[10px] text-zinc-400 font-mono"
+                      >
+                        {{ dish.name }} (฿{{ Number(dish.share).toLocaleString('en-US') }})
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -154,8 +161,8 @@
               <!-- Status -->
               <td class="py-3 px-4 text-center">
                 <span
-                  class="text-[9px] font-mono px-2 py-0.5 rounded border uppercase font-medium"
-                  :class="s.is_settled ? 'bg-zinc-900 text-emerald-400 border-zinc-800' : 'bg-zinc-900 text-amber-400 border-zinc-800'"
+                  class="text-[9px] font-mono px-2 py-0.5 rounded border uppercase font-semibold"
+                  :class="s.is_settled ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/15 text-amber-400 border-amber-500/30'"
                 >
                   {{ s.is_settled ? 'Settled' : 'Pending' }}
                 </span>
@@ -168,22 +175,20 @@
                     v-if="!s.is_settled"
                     type="button"
                     @click="copyReminder(s)"
-                    class="p-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
-                    title="Copy friendly reminder message"
+                    class="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-all active:scale-[0.95]"
+                    title="Copy reminder text"
                   >
                     <Copy class="w-3.5 h-3.5" />
                   </button>
                   <button
                     v-if="!s.is_settled"
                     @click="openSettleModal(s)"
-                    class="px-2.5 py-1 rounded bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-sans font-semibold transition-colors flex items-center gap-1 shadow-sm"
+                    class="px-2.5 py-1 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-sans font-semibold transition-all active:scale-[0.98] flex items-center gap-1 shadow-sm"
                   >
                     <Check class="w-3 h-3 text-zinc-950" />
-                    <span>Settle & Deposit</span>
+                    <span>Settle</span>
                   </button>
-                  <span v-else class="text-[11px] text-zinc-500 font-sans">
-                    Deposited
-                  </span>
+                  <span v-else class="text-[11px] text-zinc-500 font-mono">Settled</span>
                 </div>
               </td>
             </tr>
@@ -256,10 +261,14 @@ function openSettleModal(split: TransactionSplitItem) {
   showSettleModal.value = true
 }
 
-function copyReminder(split: TransactionSplitItem) {
+function copyReminder(split: any) {
   const contactText = split.counterparty_contact ? ` (${split.counterparty_contact})` : ''
   const billTitle = split.transaction_title || 'shared expense'
-  const text = `Hi ${split.counterparty_name}${contactText}, friendly reminder regarding your share of ฿${Number(split.amount).toLocaleString('en-US')} for "${billTitle}". When convenient, please transfer to PromptPay. Thank you!`
+  let dishText = ''
+  if (split.items_detail && split.items_detail.length > 0) {
+    dishText = '\nItems: ' + split.items_detail.map((d: any) => `${d.name} (฿${Number(d.share).toFixed(2)})`).join(', ')
+  }
+  const text = `Hi ${split.counterparty_name}${contactText}, friendly reminder regarding your share of ฿${Number(split.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} for "${billTitle}".${dishText}\nWhen convenient, please transfer to PromptPay. Thank you!`
   navigator.clipboard.writeText(text)
   toast.success(`Copied reminder for ${split.counterparty_name}`)
 }

@@ -25,7 +25,7 @@ class WorkspaceTestCase(TestCase):
         )
         self.project = WorkspaceProject.objects.create(
             user=self.user,
-            name='งานฟรีแลนซ์ บ. A',
+            name='Freelance Project A',
             color='#3B82F6'
         )
         self.client = APIClient()
@@ -33,60 +33,60 @@ class WorkspaceTestCase(TestCase):
         self.client.cookies['access_token'] = token
 
     def test_task_status_transition_and_completion_timestamp(self):
-        """ทดสอบการเปลี่ยนสถานะงาน และการแสตมป์ completed_at อัตโนมัติ"""
+        """Test task status transition and automatic completed_at timestamping."""
         task = TaskDocument.objects.create(
             user=self.user,
             project=self.project,
-            title='ส่งใบเสนอราคา',
+            title='Send Quotation',
             status=TaskStatus.DRAFTING
         )
         self.assertIsNone(task.completed_at)
 
-        # 1. ย้ายไปสถานะ COMPLETED
+        # 1. Transition to COMPLETED
         transition_task_status(task, TaskStatus.COMPLETED)
         task.refresh_from_db()
         self.assertEqual(task.status, TaskStatus.COMPLETED)
         self.assertIsNotNone(task.completed_at)
 
-        # 2. ดึงกลับมาทำใหม่เป็น WAITING
+        # 2. Revert back to WAITING
         transition_task_status(task, TaskStatus.WAITING)
         task.refresh_from_db()
         self.assertEqual(task.status, TaskStatus.WAITING)
         self.assertIsNone(task.completed_at)
 
     def test_deadline_calculation_and_overdue(self):
-        """ทดสอบการคำนวณวันส่งงาน (นับถอยหลัง และงานที่เลยกำหนด)"""
+        """Test deadline calculation (countdown and overdue tracking)."""
         now = timezone.now()
 
-        # งานที่จะถึงในอีก 2 วัน
+        # Task due in 2 days
         future_dl = now + timedelta(days=2)
         info_future = calculate_deadline_info(future_dl)
         self.assertFalse(info_future['is_overdue'])
         self.assertEqual(info_future['days_left'], 2)
         self.assertEqual(info_future['urgency'], 'ATTENTION')
 
-        # งานที่เลยกำหนดส่งเมื่อวาน
+        # Task overdue by 1 day
         past_dl = now - timedelta(days=1)
         info_past = calculate_deadline_info(past_dl)
         self.assertTrue(info_past['is_overdue'])
         self.assertEqual(info_past['urgency'], 'OVERDUE')
 
     def test_workspace_overview_aggregation(self):
-        """ทดสอบฟังก์ชันสรุปภาพรวม Workspace ประจำ User"""
+        """Test workspace overview aggregation for user."""
         now = timezone.now()
-        # 1. งาน Drafting 1 ชิ้น
+        # 1. Drafting task
         TaskDocument.objects.create(
             user=self.user,
             project=self.project,
-            title='ร่างสัญญาจ้าง',
+            title='Draft Service Agreement',
             status=TaskStatus.DRAFTING,
             deadline=now + timedelta(days=1)
         )
-        # 2. งาน Waiting 1 ชิ้น (เลยกำหนด)
+        # 2. Waiting task (overdue)
         TaskDocument.objects.create(
             user=self.user,
             project=self.project,
-            title='รอเซ็นเอกสาร',
+            title='Awaiting Signature',
             status=TaskStatus.WAITING,
             deadline=now - timedelta(days=2)
         )
@@ -98,11 +98,11 @@ class WorkspaceTestCase(TestCase):
         self.assertEqual(overview['overdue_count'], 1)
 
     def test_api_move_task_status(self):
-        """ทดสอบ Action /api/workspace/tasks/{id}/move/ ผ่าน REST API"""
+        """Test action /api/workspace/tasks/{id}/move/ via REST API."""
         task = TaskDocument.objects.create(
             user=self.user,
             project=self.project,
-            title='ใบกำกับภาษี',
+            title='Tax Invoice',
             status=TaskStatus.DRAFTING
         )
 
@@ -113,21 +113,21 @@ class WorkspaceTestCase(TestCase):
         self.assertIsNotNone(res.data['completed_at'])
 
     def test_multi_user_workspace_isolation(self):
-        """ทดสอบความปลอดภัย: User A ไม่สามารถดูหรือย้ายงานของ User B ได้"""
+        """Security test: User A cannot read or move tasks owned by User B."""
         friend_project = WorkspaceProject.objects.create(
             user=self.friend,
-            name='งานลับของเพื่อน'
+            name='Friend Private Project'
         )
         friend_task = TaskDocument.objects.create(
             user=self.friend,
             project=friend_project,
-            title='งานส่วนตัวเพื่อน'
+            title='Friend Secret Task'
         )
 
-        # User A พยายามแอบดูงานของเพื่อน
+        # User A tries to view friend's task
         res_get = self.client.get(f'/api/workspace/tasks/{friend_task.id}/')
         self.assertEqual(res_get.status_code, status.HTTP_404_NOT_FOUND)
 
-        # User A พยายามแอบย้ายสถานะงานของเพื่อน
+        # User A tries to move friend's task
         res_move = self.client.post(f'/api/workspace/tasks/{friend_task.id}/move/', {'status': 'COMPLETED'})
         self.assertEqual(res_move.status_code, status.HTTP_404_NOT_FOUND)

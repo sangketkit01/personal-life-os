@@ -8,13 +8,13 @@ User = get_user_model()
 
 class CookieJWTAuthentication(authentication.BaseAuthentication):
     """
-    ตรวจจับ JWT Access Token จาก HttpOnly Cookie (หรือ Bearer Header)
+    Authenticate JWT Access Token from HttpOnly Cookie (or Bearer Header fallback).
     """
 
     def authenticate(self, request):
         token = request.COOKIES.get('access_token')
         
-        # Fallback: ถ้าไม่มีใน Cookie ให้ลองดูใน Authorization Header
+        # Fallback: Check Authorization Header if not present in cookie
         if not token:
             auth_header = request.META.get('HTTP_AUTHORIZATION')
             if auth_header and auth_header.startswith('Bearer '):

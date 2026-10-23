@@ -7,8 +7,11 @@ export interface ObligationAttachmentItem {
   id: string
   obligation: string
   payment_history?: string | null
-  file: string
-  file_url: string
+  file?: string
+  file_url?: string
+  drive_file_id?: string
+  drive_view_link?: string
+  drive_download_link?: string
   file_name: string
   file_type: AttachmentType
   file_size: number

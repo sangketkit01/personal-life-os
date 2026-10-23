@@ -3,34 +3,34 @@
     <!-- Two-Way Debt Balance Position Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
       <!-- Liabilities (Outflow) -->
-      <div class="p-4 rounded-lg bg-zinc-900/40 border border-zinc-800/80">
-        <span class="text-[10px] font-mono uppercase text-zinc-500 block">My Liabilities</span>
-        <div class="mt-2 text-xl font-semibold font-mono text-rose-400 tabular-nums">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm">
+        <span class="text-[10px] font-mono uppercase text-zinc-400 block">My Liabilities</span>
+        <div class="mt-2 text-xl font-bold font-mono text-rose-400 tabular-nums">
           -฿{{ totalMyDebtsRemaining.toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
         </div>
         <span class="text-[10px] text-zinc-500 mt-1 block">{{ myDebtsList.length }} active debt obligations</span>
       </div>
 
       <!-- Receivables (Inflow) -->
-      <div class="p-4 rounded-lg bg-zinc-900/40 border border-zinc-800/80">
-        <span class="text-[10px] font-mono uppercase text-zinc-500 block">Debtors Receivables</span>
-        <div class="mt-2 text-xl font-semibold font-mono text-emerald-400 tabular-nums">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm">
+        <span class="text-[10px] font-mono uppercase text-zinc-400 block">Debtors Receivables</span>
+        <div class="mt-2 text-xl font-bold font-mono text-emerald-400 tabular-nums">
           +฿{{ totalDebtorsRemaining.toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
         </div>
         <span class="text-[10px] text-zinc-500 mt-1 block">{{ debtorsList.length }} active debtors to collect</span>
       </div>
 
       <!-- Net Position -->
-      <div class="p-4 rounded-lg bg-zinc-900/40 border border-zinc-800/80">
-        <span class="text-[10px] font-mono uppercase text-zinc-500 block">Net Debt Position</span>
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm">
+        <span class="text-[10px] font-mono uppercase text-zinc-400 block">Net Debt Position</span>
         <div
-          class="mt-2 text-xl font-semibold font-mono tabular-nums"
+          class="mt-2 text-xl font-bold font-mono tabular-nums"
           :class="netDebtPosition >= 0 ? 'text-emerald-400' : 'text-rose-400'"
         >
           {{ netDebtPosition >= 0 ? '+' : '' }}฿{{ netDebtPosition.toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
         </div>
         <span class="text-[10px] text-zinc-500 mt-1 block">
-          {{ netDebtPosition >= 0 ? 'Net positive receivable balance' : 'Net negative payable balance' }}
+          {{ netDebtPosition >= 0 ? 'Net positive: receivables exceed liabilities' : 'Net liability: outstanding debts to settle' }}
         </span>
       </div>
     </div>
@@ -101,7 +101,7 @@
         <div
           v-for="debtor in debtorsList"
           :key="debtor.id"
-          class="p-5 rounded-xl bg-zinc-900/50 border border-zinc-800/90 space-y-4 hover:border-zinc-700/80 transition-colors"
+          class="p-5 rounded-xl bg-zinc-900/50 border border-zinc-800/80 space-y-4 hover:border-zinc-700/80 hover:bg-zinc-900/70 transition-all duration-200 shadow-sm hover:shadow-md"
         >
           <!-- Debtor Header -->
           <div class="flex items-start justify-between">
@@ -123,7 +123,7 @@
             <div class="flex items-center gap-1.5">
               <RouterLink
                 :to="`/finance/debts/${debtor.id}`"
-                class="px-2 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-colors flex items-center gap-1 text-[10px] font-mono"
+                class="px-2 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-colors flex items-center gap-1 text-[10px] font-mono active:scale-95"
                 title="Debtor Dossier & Timeline"
               >
                 <span>Dossier</span>
@@ -131,21 +131,21 @@
               </RouterLink>
               <button
                 @click="emit('openHistory', debtor)"
-                class="p-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
+                class="p-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 active:scale-95 transition-all"
                 title="Repayment History & Slips"
               >
                 <History class="w-3.5 h-3.5" />
               </button>
               <button
                 @click="emit('openEdit', debtor)"
-                class="p-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
+                class="p-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 active:scale-95 transition-all"
                 title="Edit Debtor Info"
               >
                 <Edit2 class="w-3.5 h-3.5" />
               </button>
               <button
                 @click="emit('openPay', debtor)"
-                class="px-2.5 py-1 rounded bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors"
+                class="px-2.5 py-1 rounded bg-zinc-100 hover:bg-white active:scale-95 text-zinc-950 text-xs font-semibold transition-all shadow-sm"
               >
                 Record Repay
               </button>
@@ -153,7 +153,7 @@
           </div>
 
           <!-- Numbers Grid -->
-          <div class="grid grid-cols-3 gap-2 p-2.5 rounded bg-zinc-950/60 border border-zinc-800/60 font-mono text-xs">
+          <div class="grid grid-cols-3 gap-2 p-2.5 rounded-lg bg-zinc-950/60 border border-zinc-800/60 font-mono text-xs">
             <div>
               <span class="text-[9px] text-zinc-500 block uppercase">Total Lent</span>
               <span class="text-zinc-200 font-semibold">฿{{ Number(debtor.amount).toLocaleString('th-TH') }}</span>
@@ -189,9 +189,9 @@
             <div class="flex items-center gap-2 pt-1 font-sans">
               <button
                 @click="copyRecallMessage(debtor)"
-                class="flex-1 py-1 px-2.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                class="flex-1 py-1 px-2.5 rounded bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-zinc-200 text-xs font-medium transition-all flex items-center justify-center gap-1.5"
               >
-                <Check v-if="copiedIds[debtor.id]" class="w-3.5 h-3.5 text-emerald-400" />
+                <Check v-if="copiedIds[debtor.id]" class="w-3.5 h-3.5 text-zinc-300" />
                 <Copy v-else class="w-3.5 h-3.5 text-zinc-400" />
                 <span>{{ copiedIds[debtor.id] ? 'Copied!' : 'Copy Text' }}</span>
               </button>
@@ -199,7 +199,7 @@
               <a
                 :href="getLineShareUrl(debtor)"
                 target="_blank"
-                class="py-1 px-3 rounded bg-[#06C755] hover:bg-[#05b34c] text-white text-xs font-medium transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                class="py-1 px-3 rounded bg-[#06C755] hover:bg-[#05b34c] active:scale-95 text-white text-xs font-medium transition-all flex items-center justify-center gap-1.5 shadow-sm"
               >
                 <Send class="w-3.5 h-3.5" />
                 <span>Share LINE</span>
@@ -242,7 +242,7 @@
               <tr
                 v-for="debt in myDebtsList"
                 :key="debt.id"
-                class="hover:bg-zinc-900/40 transition-colors"
+                class="hover:bg-zinc-800/40 transition-colors"
               >
                 <td class="py-2.5 pl-4 font-sans font-medium text-zinc-100">
                   <div>{{ debt.title }}</div>
@@ -266,21 +266,21 @@
                   <div class="flex items-center justify-end gap-1.5">
                     <RouterLink
                       :to="`/finance/debts/${debt.id}`"
-                      class="p-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors"
+                      class="p-1 rounded text-zinc-500 hover:text-zinc-200 active:scale-95 transition-all"
                       title="Debt Dossier & Ledger"
                     >
                       <ArrowRight class="w-3.5 h-3.5" />
                     </RouterLink>
                     <button
                       @click="emit('openHistory', debt)"
-                      class="p-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors"
+                      class="p-1 rounded text-zinc-500 hover:text-zinc-200 active:scale-95 transition-all"
                       title="Settlement History & Slips"
                     >
                       <History class="w-3.5 h-3.5" />
                     </button>
                     <button
                       @click="emit('openEdit', debt)"
-                      class="p-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors"
+                      class="p-1 rounded text-zinc-500 hover:text-zinc-200 active:scale-95 transition-all"
                       title="Edit Debt"
                     >
                       <Edit2 class="w-3.5 h-3.5" />
@@ -288,13 +288,13 @@
                     <button
                       v-if="debt.status === 'ACTIVE'"
                       @click="emit('openPay', debt)"
-                      class="px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[10px] text-zinc-200 transition-colors"
+                      class="px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 active:scale-95 border border-zinc-800 text-[10px] text-zinc-200 transition-all"
                     >
                       Pay
                     </button>
                     <button
                       @click="emit('delete', debt.id)"
-                      class="p-1 rounded text-zinc-600 hover:text-rose-400 transition-colors"
+                      class="p-1 rounded text-zinc-600 hover:text-rose-400 active:scale-95 transition-all"
                       title="Delete"
                     >
                       <Trash2 class="w-3.5 h-3.5" />

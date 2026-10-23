@@ -5,7 +5,7 @@ from .debt import DebtStrategy
 
 
 class ObligationStrategyFactory:
-    """Factory สำหรับคืน Strategy instance ตามประเภทของภาระผูกพัน"""
+    """Factory returning domain strategy instance based on obligation type."""
 
     _strategies = {
         'INSTALLMENT': InstallmentStrategy(),
@@ -18,5 +18,5 @@ class ObligationStrategyFactory:
     def get_strategy(cls, obligation_type: str):
         strategy = cls._strategies.get(obligation_type)
         if not strategy:
-            raise ValueError(f"ไม่พบ Strategy สำหรับประเภท: {obligation_type}")
+            raise ValueError(f"Strategy not found for obligation type: {obligation_type}")
         return strategy

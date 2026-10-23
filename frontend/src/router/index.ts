@@ -174,6 +174,10 @@ const router = createRouter({
           component: () => import('../views/ledger/LedgerOverviewView.vue'),
         },
         {
+          path: 'ledger/overview',
+          redirect: '/ledger',
+        },
+        {
           path: 'ledger/transactions',
           name: 'ledger-transactions',
           component: () => import('../views/ledger/LedgerTransactionsView.vue'),
@@ -202,6 +206,11 @@ const router = createRouter({
           path: 'settings',
           name: 'settings',
           component: () => import('../views/SettingsView.vue'),
+        },
+        {
+          path: 'auth/google/callback',
+          name: 'google-auth-callback',
+          component: () => import('../views/GoogleAuthCallbackView.vue'),
         },
       ],
     },

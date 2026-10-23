@@ -41,7 +41,7 @@ class PortfolioEngineTestCase(TestCase):
         self.client.cookies['access_token'] = token
 
     def test_ticker_normalization(self):
-        """ทดสอบการจัดรูปแบบ Ticker ให้ได้มาตรฐาน"""
+        """Test ticker normalization to standard format"""
         self.assertEqual(normalize_ticker('ptt'), 'PTT.BK')
         self.assertEqual(normalize_ticker('delta'), 'DELTA.BK')
         self.assertEqual(normalize_ticker('btc'), 'BTC-USD')
@@ -54,14 +54,14 @@ class PortfolioEngineTestCase(TestCase):
         self.assertEqual(normalize_ticker('PTT.BK'), 'PTT.BK')
 
     def test_dca_buy_calculation(self):
-        """ทดสอบการคำนวณต้นทุนเฉลี่ยแบบ DCA และรวมค่าธรรมเนียม"""
+        """Test DCA average cost basis calculation including fees"""
         holding = StockHolding.objects.create(
             user=self.user,
             ticker='PTT.BK',
-            name='ปตท.'
+            name='PTT'
         )
 
-        # ไม้แรก: ซื้อ 100 หุ้น @ 50 บาท + fee 10 บาท = 5,010 บาท
+        # Tranche 1: Buy 100 shares @ 50 + fee 10 = 5,010
         StockTransaction.objects.create(
             holding=holding,
             user=self.user,
@@ -72,7 +72,7 @@ class PortfolioEngineTestCase(TestCase):
             executed_at=timezone.now()
         )
 
-        # ไม้สอง: ซื้อ 100 หุ้น @ 60 บาท + fee 10 บาท = 6,010 บาท
+        # Tranche 2: Buy 100 shares @ 60 + fee 10 = 6,010
         StockTransaction.objects.create(
             holding=holding,
             user=self.user,
@@ -90,14 +90,14 @@ class PortfolioEngineTestCase(TestCase):
         self.assertEqual(pos['avg_cost'], Decimal('55.1000'))
 
     def test_partial_sell_and_realized_pnl(self):
-        """ทดสอบการขายบางส่วน (Partial Sell) คำนวณ Realized PnL และตัดต้นทุนตามสัดส่วน"""
+        """Test partial sell calculation for realized PnL and proportional cost basis deduction"""
         holding = StockHolding.objects.create(
             user=self.user,
             ticker='DELTA.BK',
-            name='เดลต้า'
+            name='DELTA'
         )
 
-        # ซื้อ 200 หุ้น @ 100 บาท (fee 0) = ต้นทุน 20,000 (avg = 100)
+        # Buy 200 shares @ 100 (fee 0) = cost 20,000 (avg = 100)
         StockTransaction.objects.create(
             holding=holding,
             user=self.user,
@@ -108,10 +108,10 @@ class PortfolioEngineTestCase(TestCase):
             executed_at=timezone.now()
         )
 
-        # ขาย 50 หุ้น @ 150 บาท (fee 20 บาท)
-        # รายรับสุทธิ = (50 * 150) - 20 = 7,480 บาท
-        # ต้นทุนของ 50 หุ้น = 50 * 100 = 5,000 บาท
-        # กำไรจริง Realized PnL = 7,480 - 5,000 = 2,480 บาท
+        # Sell 50 shares @ 150 (fee 20)
+        # Net proceeds = (50 * 150) - 20 = 7,480
+        # Cost basis of 50 shares = 50 * 100 = 5,000
+        # Realized PnL = 7,480 - 5,000 = 2,480
         StockTransaction.objects.create(
             holding=holding,
             user=self.user,
@@ -129,14 +129,14 @@ class PortfolioEngineTestCase(TestCase):
         self.assertEqual(pos['total_realized_pnl'], Decimal('2480.00'))
 
     def test_dividend_and_unrealized_pnl(self):
-        """ทดสอบการรับเงินปันผล และการคำนวณกำไรที่ยังไม่รับรู้ตามราคาตลาด"""
+        """Test dividend recording and unrealized PnL calculation based on market price"""
         holding = StockHolding.objects.create(
             user=self.user,
             ticker='CPALL.BK',
-            name='ซีพี ออลล์'
+            name='CP ALL'
         )
 
-        # ซื้อ 100 หุ้น @ 60 บาท (fee 0) = ต้นทุน 6,000
+        # Buy 100 shares @ 60 (fee 0) = cost 6,000
         StockTransaction.objects.create(
             holding=holding,
             user=self.user,
@@ -147,7 +147,7 @@ class PortfolioEngineTestCase(TestCase):
             executed_at=timezone.now()
         )
 
-        # ปันผล 2 บาท/หุ้น (fee หัก ณ ที่จ่าย 20 บาท) = รับสุทธิ 180 บาท
+        # Dividend 2/share (withholding tax 20) = net 180
         StockTransaction.objects.create(
             holding=holding,
             user=self.user,
@@ -158,7 +158,7 @@ class PortfolioEngineTestCase(TestCase):
             executed_at=timezone.now()
         )
 
-        # แคชราคาตลาดสดที่ 70 บาท
+        # Cache market price at 70
         StockPriceSnapshot.objects.create(
             ticker='CPALL.BK',
             price=Decimal('70.00'),
@@ -171,40 +171,40 @@ class PortfolioEngineTestCase(TestCase):
         self.assertEqual(pos['total_dividends'], Decimal('180.00'))
         self.assertEqual(pos['market_value'], Decimal('7000.00'))
         self.assertEqual(pos['unrealized_pnl'], Decimal('1000.00'))
-        # กำไรจากการขายที่รับรู้แล้ว = 0.00 (ยังไม่มีการขายหุ้น)
+        # Realized gain from sales = 0.00 (no sell yet)
         self.assertEqual(pos['total_realized_pnl'], Decimal('0.00'))
-        # ผลตอบแทนที่รับรู้แล้วรวมเงินปันผล = 180.00
+        # Realized total return including dividends = 180.00
         self.assertEqual(pos['total_dividends'], Decimal('180.00'))
         self.assertEqual(pos['total_realized_return'], Decimal('180.00'))
 
     def test_multi_user_isolation(self):
-        """ทดสอบการแยกข้อมูลพอร์ตระหว่างผู้ใช้ (Multi-tenancy Isolation)"""
-        # User เพิ่มหุ้น
+        """Test multi-tenancy portfolio isolation between users"""
+        # User adds holding
         StockHolding.objects.create(
             user=self.user,
             ticker='AAPL',
             name='Apple Inc.'
         )
 
-        # Friend ล็อกอิน
+        # Friend logs in
         friend_client = APIClient()
         friend_token = generate_access_token(self.friend)
         friend_client.cookies['access_token'] = friend_token
 
-        # Friend ต้องไม่เห็นหุ้นของ User
+        # Friend must not see holdings of User
         res = friend_client.get('/api/portfolio/holdings/')
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.data['count'], 0)
         self.assertEqual(len(res.data['results']), 0)
 
-        # Overview ของ Friend ต้องเป็น 0 ทั้งหมด
+        # Overview of Friend must be all 0
         res_overview = friend_client.get('/api/portfolio/overview/')
         self.assertEqual(res_overview.status_code, status.HTTP_200_OK)
         self.assertEqual(res_overview.data['total_market_value'], 0.0)
         self.assertEqual(res_overview.data['active_assets_count'], 0)
 
     def test_api_create_transaction_with_auto_ticker(self):
-        """ทดสอบการยิง API เพิ่มรายการซื้อขาย โดยระบุ Ticker ให้ระบบสร้าง Holding อัตโนมัติ"""
+        """Test API buy/sell transaction by ticker with auto-holding creation"""
         payload = {
             'ticker': 'ktb',
             'transaction_type': 'BUY',
@@ -212,24 +212,24 @@ class PortfolioEngineTestCase(TestCase):
             'price_per_share': '20.00',
             'fee': '15.00',
             'executed_at': timezone.now().isoformat(),
-            'notes': 'ซื้อสะสม'
+            'notes': 'DCA accumulation'
         }
 
         res = self.client.post('/api/portfolio/transactions/', payload, format='json')
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
 
-        # ตรวจสอบว่าระบบสร้าง Holding KTB.BK ให้อัตโนมัติ
+        # Verify system auto-created Holding for KTB.BK
         holding = StockHolding.objects.filter(user=self.user, ticker='KTB.BK').first()
         self.assertIsNotNone(holding)
         self.assertEqual(holding.ticker, 'KTB.BK')
         self.assertEqual(holding.transactions.count(), 1)
 
     def test_idor_cross_tenant_holding_injection_prevented(self):
-        """SEC-01 Test: ป้องกันไม่ให้ User A แอบส่ง transaction เข้า holding ของ User B"""
+        """SEC-01 Test: Prevent User A from adding transactions to User B holding"""
         stranger_holding = StockHolding.objects.create(
             user=self.friend,
             ticker='SCC.BK',
-            name='ปูนใหญ่'
+            name='SCG'
         )
 
         payload = {
@@ -243,15 +243,15 @@ class PortfolioEngineTestCase(TestCase):
 
         res = self.client.post('/api/portfolio/transactions/', payload, format='json')
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        # ตรวจสอบว่าไม่มี transaction หลุดเข้าไปใน holding ของคนอื่น
+        # Verify no unauthorized transactions in foreign holding
         self.assertEqual(stranger_holding.transactions.count(), 0)
 
     def test_prevent_overselling_validation(self):
-        """BUG-02 Test: ป้องกันไม่ให้บันทึกขายหุ้นเกินจำนวนที่มีจริง"""
+        """BUG-02 Test: Prevent overselling shares beyond actual position"""
         holding = StockHolding.objects.create(
             user=self.user,
             ticker='SCB.BK',
-            name='ไทยพาณิชย์'
+            name='SCB'
         )
         StockTransaction.objects.create(
             holding=holding,
@@ -265,7 +265,7 @@ class PortfolioEngineTestCase(TestCase):
         payload = {
             'holding': str(holding.id),
             'transaction_type': 'SELL',
-            'shares': '100',  # มีแค่ 50 แต่พยายามขาย 100
+            'shares': '100',  # Only 50 owned but trying to sell 100
             'price_per_share': '120.00',
             'fee': '0.00',
             'executed_at': timezone.now().isoformat()
@@ -275,12 +275,12 @@ class PortfolioEngineTestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_stock_news_api_and_filtering(self):
-        """ทดสอบ API ข่าวสารสินทรัพย์: ดึงรายการข่าว, กรองตาม Ticker และสลับภาษา"""
+        """Test asset news API: list news, filter by ticker, and language switching"""
         StockNewsArticle.objects.create(
             ticker='NVDA',
             title='Nvidia announces new AI chip architecture',
-            title_th='Nvidia เปิดตัวสถาปัตยกรรมชิป AI รุ่นใหม่',
-            summary_th='เป็นปัจจัยบวกช่วยหนุนการเติบโตของยอดขายศูนย์ข้อมูล',
+            title_th='Nvidia  AI ',
+            summary_th='',
             source='Reuters',
             url='https://example.com/news/nvda-1',
             published_at=timezone.now(),
@@ -289,35 +289,35 @@ class PortfolioEngineTestCase(TestCase):
         StockNewsArticle.objects.create(
             ticker='PTT.BK',
             title='PTT expands renewable energy business',
-            title_th='ปตท. ขยายพอร์ตธุรกิจพลังงานหมุนเวียน',
-            summary_th='ช่วยลดความผันผวนจากราคาน้ำมันดิบในระยะยาว',
+            title_th='PTT ',
+            summary_th='',
             source='Kaohoon',
             url='https://example.com/news/ptt-1',
             published_at=timezone.now(),
             sentiment='BULLISH'
         )
 
-        # 1. ดึงข่าวทั้งหมด
+        # 1. List all news
         res_all = self.client.get('/api/portfolio/news/')
         self.assertEqual(res_all.status_code, status.HTTP_200_OK)
         self.assertEqual(len(res_all.data['results']), 2)
 
-        # 2. กรองเฉพาะ NVDA
+        # 2. Filter NVDA only
         res_nvda = self.client.get('/api/portfolio/news/?ticker=NVDA')
         self.assertEqual(res_nvda.status_code, status.HTTP_200_OK)
         self.assertEqual(len(res_nvda.data['results']), 1)
         self.assertEqual(res_nvda.data['results'][0]['ticker'], 'NVDA')
-        self.assertEqual(res_nvda.data['results'][0]['title_th'], 'Nvidia เปิดตัวสถาปัตยกรรมชิป AI รุ่นใหม่')
+        self.assertEqual(res_nvda.data['results'][0]['title_th'], 'Nvidia  AI ')
 
     def test_multi_currency_portfolio_and_conversion(self):
-        """ทดสอบระบบพอร์ตหลายสกุลเงิน (THB / USD), การบันทึกและแก้ไขด้วยสกุลเงินที่เลือก, และการสลับมุมมองพร้อมคำนวณอัตราแลกเปลี่ยน"""
-        # ตั้งค่าอัตราแลกเปลี่ยน USD/THB เป็น 35.00
+        """Test multi-currency portfolio (THB / USD), recording/editing in selected currency, and currency conversion views"""
+        # Set USD/THB exchange rate to 35.00
         StockPriceSnapshot.objects.update_or_create(
             ticker='USDTHB=X',
             defaults={'price': Decimal('35.00'), 'currency': 'THB'}
         )
 
-        # 1. บันทึกไม้ซื้อ AAPL เป็นสกุล USD ($150)
+        # 1. Record AAPL buy in USD ($150)
         res_aapl = self.client.post('/api/portfolio/transactions/', {
             'ticker': 'AAPL',
             'transaction_type': 'BUY',
@@ -331,7 +331,7 @@ class PortfolioEngineTestCase(TestCase):
         aapl_holding = StockHolding.objects.get(ticker='AAPL', user=self.user)
         self.assertEqual(aapl_holding.currency, 'USD')
 
-        # 2. บันทึกไม้ซื้อ PTT.BK เป็นสกุล THB (฿30)
+        # 2. Record PTT.BK buy in THB (30)
         res_ptt = self.client.post('/api/portfolio/transactions/', {
             'ticker': 'PTT.BK',
             'transaction_type': 'BUY',
@@ -345,23 +345,23 @@ class PortfolioEngineTestCase(TestCase):
         ptt_holding = StockHolding.objects.get(ticker='PTT.BK', user=self.user)
         self.assertEqual(ptt_holding.currency, 'THB')
 
-        # ตั้งค่าราคาตลาดสด: AAPL = $200, PTT = ฿35
+        # Set live market price: AAPL = $200, PTT = 35
         StockPriceSnapshot.objects.update_or_create(ticker='AAPL', defaults={'price': Decimal('200.00'), 'currency': 'USD'})
         StockPriceSnapshot.objects.update_or_create(ticker='PTT.BK', defaults={'price': Decimal('35.00'), 'currency': 'THB'})
 
-        # 3. ทดสอบมุมมอง THB: AAPL ($2,000 * 35 = ฿70,000) + PTT (฿35,000) = ฿105,000
+        # 3. Test THB view: AAPL ($2,000 * 35 = 70,000) + PTT (35,000) = 105,000
         res_thb_view = self.client.get('/api/portfolio/overview/?currency=THB')
         self.assertEqual(res_thb_view.status_code, status.HTTP_200_OK)
         self.assertEqual(res_thb_view.data['base_currency'], 'THB')
         self.assertEqual(Decimal(str(res_thb_view.data['total_market_value'])), Decimal('105000.00'))
 
-        # 4. ทดสอบสลับมุมมอง USD: AAPL ($2,000) + PTT (฿35,000 / 35 = $1,000) = $3,000
+        # 4. Test USD view: AAPL ($2,000) + PTT (35,000 / 35 = $1,000) = $3,000
         res_usd_view = self.client.get('/api/portfolio/overview/?currency=USD')
         self.assertEqual(res_usd_view.status_code, status.HTTP_200_OK)
         self.assertEqual(res_usd_view.data['base_currency'], 'USD')
         self.assertEqual(Decimal(str(res_usd_view.data['total_market_value'])), Decimal('3000.00'))
 
-        # 5. ทดสอบแก้ไขรายการ Transaction (เปลี่ยนจำนวนหุ้นและราคา)
+        # 5. Test editing transaction (shares and price)
         tx_id = res_aapl.data['id']
         patch_res = self.client.patch(f'/api/portfolio/transactions/{tx_id}/', {
             'shares': '20',
@@ -372,7 +372,7 @@ class PortfolioEngineTestCase(TestCase):
         self.assertEqual(Decimal(str(patch_res.data['shares'])), Decimal('20.000000'))
         self.assertEqual(Decimal(str(patch_res.data['price_per_share'])), Decimal('160.0000'))
 
-        # 6. ทดสอบแก้ไข Holding การตั้งค่าสกุลเงิน
+        # 6. Test editing holding currency configuration
         holding_patch = self.client.patch(f'/api/portfolio/holdings/{aapl_holding.id}/', {
             'name': 'Apple Inc. Headquarters',
             'currency': 'USD'
@@ -381,7 +381,7 @@ class PortfolioEngineTestCase(TestCase):
         self.assertEqual(holding_patch.data['name'], 'Apple Inc. Headquarters')
 
     def test_8_decimal_precision_crypto(self):
-        """ทดสอบการบันทึกทศนิยมสูงสุด 8 หลัก (สำหรับคริปโต และเศษหุ้น DCA)"""
+        """Test precision up to 8 decimal places for crypto and fractional DCA shares"""
         StockPriceSnapshot.objects.update_or_create(
             ticker='BTC-USD',
             defaults={'price': Decimal('65432.12345678'), 'currency': 'USD'}
@@ -400,18 +400,18 @@ class PortfolioEngineTestCase(TestCase):
         self.assertEqual(Decimal(str(res.data['price_per_share'])), Decimal('64321.87654321'))
 
     def test_market_asset_search_and_strict_validation(self):
-        """ทดสอบระบบค้นหาสินทรัพย์ และการปฏิเสธการเพิ่มสินทรัพย์ที่ไม่มีอยู่จริง (Strict Validation)"""
-        # 1. ค้นหา PTT
+        """Test asset catalog search and strict rejection of non-existent tickers"""
+        # 1. Search PTT
         res_ptt = self.client.get('/api/portfolio/search/?q=PTT')
         self.assertEqual(res_ptt.status_code, status.HTTP_200_OK)
         self.assertTrue(any(r['ticker'] == 'PTT.BK' for r in res_ptt.data))
 
-        # 2. ค้นหา Apple
+        # 2. Search Apple
         res_apple = self.client.get('/api/portfolio/search/?q=Apple')
         self.assertEqual(res_apple.status_code, status.HTTP_200_OK)
         self.assertTrue(any(r['ticker'] == 'AAPL' for r in res_apple.data))
 
-        # 3. ลองส่ง Ticker มั่วที่ไม่มีอยู่จริงในตลาด -> ต้องถูกปฏิเสธ (400)
+        # 3. Send non-existent ticker -> must be rejected (400)
         res_fake = self.client.post('/api/portfolio/transactions/', {
             'ticker': 'TOTALLY_BOGUS_TICKER_9999',
             'transaction_type': 'BUY',
@@ -424,18 +424,18 @@ class PortfolioEngineTestCase(TestCase):
         self.assertIn('ticker', res_fake.data)
 
     def test_dime_multi_portfolio(self):
-        """ทดสอบระบบแยกพอร์ตการลงทุนอิสระเหมือน Dime (สร้างพอร์ตแยก, บันทึกเทรดเข้าพอร์ตที่เลือก, กรองภาพรวม)"""
-        # 1. สร้างพอร์ตแยก "Dime US Growth"
+        """Test independent multi-portfolio system (create custom portfolio, record trade, filter overview)"""
+        # 1. Create custom portfolio "Dime US Growth"
         res_create_pf = self.client.post('/api/portfolio/portfolios/', {
             'name': 'Dime US Growth',
-            'description': 'เน้นหุ้นเทคโนโลยีเติบโตสูง',
+            'description': 'High growth tech stocks',
             'currency': 'USD',
             'color': 'emerald'
         })
         self.assertEqual(res_create_pf.status_code, status.HTTP_201_CREATED)
         dime_pf_id = res_create_pf.data['id']
 
-        # 2. บันทึกไม้ซื้อ NVDA เข้าพอร์ต "Dime US Growth" โดยเฉพาะ
+        # 2. Record NVDA trade into "Dime US Growth" portfolio
         StockPriceSnapshot.objects.update_or_create(
             ticker='NVDA',
             defaults={'price': Decimal('120.00'), 'currency': 'USD'}
@@ -452,38 +452,38 @@ class PortfolioEngineTestCase(TestCase):
         })
         self.assertEqual(res_tx.status_code, status.HTTP_201_CREATED)
 
-        # 3. ตรวจสอบว่า Holding ถูกผูกกับ Dime US Growth
+        # 3. Verify Holding is linked to Dime US Growth
         nvda_holding = StockHolding.objects.get(ticker='NVDA', user=self.user)
         self.assertEqual(str(nvda_holding.portfolio_id), str(dime_pf_id))
 
-        # 4. เรียกดูภาพรวมเฉพาะพอร์ต Dime US Growth
+        # 4. Retrieve overview for Dime US Growth portfolio only
         res_overview_dime = self.client.get(f'/api/portfolio/overview/?portfolio_id={dime_pf_id}&currency=USD')
         self.assertEqual(res_overview_dime.status_code, status.HTTP_200_OK)
-        # มูลค่าพอร์ต: 5 * 120 = $600
+        # Portfolio value: 5 * 120 = $600
         self.assertEqual(Decimal(str(res_overview_dime.data['total_market_value'])), Decimal('600.00'))
         self.assertEqual(res_overview_dime.data['active_assets_count'], 1)
 
     def test_multi_user_shared_news_by_ticker(self):
         """
-        ทดสอบ Requirement 1:
-        - ข่าวสารผูกกับสัญลักษณ์หุ้น (Ticker)
-        - หากผู้ใช้คนหนึ่งมีข่าวของหุ้นตัวนี้แล้ว ผู้ใช้อีกคนที่เพิ่มหุ้นตัวเดียวกันจะใช้ข่าวและคำแปลอันเดียวกันได้ทันที
-        - การดึงข่าวซ้ำซ้อนจะตรวจ URL หากมีแล้วจะข้ามผ่านไป ไม่สร้างซ้ำ (No duplicates)
+        Test Requirement 1:
+        - News linked to ticker
+        - Deduplication across users
+        - Idempotent ingestion by URL
         """
-        # 1. ผู้ใช้คนแรก (User 1) สร้างบทความข่าวสำหรับ AAPL
+        # 1. User 1 creates news article for AAPL
         article = StockNewsArticle.objects.create(
             ticker='AAPL',
             title='Apple Unveils M4 Chip with Advanced AI Engines',
-            title_th='แอปเปิ้ลเปิดตัวชิป M4 พร้อมขุมพลัง AI ล้ำสมัย',
+            title_th=' M4  AI ',
             summary='New generation chip architecture.',
-            summary_th='สัญญาณเชิงบวกต่อรายได้ฮาร์ดแวร์และการเติบโตของ Apple',
+            summary_th=' Apple',
             source='Bloomberg',
             url='https://bloomberg.com/news/articles/apple-m4-ai-chip-2026',
             published_at=timezone.now(),
             sentiment='BULLISH'
         )
 
-        # 2. ผู้ใช้คนที่สอง (Friend) เพิ่มหุ้น AAPL เข้าพอร์ต
+        # 2. Friend adds AAPL to portfolio
         StockHolding.objects.create(
             user=self.friend,
             ticker='AAPL',
@@ -492,24 +492,24 @@ class PortfolioEngineTestCase(TestCase):
             asset_type=AssetType.STOCK
         )
 
-        # Login ด้วยผู้ใช้คนที่สอง (Friend)
+        # Login as Friend
         friend_client = APIClient()
         friend_token = generate_access_token(self.friend)
         friend_client.cookies['access_token'] = friend_token
 
-        # 3. Friend เรียกดูข่าวหุ้นในพอร์ต (held_only=true)
+        # 3. Friend requests portfolio news (held_only=true)
         res_friend_news = friend_client.get('/api/portfolio/news/?held_only=true')
         self.assertEqual(res_friend_news.status_code, status.HTTP_200_OK)
         articles = res_friend_news.data if isinstance(res_friend_news.data, list) else res_friend_news.data.get('results', [])
         self.assertEqual(len(articles), 1)
         self.assertEqual(articles[0]['ticker'], 'AAPL')
-        self.assertEqual(articles[0]['title_th'], 'แอปเปิ้ลเปิดตัวชิป M4 พร้อมขุมพลัง AI ล้ำสมัย')
+        self.assertEqual(articles[0]['title_th'], ' M4  AI ')
         self.assertEqual(articles[0]['sentiment'], 'BULLISH')
 
-        # 4. ทดสอบความสามารถข้ามข่าวซ้ำ (Idempotency)
+        # 4. Test idempotent skip of duplicate news
         import unittest.mock
         from apps.portfolio.scheduler import sync_hourly_portfolio_news
-        # รันฟังก์ชัน hourly sync: โดย mock ไม่ให้ยิงเน็ตเวิร์กจริง
+        # Run hourly sync with network mock
         with unittest.mock.patch('apps.portfolio.scheduler.ingest_news_for_ticker', return_value=0) as mock_ingest:
             res_sync = sync_hourly_portfolio_news()
             self.assertIn(res_sync['status'], ['completed', 'no_tickers'])
@@ -517,11 +517,11 @@ class PortfolioEngineTestCase(TestCase):
 
     def test_market_hours_and_status_api(self):
         """
-        ทดสอบ Requirement 4:
-        - ตรวจสอบเวลาเปิด-ปิดตลาด (SET, US, CRYPTO)
-        - Crypto ต้องเปิดตลอด 24/7/365
-        - ตลาดหุ้นไทยและสหรัฐปิดในวันหยุดสุดสัปดาห์
-        - API /api/portfolio/market-status/ คืนค่าสถานะตลาดถูกต้อง
+        Test Requirement 4:
+        - Check market hours (SET, US, CRYPTO)
+        - Crypto open 24/7/365
+        - Equity markets closed on weekends
+        - API /api/portfolio/market-status/ returns valid status
         """
         import zoneinfo
         from datetime import datetime
@@ -533,36 +533,36 @@ class PortfolioEngineTestCase(TestCase):
             should_refresh_ticker
         )
 
-        # 1. Crypto เปิดตลอด 24/7
+        # 1. Crypto open 24/7
         crypto_status = get_crypto_market_status()
         self.assertTrue(crypto_status['is_open'])
         self.assertTrue(is_market_open_for_ticker('BTC-USD'))
         self.assertTrue(should_refresh_ticker('BTC-USD'))
 
-        # 2. SET: วันเสาร์ 11:00 น. ต้องปิด
+        # 2. SET: Saturday 11:00 ICT is closed
         sat_ict = datetime(2026, 10, 24, 11, 0, tzinfo=zoneinfo.ZoneInfo('Asia/Bangkok'))
         set_sat = get_set_market_status(sat_ict)
         self.assertFalse(set_sat['is_open'])
         self.assertEqual(set_sat['session'], 'Weekend Closed')
 
-        # 3. SET: วันพุธ 10:30 น. (เวลาเทรดเช้า) ต้องเปิด
+        # 3. SET: Wednesday 10:30 ICT is open
         wed_ict = datetime(2026, 10, 21, 10, 30, tzinfo=zoneinfo.ZoneInfo('Asia/Bangkok'))
         set_wed = get_set_market_status(wed_ict)
         self.assertTrue(set_wed['is_open'])
         self.assertEqual(set_wed['session'], 'Morning Trading')
 
-        # 4. US: วันอาทิตย์ ต้องปิด
+        # 4. US: Sunday is closed
         sun_et = datetime(2026, 10, 25, 14, 0, tzinfo=zoneinfo.ZoneInfo('America/New_York'))
         us_sun = get_us_market_status(sun_et)
         self.assertFalse(us_sun['is_open'])
 
-        # 5. US: วันพุธ 10:00 น. ET (Regular Trading) ต้องเปิด
+        # 5. US: Wednesday 10:00 ET is open
         wed_et = datetime(2026, 10, 21, 10, 0, tzinfo=zoneinfo.ZoneInfo('America/New_York'))
         us_wed = get_us_market_status(wed_et)
         self.assertTrue(us_wed['is_open'])
         self.assertEqual(us_wed['session'], 'Regular Trading')
 
-        # 6. เรียก API /api/portfolio/market-status/
+        # 6. Call API /api/portfolio/market-status/
         res_status = self.client.get('/api/portfolio/market-status/')
         self.assertEqual(res_status.status_code, status.HTTP_200_OK)
         self.assertIn('markets', res_status.data)
@@ -572,24 +572,24 @@ class PortfolioEngineTestCase(TestCase):
         self.assertTrue(res_status.data['markets']['CRYPTO']['is_open'])
 
     def test_management_command_sync_portfolio_news(self):
-        """ทดสอบ Django Management Command `python manage.py sync_portfolio_news`"""
+        """Test Django management command `python manage.py sync_portfolio_news`"""
         import unittest.mock
         from io import StringIO
         from django.core.management import call_command
 
         out = StringIO()
-        # รันคำสั่ง sync_portfolio_news โดย mock เพื่อไม่ยิง network จริง
+        # Run sync_portfolio_news with mock
         with unittest.mock.patch('apps.portfolio.scheduler.ingest_news_for_ticker', return_value=0):
             call_command('sync_portfolio_news', stdout=out)
             output = out.getvalue()
             self.assertIn('Sync completed', output)
 
     def test_move_holding_to_another_portfolio(self):
-        """ทดสอบย้ายหุ้นไปยังพอร์ตย่อยอื่น (ทั้งแบบพอร์ตปลายทางยังไม่มีหุ้นตัวนี้ และแบบมีอยู่แล้วจนเกิดการ Merge)"""
+        """Test moving holding to another portfolio (both new holding and merging existing)"""
         p_main = InvestmentPortfolio.objects.create(user=self.user, name="Main Portfolio", is_default=True)
         p_dca = InvestmentPortfolio.objects.create(user=self.user, name="DCA Tech", currency="USD")
 
-        # 1. สร้าง Holding และ Transaction ใน p_main
+        # 1. Create Holding and Transaction in p_main
         h1 = StockHolding.objects.create(
             user=self.user,
             portfolio=p_main,
@@ -608,7 +608,7 @@ class PortfolioEngineTestCase(TestCase):
             executed_at=timezone.now()
         )
 
-        # 2. ย้าย NVDA ไปยัง p_dca (ซึ่ง p_dca ยังไม่มี NVDA)
+        # 2. Move NVDA to p_dca (where p_dca does not have NVDA)
         res_move = self.client.post(f'/api/portfolio/holdings/{h1.id}/move/', {
             'target_portfolio_id': str(p_dca.id)
         })
@@ -620,7 +620,7 @@ class PortfolioEngineTestCase(TestCase):
         tx1.refresh_from_db()
         self.assertEqual(tx1.holding_id, h1.id)
 
-        # 3. ทดสอบการ Merge: สร้าง NVDA อีกก้อนใน p_main
+        # 3. Test Merge: create second NVDA holding in p_main
         h2 = StockHolding.objects.create(
             user=self.user,
             portfolio=p_main,
@@ -639,23 +639,23 @@ class PortfolioEngineTestCase(TestCase):
             executed_at=timezone.now()
         )
 
-        # ย้าย h2 ไป p_dca (ซึ่ง p_dca มี NVDA อยู่แล้วจาก h1 -> ต้อง Merge)
+        # Move h2 to p_dca (p_dca already holds NVDA -> Merge)
         res_merge = self.client.post(f'/api/portfolio/holdings/{h2.id}/move/', {
             'target_portfolio_id': str(p_dca.id)
         })
         self.assertEqual(res_merge.status_code, status.HTTP_200_OK)
         self.assertTrue(res_merge.data['merged'])
 
-        # h2 ต้องถูกลบ และ tx2 ต้องถูกย้ายไปอยู่ใต้ h1
+        # h2 is deleted and tx2 is reassigned under h1
         self.assertFalse(StockHolding.objects.filter(id=h2.id).exists())
         tx2.refresh_from_db()
         self.assertEqual(tx2.holding_id, h1.id)
 
-        # h1 ใน p_dca ต้องมีทั้งหมด 2 transactions รวม 15 หุ้น
+        # h1 in p_dca must have 2 transactions totaling 15 shares
         self.assertEqual(h1.transactions.count(), 2)
 
     def test_create_transaction_with_goog_ticker(self):
-        """ทดสอบเพิ่มหุ้น GOOG หรือหุ้น US สากล ไม่ถูกแปลงเป็น .BK ผิดพลาด"""
+        """Test US ticker such as GOOG is not erroneously transformed to .BK"""
         res = self.client.post('/api/portfolio/transactions/', {
             'ticker': 'GOOG',
             'transaction_type': 'BUY',
@@ -674,7 +674,7 @@ class PortfolioEngineTestCase(TestCase):
         self.assertNotEqual(holding.ticker, 'GOOG.BK')
 
     def test_f03_trade_currency_does_not_mutate_holding_currency(self):
-        """F03: ตรวจสอบว่าการบันทึกรายการเทรดไม่เปลี่ยน currency ของ Holding เดิมโดยไม่ตั้งใจ"""
+        """F03: Verify trade recording does not unintentionally mutate existing holding currency"""
         holding = StockHolding.objects.create(
             user=self.user,
             ticker='NVDA',
@@ -692,7 +692,7 @@ class PortfolioEngineTestCase(TestCase):
             currency='USD',
             executed_at=timezone.now()
         )
-        # ส่ง transaction ใหม่โดยระบุ currency='THB' (ผู้ใช้อาจเลือกผิดหรือ dropdown เพี้ยน)
+        # Send new transaction with currency='THB' (user error or dropdown mismatch)
         res = self.client.post('/api/portfolio/transactions/', {
             'holding': str(holding.id),
             'transaction_type': 'BUY',
@@ -704,33 +704,33 @@ class PortfolioEngineTestCase(TestCase):
         })
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         holding.refresh_from_db()
-        # Holding ต้องยังคงเป็น USD เสมอ ไม่ถูกเขียนทับเป็น THB
+        # Holding must remain USD, never overwritten by THB
         self.assertEqual(holding.currency, 'USD')
-        # Transaction ใหม่ต้องถูกปรับให้ตรงกับ currency ของ Holding (USD)
+        # New transaction must adapt to holding currency (USD)
         self.assertEqual(res.data['currency'], 'USD')
 
     def test_f04_by_ticker_with_portfolio_id_and_holding_id(self):
-        """F04: ถือ Ticker เดียวกันใน 2 พอร์ต เปิด by-ticker พร้อมระบุ portfolio_id หรือ holding_id ต้องได้ตรงพอร์ต"""
+        """F04: Same ticker in 2 portfolios: by-ticker with portfolio_id or holding_id routes to correct holding"""
         p_a = InvestmentPortfolio.objects.create(user=self.user, name='Port A', currency='USD')
         p_b = InvestmentPortfolio.objects.create(user=self.user, name='Port B', currency='USD')
 
         h_a = StockHolding.objects.create(user=self.user, portfolio=p_a, ticker='MSFT', currency='USD')
         h_b = StockHolding.objects.create(user=self.user, portfolio=p_b, ticker='MSFT', currency='USD')
 
-        # เรียก by-ticker โดยระบุ portfolio_id ของ Port B
+        # Call by-ticker specifying portfolio_id of Port B
         res_b = self.client.get(f'/api/portfolio/holdings/by-ticker/MSFT/?portfolio_id={p_b.id}')
         self.assertEqual(res_b.status_code, status.HTTP_200_OK)
         self.assertEqual(str(res_b.data['id']), str(h_b.id))
         self.assertEqual(str(res_b.data['portfolio']), str(p_b.id))
 
-        # เรียก by-ticker โดยระบุ holding_id ของ Port A
+        # Call by-ticker specifying holding_id of Port A
         res_a = self.client.get(f'/api/portfolio/holdings/by-ticker/MSFT/?holding_id={h_a.id}')
         self.assertEqual(res_a.status_code, status.HTTP_200_OK)
         self.assertEqual(str(res_a.data['id']), str(h_a.id))
         self.assertEqual(str(res_a.data['portfolio']), str(p_a.id))
 
     def test_f05_target_portfolio_mismatch_rejected(self):
-        """F05: ถ้าระบุ holding ของพอร์ต A แต่ส่ง portfolio id ของพอร์ต B ที่ไม่มี holding นี้ ต้องปฏิเสธ"""
+        """F05: Rejection when holding belongs to portfolio A but mismatched portfolio B is provided."""
         p_a = InvestmentPortfolio.objects.create(user=self.user, name='Port Alpha', currency='USD')
         p_b = InvestmentPortfolio.objects.create(user=self.user, name='Port Beta', currency='USD')
         h_a = StockHolding.objects.create(user=self.user, portfolio=p_a, ticker='TSLA', currency='USD')
@@ -748,8 +748,8 @@ class PortfolioEngineTestCase(TestCase):
         self.assertIn('portfolio', res.data)
 
     def test_f08_oversell_validation_via_ticker(self):
-        """F08: การขายผ่าน ticker ต้องตรวจ oversell เหมือนการขายผ่าน holding id"""
-        # 1. ขายหุ้นที่ยังไม่มีเลย -> ต้อง 400
+        """F08: Ticker-based selling enforces oversell validation identical to holding id"""
+        # 1. Sell stock not owned -> 400
         res_no_holding = self.client.post('/api/portfolio/transactions/', {
             'ticker': 'AMZN',
             'transaction_type': 'SELL',
@@ -761,7 +761,7 @@ class PortfolioEngineTestCase(TestCase):
         self.assertEqual(res_no_holding.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('shares', res_no_holding.data)
 
-        # 2. ซื้อ 10 หุ้น แล้วลองขาย 15 หุ้นผ่าน ticker -> ต้อง 400
+        # 2. Buy 10 shares then sell 15 via ticker -> 400
         self.client.post('/api/portfolio/transactions/', {
             'ticker': 'AMZN',
             'transaction_type': 'BUY',
@@ -783,28 +783,28 @@ class PortfolioEngineTestCase(TestCase):
         self.assertIn('shares', res_oversell.data)
 
     def test_portfolio_deletion_guards(self):
-        """A03: ป้องกันการลบ Default Portfolio และ Portfolio ที่ยังมีรายการสินทรัพย์คงค้าง"""
+        """A03: Prevent deleting default portfolio or portfolios with active holdings"""
         default_port = InvestmentPortfolio.objects.filter(user=self.user, is_default=True).first()
         if not default_port:
             default_port = InvestmentPortfolio.objects.create(user=self.user, name="Main", is_default=True)
 
-        # 1. พยายามลบ Default Portfolio -> ต้อง 400
+        # 1. Try deleting Default Portfolio -> 400
         res_del_default = self.client.delete(f'/api/portfolio/portfolios/{default_port.id}/')
         self.assertEqual(res_del_default.status_code, status.HTTP_400_BAD_REQUEST)
 
-        # 2. สร้าง Portfolio ใหม่และมี Holding -> พยายามลบ -> ต้อง 400
+        # 2. Create new Portfolio with Holding -> try delete -> 400
         active_port = InvestmentPortfolio.objects.create(user=self.user, name="Active Port", is_default=False)
         StockHolding.objects.create(user=self.user, portfolio=active_port, ticker="NVDA", currency="USD")
         res_del_active = self.client.delete(f'/api/portfolio/portfolios/{active_port.id}/')
         self.assertEqual(res_del_active.status_code, status.HTTP_400_BAD_REQUEST)
 
-        # 3. ลบ Holding ออก แล้วลบ Portfolio ว่างเปล่า -> ต้อง 204 สำเร็จ
+        # 3. Delete Holding then delete empty Portfolio -> 204 success
         active_port.holdings.all().delete()
         res_del_empty = self.client.delete(f'/api/portfolio/portfolios/{active_port.id}/')
         self.assertEqual(res_del_empty.status_code, status.HTTP_204_NO_CONTENT)
 
     def test_stock_news_article_multi_ticker_url(self):
-        """A01: ตรวจสอบว่าข่าวเดียวกัน (URL เดียวกัน) สามารถผูกกับหลายหุ้นได้"""
+        """A01: Verify identical news URL can be linked to multiple stock holdings"""
         shared_url = "https://finance.yahoo.com/news/fed-rate-decision-market-impact-12345.html"
         art_aapl = StockNewsArticle.objects.create(
             ticker="AAPL",
@@ -812,7 +812,7 @@ class PortfolioEngineTestCase(TestCase):
             url=shared_url,
             published_at=timezone.now()
         )
-        # ผูกกับ MSFT โดยใช้ URL เดียวกัน ต้องสร้างได้ไม่ error
+        # Link with MSFT using same URL -> success without error
         art_msft = StockNewsArticle.objects.create(
             ticker="MSFT",
             title="Fed Rate Decision",

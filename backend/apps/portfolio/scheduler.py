@@ -11,12 +11,12 @@ _scheduler = None
 
 def sync_hourly_portfolio_news() -> Dict[str, Any]:
     """
-    งานตั้งเวลาประจำชั่วโมง (Hourly Cron):
-    1. กวาดหาสัญลักษณ์หุ้น/สินทรัพย์ทั้งหมดที่ไม่ซ้ำกันจากผู้ใช้ทุกคนในระบบ
-    2. ดึงข่าวสารล่าสุดจาก Yahoo Finance และ Google News
-    3. ตรวจสอบกับ URL ในฐานข้อมูล:
-       - ถ้าเป็นข่าวใหม่ -> แปลภาษาด้วย Gemini และบันทึกเข้าระบบ
-       - ถ้าไม่มีข่าวใหม่หรือเคยมีแล้ว -> ข้ามไปอย่างราบรื่น (ไม่มีข้อผิดพลาด)
+    Hourly recurring job:
+    1. Scan for all distinct ticker symbols held across active user portfolios.
+    2. Ingest latest market news from Yahoo Finance and Google News.
+    3. Check URL against database:
+       - If new article -> translate with Gemini and store.
+       - If already exists or empty -> skip smoothly without error.
     """
     from .models import StockHolding
 
@@ -37,7 +37,7 @@ def sync_hourly_portfolio_news() -> Dict[str, Any]:
 
     for ticker in distinct_tickers:
         try:
-            # ดึง 3 ข่าวล่าสุดต่อสำนักข่าว
+            # Fetch latest 3 articles per news source
             new_count = ingest_news_for_ticker(ticker, limit_per_source=3)
             total_new += new_count
         except Exception as e:
@@ -54,14 +54,14 @@ def sync_hourly_portfolio_news() -> Dict[str, Any]:
 
 
 def start_portfolio_scheduler():
-    """เริ่มต้น Background Scheduler สำหรับงาน Recurring Jobs ประจำแอป Portfolio"""
+    """Start APScheduler background runner for recurring portfolio jobs."""
     global _scheduler
     if _scheduler is not None and _scheduler.running:
         return _scheduler
 
     try:
         _scheduler = BackgroundScheduler(timezone="Asia/Bangkok")
-        # ตั้งเวลาให้ดึงข่าวใหม่ทุกชั่วโมง (interval hours=1)
+        # Run news sync every hour
         _scheduler.add_job(
             sync_hourly_portfolio_news,
             trigger=IntervalTrigger(hours=1),
@@ -80,7 +80,7 @@ def start_portfolio_scheduler():
 
 
 def stop_portfolio_scheduler():
-    """หยุด Background Scheduler อย่างปลอดภัย"""
+    """Gracefully terminate APScheduler background runner."""
     global _scheduler
     if _scheduler is not None and _scheduler.running:
         _scheduler.shutdown(wait=False)

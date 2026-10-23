@@ -49,6 +49,80 @@
       </div>
     </div>
 
+    <!-- 2. Google Drive Cloud Storage (Zero-Disk Storage Backend) -->
+    <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
+      <div class="p-4 border-b border-zinc-800/80 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-md bg-zinc-900 text-zinc-200 flex items-center justify-center border border-zinc-800">
+            <HardDrive class="w-4 h-4 text-zinc-400" />
+          </div>
+          <div>
+            <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Google Drive Cloud Storage</h2>
+            <p class="text-xs text-zinc-500 mt-0.5">Exclusive cloud storage for transaction slips, contracts, and documents (Zero-Disk Architecture)</p>
+          </div>
+        </div>
+
+        <span
+          class="text-[10px] font-mono px-2 py-0.5 rounded border uppercase"
+          :class="[
+            storageStore.isConnected
+              ? 'bg-zinc-900 text-zinc-100 border-zinc-700 font-semibold'
+              : 'bg-zinc-900 text-zinc-500 border-zinc-800'
+          ]"
+        >
+          {{ storageStore.isConnected ? 'CONNECTED' : 'DISCONNECTED' }}
+        </span>
+      </div>
+
+      <div class="p-4">
+        <div v-if="storageStore.isConnected" class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
+          <div class="space-y-0.5">
+            <div class="text-zinc-300">
+              Connected Account: <strong class="text-zinc-100 font-semibold">{{ storageStore.googleEmail }}</strong>
+            </div>
+            <div class="text-[11px] text-zinc-500">
+              Cloud Directory: Personal Life OS (Ledger, Finance, Portfolio, Workspace)
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <a
+              v-if="storageStore.rootFolderId"
+              :href="`https://drive.google.com/drive/folders/${storageStore.rootFolderId}`"
+              target="_blank"
+              class="px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-sans transition-colors flex items-center gap-1.5"
+            >
+              <span>Open in Drive</span>
+              <ExternalLink class="w-3.5 h-3.5 text-zinc-400" />
+            </a>
+            <button
+              @click="handleDisconnectDrive"
+              :disabled="storageStore.isLoading"
+              type="button"
+              class="px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs font-sans transition-colors"
+            >
+              Disconnect
+            </button>
+          </div>
+        </div>
+
+        <div v-else class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-md bg-zinc-900/60 border border-zinc-800">
+          <div>
+            <div class="text-xs text-zinc-200 font-medium">Google Drive connection is required for file storage</div>
+            <p class="text-[11px] text-zinc-500 mt-0.5">Connect your Google Drive account to enable receipt uploads and contract attachments</p>
+          </div>
+          <button
+            @click="storageStore.startConnect"
+            :disabled="storageStore.isConnecting"
+            type="button"
+            class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm shrink-0"
+          >
+            <CloudUpload class="w-3.5 h-3.5 text-zinc-950" />
+            <span>{{ storageStore.isConnecting ? 'Opening...' : 'Connect Google Drive' }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 2. Active Devices & Sessions -->
     <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
       <div class="p-4 border-b border-zinc-800/80 flex items-center justify-between">
@@ -152,7 +226,7 @@
       <div class="p-4 border-b border-zinc-800/80 flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div class="w-8 h-8 rounded-md bg-zinc-900 text-zinc-200 flex items-center justify-center border border-zinc-800">
-            <ShieldCheck class="w-4 h-4 text-emerald-400" />
+            <ShieldCheck class="w-4 h-4 text-zinc-400" />
           </div>
           <div>
             <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Security & Activity Audit Log</h2>
@@ -248,6 +322,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
+import { useStorageStore } from '../stores/storage'
 import { useToastStore } from '../stores/toast'
 import apiClient from '../api/client'
 import type { UserDeviceSession, InviteCode, ActivityLog } from '../types'
@@ -257,10 +332,14 @@ import {
   Plus,
   RefreshCw,
   Copy,
-  ShieldCheck
+  ShieldCheck,
+  HardDrive,
+  ExternalLink,
+  CloudUpload
 } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
+const storageStore = useStorageStore()
 const toast = useToastStore()
 
 const isGeneratingToken = ref(false)
@@ -364,9 +443,16 @@ function getStatusClass(status: string) {
   }
 }
 
+async function handleDisconnectDrive() {
+  if (confirm('Disconnect Google Drive? Uploading new files will be disabled until you reconnect.')) {
+    await storageStore.disconnect()
+  }
+}
+
 onMounted(() => {
   fetchSessions()
   fetchInvites()
   fetchAuditLogs()
+  storageStore.fetchStatus()
 })
 </script>

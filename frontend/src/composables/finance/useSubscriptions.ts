@@ -133,27 +133,47 @@ export function useSubscriptions() {
     }
   }
 
-  async function renewSubscription(id: string, paidAmount?: number, note?: string, slipFile?: File, accountId?: string) {
+  async function renewSubscription(
+    id: string,
+    paidAmount?: number,
+    note?: string,
+    slipFile?: File,
+    accountId?: string,
+    driveData?: {
+      drive_file_id?: string
+      drive_view_link?: string
+      drive_download_link?: string
+      file_name?: string
+      file_size?: number
+    }
+  ) {
     isActionLoading.value = true
     error.value = null
     try {
-      const formData = new FormData()
-      if (paidAmount !== undefined && paidAmount !== null) {
-        formData.append('paid_amount', paidAmount.toString())
-      }
-      if (note) {
-        formData.append('note', note)
-      }
-      if (slipFile) {
-        formData.append('slip_file', slipFile)
-      }
-      if (accountId) {
-        formData.append('account_id', accountId)
+      const payload: Record<string, any> = {}
+      if (paidAmount !== undefined && paidAmount !== null) payload.paid_amount = paidAmount
+      if (note) payload.note = note
+      if (accountId) payload.account_id = accountId
+      if (driveData) {
+        if (driveData.drive_file_id) payload.drive_file_id = driveData.drive_file_id
+        if (driveData.drive_view_link) payload.drive_view_link = driveData.drive_view_link
+        if (driveData.drive_download_link) payload.drive_download_link = driveData.drive_download_link
+        if (driveData.file_name) payload.file_name = driveData.file_name
+        if (driveData.file_size) payload.file_size = driveData.file_size
       }
 
-      const res = await apiClient.post(`/finance/obligations/${id}/pay/`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
+      if (slipFile) {
+        const formData = new FormData()
+        Object.entries(payload).forEach(([k, v]) => formData.append(k, String(v)))
+        formData.append('slip_file', slipFile)
+        const res = await apiClient.post(`/finance/obligations/${id}/pay/`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+        await fetchSubscription(id)
+        return res.data
+      }
+
+      const res = await apiClient.post(`/finance/obligations/${id}/pay/`, payload)
       await fetchSubscription(id)
       return res.data
     } catch (err: any) {

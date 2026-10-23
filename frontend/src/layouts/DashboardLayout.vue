@@ -236,7 +236,7 @@
               to="/workspace"
               class="flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors group"
               :class="[
-                $route.path === '/workspace'
+                $route.path === '/workspace' || $route.path.startsWith('/workspace/')
                   ? 'bg-zinc-900 text-white border border-zinc-800 shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
               ]"
@@ -244,7 +244,7 @@
               <div class="flex items-center gap-2.5">
                 <FolderKanban
                   class="w-3.5 h-3.5 transition-colors shrink-0"
-                  :class="$route.path === '/workspace' ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
+                  :class="$route.path === '/workspace' || $route.path.startsWith('/workspace/') ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
                 />
                 <span>Workspace</span>
               </div>
@@ -257,7 +257,7 @@
               to="/settings"
               class="flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors group"
               :class="[
-                $route.path === '/settings'
+                $route.path === '/settings' || $route.path.startsWith('/settings/')
                   ? 'bg-zinc-900 text-white border border-zinc-800 shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
               ]"
@@ -265,7 +265,7 @@
               <div class="flex items-center gap-2.5">
                 <Settings
                   class="w-3.5 h-3.5 transition-colors shrink-0"
-                  :class="$route.path === '/settings' ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
+                  :class="$route.path === '/settings' || $route.path.startsWith('/settings/') ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
                 />
                 <span>Settings</span>
               </div>
@@ -379,7 +379,8 @@
               <RouterLink
                 to="/workspace"
                 @click="isMobileMenuOpen = false"
-                class="flex items-center gap-2.5 px-3 py-2 rounded-md text-xs text-zinc-400 hover:text-zinc-200"
+                class="flex items-center gap-2.5 px-3 py-2 rounded-md text-xs transition-colors"
+                :class="$route.path === '/workspace' || $route.path.startsWith('/workspace/') ? 'bg-zinc-900 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'"
               >
                 <FolderKanban class="w-3.5 h-3.5" />
                 <span>Workspace</span>
@@ -387,7 +388,8 @@
               <RouterLink
                 to="/settings"
                 @click="isMobileMenuOpen = false"
-                class="flex items-center gap-2.5 px-3 py-2 rounded-md text-xs text-zinc-400 hover:text-zinc-200"
+                class="flex items-center gap-2.5 px-3 py-2 rounded-md text-xs transition-colors"
+                :class="$route.path === '/settings' || $route.path.startsWith('/settings/') ? 'bg-zinc-900 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'"
               >
                 <Settings class="w-3.5 h-3.5" />
                 <span>Settings</span>
@@ -497,8 +499,8 @@
         </div>
 
         <div v-if="authStore.user?.is_telegram_connected" class="p-3.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs space-y-1 font-mono">
-          <div class="flex items-center gap-1.5 text-emerald-400 font-medium">
-            <CheckCircle2 class="w-3.5 h-3.5" />
+          <div class="flex items-center gap-1.5 text-zinc-300 font-medium">
+            <CheckCircle2 class="w-3.5 h-3.5 text-zinc-400" />
             <span>Telegram account connected</span>
           </div>
           <div class="text-[11px] text-zinc-500">
@@ -616,10 +618,19 @@ watch(
 )
 
 function isNavActive(path: string): boolean {
-  if (path === '/finance/overview' || path === '/portfolio/overview') {
-    return route.path === path
+  // Root / Overview routes must match exactly to prevent prefix collision with sibling subroutes
+  if (path === '/ledger') {
+    return route.path === '/ledger' || route.path === '/ledger/'
   }
-  return route.path.startsWith(path)
+  if (path === '/finance/overview') {
+    return route.path === '/finance/overview' || route.path === '/finance' || route.path === '/finance/'
+  }
+  if (path === '/portfolio/overview') {
+    return route.path === '/portfolio/overview' || route.path === '/portfolio' || route.path === '/portfolio/'
+  }
+
+  // All other sub-items: match exact route or nested child route (e.g. /ledger/accounts/123)
+  return route.path === path || route.path.startsWith(path + '/')
 }
 
 const criticalTrialsCount = computed(() => {

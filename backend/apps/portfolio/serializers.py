@@ -15,7 +15,7 @@ from .asset_catalog import verify_ticker_exists
 
 
 class InvestmentPortfolioSerializer(serializers.ModelSerializer):
-    """Serializer สำหรับจัดการพอร์ตการลงทุนแต่ละตะกร้า (เหมือน Dime)"""
+    """Serializer for investment portfolio buckets (multi-portfolio support)."""
     holdings_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -90,25 +90,25 @@ class StockTransactionSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get('request')
         user = request.user if request else None
-        tx_type = attrs.get('transaction_type')
-        shares = attrs.get('shares', Decimal('0'))
-        holding = attrs.get('holding')
+        tx_type = attrs.get('transaction_type', getattr(self.instance, 'transaction_type', None))
+        shares = attrs.get('shares', getattr(self.instance, 'shares', Decimal('0')))
+        holding = attrs.get('holding', getattr(self.instance, 'holding', None))
 
         if shares <= Decimal('0'):
             raise serializers.ValidationError({'shares': 'Shares count must be greater than zero.'})
 
-        price = attrs.get('price_per_share', Decimal('0'))
+        price = attrs.get('price_per_share', getattr(self.instance, 'price_per_share', Decimal('0')))
         if price < Decimal('0'):
             raise serializers.ValidationError({'price_per_share': 'Price per share cannot be negative.'})
 
-        fee = attrs.get('fee', Decimal('0'))
+        fee = attrs.get('fee', getattr(self.instance, 'fee', Decimal('0')))
         if fee < Decimal('0'):
             raise serializers.ValidationError({'fee': 'Fee cannot be negative.'})
 
-        # F05: ตรวจสอบความสอดคล้องระหว่าง Target Portfolio กับ Holding
+        # F05: Validate consistency between target portfolio and selected holding
         target_portfolio_id = self.initial_data.get('portfolio')
         if holding and target_portfolio_id and str(holding.portfolio_id) != str(target_portfolio_id):
-            # หาก Holding ปัจจุบันไม่ได้อยู่ในพอร์ตที่เลือก ให้ค้นหา Holding ของ ticker นี้ในพอร์ตเป้าหมาย
+            # If holding does not belong to target portfolio, locate matching holding in target portfolio
             matched_holding = StockHolding.objects.filter(
                 user=user,
                 portfolio_id=target_portfolio_id,
@@ -122,7 +122,7 @@ class StockTransactionSerializer(serializers.ModelSerializer):
                     'portfolio': f'Selected asset belongs to portfolio "{holding.portfolio.name}", which does not match target.'
                 })
 
-        # F08: Validate SELL volume against current holding (รองรับทั้งส่ง holding และส่ง ticker)
+        # F08: Validate SELL volume against current holding (supports both holding id and ticker)
         if tx_type == TransactionType.SELL:
             if not holding and user:
                 ticker_input = self.initial_data.get('ticker')
@@ -143,7 +143,7 @@ class StockTransactionSerializer(serializers.ModelSerializer):
 
             pos = calculate_detailed_position(holding)
             available_shares = pos['shares']
-            # หากเป็นการแก้ไขรายการขายเดิม ให้นำจำนวนหุ้นของรายการเดิมกลับมาคำนวณด้วย
+            # If updating an existing sell transaction, credit back existing shares before validating
             if self.instance and self.instance.transaction_type == TransactionType.SELL and self.instance.holding_id == holding.id:
                 available_shares += self.instance.shares
 
@@ -161,7 +161,7 @@ class StockTransactionSerializer(serializers.ModelSerializer):
         currency_input = validated_data.get('currency')
         holding = validated_data.get('holding')
 
-        # หาเป้าหมาย InvestmentPortfolio (เหมือน Dime Multi-Portfolio)
+        # Resolve target InvestmentPortfolio
         portfolio_obj = None
         if portfolio_id:
             portfolio_obj = InvestmentPortfolio.objects.filter(id=portfolio_id, user=user).first()
@@ -174,14 +174,14 @@ class StockTransactionSerializer(serializers.ModelSerializer):
                     defaults={'name': 'Main Portfolio', 'currency': 'THB'}
                 )
 
-        # ถ้าส่ง ticker มาแทน holding ID ให้ตรวจสอบความถูกต้องและค้นหา/สร้าง holding ในพอร์ตนั้น
+        # If ticker is provided instead of holding ID, validate and locate or create holding in portfolio
         if not holding and ticker_input:
             clean_ticker = normalize_ticker(ticker_input, currency=currency_input)
 
-            # ตรวจสอบอย่างเข้มงวดว่าสินทรัพย์มีอยู่จริงในตลาด (ถ้าไม่ใช่จะเพิ่มไม่ได้)
+            # Verify asset existence in market catalog or live exchange
             verified = verify_ticker_exists(clean_ticker)
             if not verified and not clean_ticker.endswith('.BK') and not clean_ticker.endswith('-USD'):
-                # ลองตรวจสอบเผื่อเป็นหุ้นไทยที่ไม่ได้ใส่ .BK
+                # Check if Thai stock without .BK suffix
                 th_verified = verify_ticker_exists(f"{clean_ticker}.BK")
                 if th_verified:
                     clean_ticker = f"{clean_ticker}.BK"
@@ -251,7 +251,7 @@ class StockTransactionSerializer(serializers.ModelSerializer):
         return tx
 
     def update(self, instance, validated_data):
-        # F03: ล็อก currency ไม่ให้เปลี่ยน denomination ของ Holding เดิม
+        # F03: Lock currency to prevent altering denomination of existing holding
         if instance.holding:
             validated_data['currency'] = instance.holding.currency or 'THB'
         return super().update(instance, validated_data)
@@ -261,6 +261,12 @@ class StockHoldingSerializer(serializers.ModelSerializer):
     position = serializers.SerializerMethodField()
     recent_transactions = serializers.SerializerMethodField()
     portfolio_name = serializers.CharField(source='portfolio.name', read_only=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            self.fields['portfolio'].queryset = InvestmentPortfolio.objects.filter(user=request.user)
 
     class Meta:
         model = StockHolding
@@ -280,6 +286,13 @@ class StockHoldingSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('id', 'portfolio_name', 'created_at', 'updated_at')
 
+    def validate(self, attrs):
+        user = self.context['request'].user
+        portfolio = attrs.get('portfolio') or (self.instance.portfolio if self.instance else None)
+        if portfolio and portfolio.user != user:
+            raise serializers.ValidationError({'portfolio': 'Selected portfolio does not belong to user.'})
+        return attrs
+
     def get_position(self, obj):
         price_map = self.context.get('price_map', {})
         current_price = price_map.get(obj.ticker)
@@ -296,8 +309,19 @@ class StockHoldingSerializer(serializers.ModelSerializer):
         return StockTransactionSerializer(txs, many=True, context=self.context).data
 
     def create(self, validated_data):
-        validated_data['user'] = self.context['request'].user
+        user = self.context['request'].user
+        validated_data['user'] = user
         validated_data['ticker'] = normalize_ticker(validated_data.get('ticker', ''))
+        if not validated_data.get('portfolio'):
+            default_pf = InvestmentPortfolio.objects.filter(user=user, is_default=True).first()
+            if not default_pf:
+                default_pf = InvestmentPortfolio.objects.create(
+                    user=user,
+                    name='Main Portfolio',
+                    currency='THB',
+                    is_default=True
+                )
+            validated_data['portfolio'] = default_pf
         return super().create(validated_data)
 
 

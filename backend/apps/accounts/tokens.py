@@ -6,20 +6,33 @@ from django.conf import settings
 
 
 def hash_token(token: str) -> str:
-    """สร้าง SHA256 hash สำหรับเก็บในฐานข้อมูล เพื่อไม่เก็บ token ดิบ"""
+    """Generate SHA256 hash for database storage instead of storing raw tokens."""
     return hashlib.sha256(token.encode('utf-8')).hexdigest()
 
 
 def get_client_ip(request) -> str:
-    """ดึง IP Address ที่แท้จริงของ Client"""
+    """Extract real client IP address from request headers, strictly validated."""
+    import ipaddress
     x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
     if x_forwarded_for:
-        return x_forwarded_for.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR', '')
+        raw_ip = x_forwarded_for.split(',')[0].strip()
+        try:
+            ipaddress.ip_address(raw_ip)
+            return raw_ip
+        except ValueError:
+            pass
+    remote_addr = request.META.get('REMOTE_ADDR', '')
+    if remote_addr:
+        try:
+            ipaddress.ip_address(remote_addr)
+            return remote_addr
+        except ValueError:
+            pass
+    return '127.0.0.1'
 
 
 def get_device_name(request) -> str:
-    """วิเคราะห์ชื่ออุปกรณ์และเบราว์เซอร์จาก User-Agent เบื้องต้น"""
+    """Parse device name and browser info from User-Agent."""
     user_agent = request.META.get('HTTP_USER_AGENT', 'Unknown Device')
     ua_lower = user_agent.lower()
     
@@ -49,7 +62,7 @@ def get_device_name(request) -> str:
 
 
 def generate_access_token(user) -> str:
-    """สร้าง Access Token อายุ 15 นาที"""
+    """Create 15-minute Access Token."""
     now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
         'token_type': 'access',
@@ -62,7 +75,7 @@ def generate_access_token(user) -> str:
 
 
 def generate_refresh_token(user, session_id: uuid.UUID) -> str:
-    """สร้าง Refresh Token อายุ 7 วัน พร้อม JTI เฉพาะตัว"""
+    """Create 7-day Refresh Token with unique JTI."""
     now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
         'token_type': 'refresh',
@@ -76,5 +89,5 @@ def generate_refresh_token(user, session_id: uuid.UUID) -> str:
 
 
 def decode_token(token: str) -> dict:
-    """ถอดรหัสและตรวจสอบความถูกต้องของ Token"""
+    """Decode and validate JWT token claims."""
     return jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])

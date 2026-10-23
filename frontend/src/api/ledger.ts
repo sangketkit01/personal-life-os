@@ -96,9 +96,12 @@ export const ledgerApi = {
     await apiClient.delete(`/ledger/transactions/${id}/`)
   },
 
-  async getCashFlowSummary(month?: string): Promise<CashFlowSummary> {
+  async getCashFlowSummary(month?: string, currency?: string): Promise<CashFlowSummary> {
+    const params: Record<string, string> = {}
+    if (month) params.month = month
+    if (currency) params.currency = currency
     const res = await apiClient.get<CashFlowSummary>('/ledger/transactions/summary/', {
-      params: month ? { month } : undefined
+      params: Object.keys(params).length > 0 ? params : undefined
     })
     return res.data
   },

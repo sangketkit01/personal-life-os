@@ -13,7 +13,7 @@ from .services import normalize_ticker
 
 
 def clean_ticker_for_search(ticker: str) -> str:
-    """แปลง Ticker เป็นคำค้นหาที่แม่นยำ เช่น PTT.BK -> PTT, BTC-USD -> Bitcoin"""
+    """ Ticker   PTT.BK -> PTT, BTC-USD -> Bitcoin"""
     clean = ticker.strip().upper()
     if clean.endswith('.BK'):
         return clean[:-3]
@@ -30,7 +30,7 @@ def clean_ticker_for_search(ticker: str) -> str:
 
 
 def resolve_news_url(url: str) -> str:
-    """ถอดรหัส URL ของ Google News RSS ให้เป็น Destination URL ดั้งเดิม"""
+    """ URL  Google News RSS  Destination URL """
     if not url:
         return ''
     if 'news.google.com' in url:
@@ -48,8 +48,8 @@ def resolve_news_url(url: str) -> str:
 
 def scrape_article_content(url: str, timeout: int = 8) -> Dict[str, str]:
     """
-    ดึงเนื้อหาข่าวและ Lead Paragraph จาก URL ของบทความต้นฉบับ
-    คืนค่า: {'lead': '...', 'full_text': '...', 'resolved_url': '...'}
+    Scrapes news article body and lead paragraph from original source URL.
+    Returns: {'lead': '...', 'full_text': '...', 'resolved_url': '...'}
     """
     resolved_url = resolve_news_url(url)
     lead = ''
@@ -82,11 +82,11 @@ def scrape_article_content(url: str, timeout: int = 8) -> Dict[str, str]:
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(html, 'html.parser')
 
-        # กำจัด Tag ที่ไม่เกี่ยวข้องกับเนื้อหา
+    # Remove non-content HTML tags
         for tag in soup(['script', 'style', 'noscript', 'header', 'footer', 'nav', 'aside', 'form', 'svg']):
             tag.decompose()
 
-        # 1. ดึง Meta Description (Lead summary)
+    # 1. Extract Meta Description (lead summary)
         desc_tag = (
             soup.find('meta', attrs={'name': 'description'})
             or soup.find('meta', attrs={'property': 'og:description'})
@@ -95,7 +95,7 @@ def scrape_article_content(url: str, timeout: int = 8) -> Dict[str, str]:
         if desc_tag and desc_tag.get('content'):
             lead = desc_tag['content'].strip()
 
-        # 2. ค้นหาเนื้อหาหลัก (Article body)
+    # 2. Locate main article body
         container = (
             soup.find('article')
             or soup.find('div', class_=re.compile(r'caas-body|article-body|story-body|entry-content|wysiwyg|post-content', re.I))
@@ -132,7 +132,7 @@ def scrape_article_content(url: str, timeout: int = 8) -> Dict[str, str]:
 
 
 def fetch_from_yahoo_finance(ticker: str, limit: int = 3) -> List[Dict[str, Any]]:
-    """ดึงข่าวจาก Yahoo Finance Search API พร้อม Scrape เนื้อหา"""
+    """ Yahoo Finance Search API  Scrape """
     articles = []
     clean_search = clean_ticker_for_search(ticker)
     try:
@@ -177,12 +177,12 @@ def fetch_from_yahoo_finance(ticker: str, limit: int = 3) -> List[Dict[str, Any]
 
 
 def fetch_from_google_news(ticker: str, limit: int = 3) -> List[Dict[str, Any]]:
-    """ดึงข่าวจาก Google News Financial RSS (ครอบคลุมทั้งข่าวไทยและสากล)"""
+    """ Google News Financial RSS ()"""
     articles = []
     clean_search = clean_ticker_for_search(ticker)
 
     if ticker.endswith('.BK'):
-        query = f"{clean_search} หุ้น when:3d"
+        query = f"{clean_search} stock when:3d"
         hl, gl, ceid = "th", "TH", "TH:th"
     elif ticker.endswith('-USD'):
         query = f"{clean_search} crypto when:3d"
@@ -245,8 +245,8 @@ def fetch_from_google_news(ticker: str, limit: int = 3) -> List[Dict[str, Any]]:
 
 def translate_edge_batch(texts: List[str]) -> List[Optional[str]]:
     """
-    แปลชุดข้อความหรือย่อหน้าพร้อมกันด้วย Microsoft Edge AI Translation Endpoint
-    คืนค่า list ของข้อความที่แปลเป็นภาษาไทย หรือ None สำหรับรายการที่ล้มเหลว
+    Microsoft Edge AI Translation Endpoint.
+    Returns list of translated strings or None for failed items.
     """
     if not texts:
         return []
@@ -281,16 +281,16 @@ def translate_edge_batch(texts: List[str]) -> List[Optional[str]]:
 
 
 def translate_rpc(text: str) -> str:
-    """แปลข้อความหรือพาดหัวข่าวผ่าน Microsoft Edge Translation Engine (Tier 1) พร้อม Google & MyMemory Fallback"""
+    # 1. Tier 1: Microsoft Edge AI Translator (fast, accurate, no rate limit)
     if not text or not text.strip():
         return ''
 
     clean_text = text.strip()
-    # หากเป็นภาษาไทยอยู่แล้ว คืนค่าเดิมได้ทันที
+    # If already in target language, return as is
     if bool(re.search(r'[\u0e00-\u0e7f]', clean_text)):
         return clean_text
 
-    # 1. Tier 1: Microsoft Edge AI Translator (เร็ว แม่นยำสูง ไร้ปัญหา Rate Limit)
+    # 1. Tier 1: Microsoft Edge AI Translator (fast, accurate, no rate limit)
     try:
         edge_res = translate_edge_batch([clean_text[:3000]])
         if edge_res and edge_res[0]:
@@ -299,7 +299,7 @@ def translate_rpc(text: str) -> str:
     except Exception:
         pass
 
-    # 2. Tier 2: Google Translate RPC (curl_cffi พร้อม client rotation)
+    # 2. Tier 2: Google Translate RPC with client rotation
     clients = ['it', 'at', 'dict-chrome-ex']
     try:
         from curl_cffi import requests as cffi_requests
@@ -318,7 +318,7 @@ def translate_rpc(text: str) -> str:
     except ImportError:
         pass
 
-    # 3. Tier 3: Google Translate ผ่าน urllib
+    # 3. Tier 3: Google Translate via urllib
     for client in clients:
         try:
             url = f"https://translate.googleapis.com/translate_a/single?client={client}&sl=auto&tl=th&dt=t"
@@ -359,8 +359,8 @@ def translate_rpc(text: str) -> str:
 
 def translate_full_text(text: str) -> str:
     """
-    แปลเนื้อหาข่าวฉบับเต็ม 100% ทุกย่อหน้าแบบไม่ตัดทอน
-    ใช้ Edge Batch Translation แปลทั้งบทความพร้อมกันอย่างรวดเร็ว พร้อม Fallback ย่อหน้าต่อย่อหน้า
+    Translates full article content across all paragraphs.
+    Uses Edge Batch Translation with paragraph fallback.
     """
     if not text or not text.strip():
         return ''
@@ -369,7 +369,7 @@ def translate_full_text(text: str) -> str:
     if not paragraphs:
         return ''
 
-    # 1. แปลชุดย่อหน้าทั้งหมดด้วย Microsoft Edge Batch Translator
+    # 1. Translate all paragraphs via Microsoft Edge Batch Translator
     edge_results = translate_edge_batch(paragraphs)
 
     final_paras = []
@@ -392,8 +392,8 @@ def translate_with_gemini(
     api_key: str
 ) -> Optional[Dict[str, str]]:
     """
-    แปลและสร้าง Executive Summary + เนื้อหาฉบับเต็มภาษาไทยด้วย Google Gemini AI
-    คืนค่า JSON: {"title_th": "...", "summary_th": "...", "content_th": "...", "sentiment": "BULLISH|BEARISH|NEUTRAL"}
+    Translates and generates Executive Summary plus full content via Google Gemini AI.
+    Returns JSON: {"title_th": "...", "summary_th": "...", "content_th": "...", "sentiment": "..."}
     """
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
 
@@ -417,9 +417,9 @@ Article Content:
 
 Respond ONLY with a valid JSON object matching this schema:
 {{
-  "title_th": "พาดหัวข่าวภาษาไทย",
-  "summary_th": "- สาระสำคัญ: ...\\n- ผลกระทบต่อหุ้น: ...\\n- มุมมองกลยุทธ์: ...",
-  "content_th": "เนื้อหาข่าวภาษาไทยฉบับเต็มครบทุกย่อหน้า...",
+  "title_th": "Translated News Headline",
+  "summary_th": "- Key Takeaway: ...\n- Market Impact: ...\n- Strategic View: ...",
+  "content_th": "Full translated article content across all paragraphs..."
   "sentiment": "BULLISH"
 }}"""
 
@@ -463,25 +463,24 @@ def translate_with_fallback(
     content: str = ''
 ) -> Dict[str, str]:
     """
-    Fallback Engine อัจฉริยะ:
-    - แปลพาดหัวข่าว
-    - แปลและสรุปสาระสำคัญ 3 หัวข้อ (Executive Summary)
-    - แปลเนื้อหาหลักเป็นย่อหน้าภาษาไทย (Full Content Reader)
-    - วิเคราะห์ Sentiment จากเนื้อหาและพาดหัวข่าว
+    Intelligent Fallback Translation Engine:
+    - Translates news headline
+    - Generates structured Executive Summary
+    - Analyzes sentiment from news body
     """
-    # 1. พาดหัวข่าว
+    # 1. News headline
     has_thai_title = bool(re.search(r'[\u0e00-\u0e7f]', title or ''))
     title_th = title if has_thai_title else translate_rpc(title)
 
-    # 2. วิเคราะห์ Sentiment
+    # 2. Sentiment analysis
     combined_text = f"{title} {lead} {content[:500]}".lower()
     bullish_words = [
         'surge', 'jump', 'gain', 'beat', 'growth', 'record', 'rally',
-        'upgrade', 'high', 'profit', 'rise', 'soar', 'outperform', 'ซื้อ', 'เติบโต', 'กำไรพุ่ง', 'เป้าหมาย'
+        'upgrade', 'high', 'profit', 'rise', 'soar', 'outperform', 'bullish'
     ]
     bearish_words = [
         'drop', 'fall', 'plunge', 'miss', 'loss', 'slump', 'cut',
-        'downgrade', 'low', 'warn', 'crash', 'selloff', 'slashes', 'ดิ่ง', 'ขาดทุน', 'ลดลง', 'เตือน'
+        'downgrade', 'low', 'warn', 'crash', 'selloff', 'slashes', 'bearish'
     ]
 
     sentiment = 'NEUTRAL'
@@ -490,26 +489,26 @@ def translate_with_fallback(
     elif any(w in combined_text for w in bearish_words):
         sentiment = 'BEARISH'
 
-    # 3. สร้าง Executive Summary ในรูปแบบข้อ 3-4 ประเด็น
+    # 3. Generate Executive Summary as 3 bullet points
     lead_source = lead or (content.split('\n\n')[0] if content else title)
     has_thai_lead = bool(re.search(r'[\u0e00-\u0e7f]', lead_source or ''))
     translated_lead = lead_source if has_thai_lead else translate_rpc(lead_source)
 
     if sentiment == 'BULLISH':
-        sentiment_summary = f"สัญญาณเชิงบวก: มีปัจจัยหนุนที่อาจส่งผลดีต่อแนวโน้มราคาและโมเมนตัมของหุ้น {ticker}"
+        sentiment_summary = f"Positive signal: positive catalyst identified for {ticker}"
     elif sentiment == 'BEARISH':
-        sentiment_summary = f"สัญญาณความเสี่ยง: มีแรงกดดันหรือความท้าทายที่ควรติดตามอย่างใกล้ชิดสำหรับ {ticker}"
+        sentiment_summary = f"Risk signal: downward pressure or headwind identified for {ticker}"
     else:
-        sentiment_summary = f"มุมมองเป็นกลาง: ความเคลื่อนไหวด้านข่าวสารและข้อมูลพื้นฐานของ {ticker} ในกรอบปัจจุบัน"
+        sentiment_summary = f"Neutral outlook: monitoring market developments for {ticker}"
 
     summary_bullets = [
-        f"• ประเด็นสำคัญ: {translated_lead}",
-        f"• ผลกระทบต่อหุ้น: {sentiment_summary}",
-        f"• แหล่งข้อมูล & การติดตาม: ติดตามรายละเอียดเพิ่มเติมจากรายงานฉบับเต็มของตลาดการเงิน"
+        f"• Key Highlight: {translated_lead}",
+        f"• Market Impact: {sentiment_summary}",
+        f"• Source & Follow-up: Refer to full financial market report",
     ]
     summary_th = '\n'.join(summary_bullets)
 
-    # 4. แปลเนื้อหาฉบับเต็มเป็นย่อหน้าภาษาไทยครบ 100% ทุกย่อหน้า
+    # 4. Translate full article paragraphs
     has_thai_content = bool(re.search(r'[\u0e00-\u0e7f]', content or ''))
     if has_thai_content:
         content_th = content or lead
@@ -533,7 +532,7 @@ def translate_and_enrich_article(
     lead: str = '',
     content: str = ''
 ) -> Dict[str, str]:
-    """ฟังก์ชันกลางเลือกตัวแปล: Gemini (ถ้ามี Key) -> Fallback อัตโนมัติ"""
+    """Primary translation router: Gemini (if API key available) -> Automatic fallback."""
     gemini_key = os.getenv('GEMINI_API_KEY') or getattr(settings, 'GEMINI_API_KEY', None)
     if gemini_key:
         ai_res = translate_with_gemini(title, ticker, lead, content, gemini_key)
@@ -544,15 +543,15 @@ def translate_and_enrich_article(
 
 
 def ingest_news_for_ticker(ticker: str, limit_per_source: int = 3) -> int:
-    """ดึงข่าวจากหลายแหล่งสำหรับ 1 Ticker พร้อม Scrape เนื้อหาเต็มและแปลผล"""
+    """Fetches news from multiple sources for 1 ticker with scraping and translation."""
     clean_tick = normalize_ticker(ticker)
 
-    # 1. รวบรวมข่าวจากทั้ง Yahoo Finance และ Google News
+    # 1. Aggregate news from Yahoo Finance and Google News
     yahoo_articles = fetch_from_yahoo_finance(clean_tick, limit=limit_per_source)
     google_articles = fetch_from_google_news(clean_tick, limit=limit_per_source)
     combined = yahoo_articles + google_articles
 
-    # 2. คัดกรองข่าวซ้ำซ้อนตาม URL
+    # 2. Filter duplicate news by URL
     seen_urls = set()
     new_articles_count = 0
 
@@ -562,15 +561,15 @@ def ingest_news_for_ticker(ticker: str, limit_per_source: int = 3) -> int:
             continue
         seen_urls.add(url)
 
-        # ตรวจสอบว่าเคยมีใน Database หรือยัง
+    # Check if already exists in database
         existing_this = StockNewsArticle.objects.filter(ticker=clean_tick, url=url).first()
         if existing_this:
-            # ถ้ามีอยู่แล้วสำหรับหุ้นตัวนี้แต่ยังไม่มีเนื้อหา ให้เติมข้อมูล (Backfill)
+    # If already exists for this ticker without body, backfill
             if not existing_this.content or not existing_this.content_th:
                 enrich_article_if_empty(existing_this)
             continue
 
-        # ตรวจสอบว่าเคยมีบทความนี้ถูกดึงไว้แล้วสำหรับหุ้นตัวอื่นหรือไม่ (Reuse Scraped & Translated Content)
+    # Check if article was already scraped for another ticker (reuse)
         existing_other = StockNewsArticle.objects.filter(url=url).first()
         if existing_other:
             try:
@@ -594,13 +593,13 @@ def ingest_news_for_ticker(ticker: str, limit_per_source: int = 3) -> int:
                 print(f"Warning: Failed to duplicate existing article for {clean_tick}: {e}")
                 continue
 
-        # 3. Scrape เนื้อหาข่าวฉบับเต็ม
+        # 3. Scrape full news content
         scraped = scrape_article_content(url, timeout=8)
         resolved_url = scraped.get('resolved_url') or url
         raw_lead = scraped.get('lead', '')
         raw_content = scraped.get('full_text', '')
 
-        # 4. แปลภาษาและสร้าง Executive Summary + Sentiment
+    # 3. Generate Executive Summary as 3 bullet points
         trans_data = translate_and_enrich_article(
             title=item['title'],
             ticker=clean_tick,
@@ -608,7 +607,7 @@ def ingest_news_for_ticker(ticker: str, limit_per_source: int = 3) -> int:
             content=raw_content
         )
 
-        # 5. บันทึกลง Database ทันที
+        # 5. Persist to database
         try:
             StockNewsArticle.objects.create(
                 ticker=clean_tick,
@@ -633,7 +632,7 @@ def ingest_news_for_ticker(ticker: str, limit_per_source: int = 3) -> int:
 
 def enrich_article_if_empty(article: StockNewsArticle, force: bool = False) -> StockNewsArticle:
     """
-    เติมเต็มเนื้อหาข่าวและบทสรุปไทยให้ข่าวที่มีอยู่แล้วหากยังว่างเปล่า หรือยังแปลไม่ครบทั้งบทความ
+    Backfills news body and translated summary for existing incomplete articles.
     """
     has_thai_title = bool(re.search(r'[\u0e00-\u0e7f]', article.title_th or ''))
     has_thai_summary = bool(re.search(r'[\u0e00-\u0e7f]', article.summary_th or ''))
@@ -642,12 +641,12 @@ def enrich_article_if_empty(article: StockNewsArticle, force: bool = False) -> S
     eng_paras = [p.strip() for p in (article.content or '').split('\n\n') if p.strip()]
     th_paras = [p.strip() for p in (article.content_th or '').split('\n\n') if p.strip()]
 
-    # ถ้ามีเนื้อหาครบทั้งสองภาษาและแปลเป็นภาษาไทยอย่างสมบูรณ์แล้ว ไม่ต้องแปลซ้ำ (เว้นแต่ force=True)
+    # Skip if already translated unless force=True
     if not force and article.content and has_thai_content and has_thai_title and has_thai_summary and len(article.summary_th) > 30:
         if len(eng_paras) <= len(th_paras) + 1:
             return article
 
-    # หากไม่มีเนื้อหาภาษาอังกฤษ หรือถูกบังคับ ให้ดึงจากเว็บต้นฉบับก่อน
+    # Fetch from source if content is empty or force=True
     content = article.content
     lead = article.summary
     if not content or force or not has_thai_content:
@@ -684,7 +683,7 @@ def enrich_article_if_empty(article: StockNewsArticle, force: bool = False) -> S
 
 
 def sync_all_portfolio_news(user=None) -> Dict[str, Any]:
-    """กวาดดึงข่าวและแปลภาษาอัตโนมัติสำหรับหุ้นทุกตัวในพอร์ตและ Watchlist โดยใช้ Worker Pool"""
+    """Crawls news and translates automatically for all portfolio & watchlist tickers via background worker."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from .models import StockWatchlist
     holding_qs = StockHolding.objects.all()

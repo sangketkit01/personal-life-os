@@ -39,12 +39,12 @@ def create_obligation_from_chat(user, title: str, ob_type: str, amount: Decimal,
 
 def parse_quick_text(text: str):
     """
-    วิเคราะห์ข้อความภาษาคนเพื่อแปลงเป็นข้อมูลภาระการเงิน
-    ตัวอย่าง:
-    - ผ่อน tiktok 450 3 งวด
-    - trial canva 499 2026-10-25 เมล work@gmail.com
-    - sub netflix 419
-    - หนี้ ตั้ม 500
+    Parse natural language text into financial obligation data.
+    Examples:
+    - installment iPad 1500 10
+    - trial Canva 499 email work@example.com
+    - sub Netflix 419
+    - debt John 500
     """
     clean_text = text.strip()
     words = clean_text.split()
@@ -53,11 +53,12 @@ def parse_quick_text(text: str):
 
     first_word = words[0].lower()
 
-    # 1. เคส: ผ่อน <ชื่อ> <ยอด> <จำนวนงวด>
-    if 'ผ่อน' in first_word or first_word == 'installment':
-        match = re.search(r'(?:ผ่อน|installment)\s+([^\d]+)\s+(\d+(?:\.\d+)?)\s+(\d+)\s*(?:งวด)?', clean_text, re.IGNORECASE)
+    # 1. Installment: installment <name> <amount> <terms>
+    if first_word in ['installment', 'inst']:
+        match = re.search(r'(?:installment|inst)\s+([^\d]+)\s+(\d+(?:\.\d+)?)\s+(\d+)\s*(?:terms?)?', clean_text, re.IGNORECASE)
         if match:
-            title = f"ผ่อน {match.group(1).strip()}"
+            item_name = match.group(1).strip()
+            title = f"Installment: {item_name}" if not item_name.lower().startswith('installment') else item_name
             amount = Decimal(match.group(2))
             terms = int(match.group(3))
             return {
@@ -67,19 +68,18 @@ def parse_quick_text(text: str):
                 'metadata': {
                     'total_terms': terms,
                     'current_term': 0,
-                    'lender': match.group(1).strip()
+                    'lender': item_name
                 }
             }
 
-    # 2. เคส: trial <ชื่อ> <ยอด> [วันหมดอายุ]
+    # 2. Free Trial: trial <name> <amount> [email]
     if 'trial' in first_word:
-        # trial canva 499 หรือ trial canva 499 2026-10-25
         match = re.search(r'trial\s+([^\d]+)\s+(\d+(?:\.\d+)?)', clean_text, re.IGNORECASE)
         if match:
             title = f"{match.group(1).strip()} Free Trial"
             amount = Decimal(match.group(2))
             email = ''
-            if 'เมล' in clean_text or '@' in clean_text:
+            if 'email' in clean_text or '@' in clean_text:
                 email_match = re.search(r'[\w\.-]+@[\w\.-]+', clean_text)
                 if email_match:
                     email = email_match.group(0)
@@ -94,7 +94,7 @@ def parse_quick_text(text: str):
                 }
             }
 
-    # 3. เคส: sub <ชื่อ> <ยอด>
+    # 3. Subscription: sub <name> <amount>
     if 'sub' in first_word or first_word == 'subscription':
         match = re.search(r'(?:sub|subscription)\s+(.+?)\s+(\d+(?:\.\d+)?)', clean_text, re.IGNORECASE)
         if match:
@@ -109,15 +109,15 @@ def parse_quick_text(text: str):
                 }
             }
 
-    # 4. เคส: หนี้ <คน> <ยอด>
-    if 'หนี้' in first_word or first_word == 'debt':
-        match = re.search(r'(?:หนี้|debt)\s+(.+?)\s+(\d+(?:\.\d+)?)', clean_text, re.IGNORECASE)
+    # 4. Debt: debt <person> <amount>
+    if first_word in ['debt', 'loan']:
+        match = re.search(r'(?:debt|loan)\s+(.+?)\s+(\d+(?:\.\d+)?)', clean_text, re.IGNORECASE)
         if match:
             person = match.group(1).strip()
             amount = Decimal(match.group(2))
             return {
                 'type': ObligationType.DEBT,
-                'title': f"หนี้ {person}",
+                'title': f"Debt: {person}",
                 'amount': amount,
                 'metadata': {
                     'counterparty': person,
@@ -129,14 +129,14 @@ def parse_quick_text(text: str):
 
 
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler จัดการข้อความทั่วไปที่ส่งเข้ามาในห้องแชต (Quick-Capture)"""
+    """Handle plain text messages sent to bot (Quick-Capture)"""
     if not update.effective_chat or not update.message or not update.message.text:
         return
 
     chat_id = update.effective_chat.id
     user = await get_user_by_chat_id(chat_id)
     if not user:
-        await update.message.reply_text("⚠️ บัญชีของคุณยังไม่ได้เชื่อมต่อกับระบบ กรุณากดเชื่อมต่อจากหน้าเว็บก่อนครับ")
+        await update.message.reply_text("⚠️ Your Telegram account is not connected. Please connect via your profile settings in the web app.")
         return
 
     text = update.message.text
@@ -152,21 +152,21 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         )
 
         reply = (
-            f"⚡ *บันทึกรายการด่วนสำเร็จแล้ว!*\n\n"
-            f"• รายการ: *{ob.title}*\n"
-            f"• ยอดเงิน: *฿{float(ob.amount):,.2f}*\n"
-            f"• ประเภท: `{ob.type}`\n"
-            f"• วันตัดรอบถัดไป: *{ob.due_date.strftime('%d/%m/%Y')}*\n\n"
-            f"_ข้อมูลถูกซิงค์ขึ้นหน้า Dashboard เรียบร้อยแล้วครับ_"
+            f"⚡ *Quick Obligation Recorded!*\n\n"
+            f"• Title: *{ob.title}*\n"
+            f"• Amount: *฿{float(ob.amount):,.2f}*\n"
+            f"• Type: `{ob.type}`\n"
+            f"• Next Due Date: *{ob.due_date.strftime('%d/%m/%Y')}*\n\n"
+            f"_Data has been synchronized with your Financial Radar dashboard._"
         )
         await update.message.reply_text(reply, parse_mode='Markdown')
     else:
-        # ข้อความที่ไม่ตรงรูปแบบ
+        # Invalid syntax fallback
         await update.message.reply_text(
-            "💡 *ตัวอย่างการพิมพ์บันทึกด่วน:*\n"
-            "• `ผ่อน tiktok 450 3 งวด`\n"
-            "• `trial canva 499 เมล work@gmail.com`\n"
-            "• `sub netflix 419`\n"
-            "• `หนี้ ตั้ม 500`",
+            "💡 *Quick capture syntax examples:*\n"
+            "• `installment iPad 1500 10`\n"
+            "• `trial Canva 499 email work@example.com`\n"
+            "• `sub Netflix 419`\n"
+            "• `debt John 500`",
             parse_mode='Markdown'
         )

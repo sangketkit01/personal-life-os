@@ -56,6 +56,8 @@ class AccountBalanceService:
             raise ValueError("Source and destination accounts must be different.")
         if amount <= Decimal('0.00'):
             raise ValueError("Transfer amount must be strictly positive.")
+        if source_account.currency != target_account.currency:
+            raise ValueError(f"Cross-currency transfers are not supported ({source_account.currency} to {target_account.currency}).")
 
         # Deadlock-free locking order
         first_id, second_id = sorted([source_account.id, target_account.id])
@@ -65,6 +67,13 @@ class AccountBalanceService:
         # Refresh accounts under lock
         locked_source = Account.objects.get(id=source_account.id, user=user)
         locked_target = Account.objects.get(id=target_account.id, user=user)
+
+        # Overdraft protection for non-credit accounts
+        from apps.ledger.models import AccountType
+        if locked_source.account_type != AccountType.CREDIT_CARD and locked_source.current_balance < amount:
+            raise ValueError(
+                f"Insufficient funds: {locked_source.name} has balance ฿{locked_source.current_balance:,.2f}, but transfer requires ฿{amount:,.2f}."
+            )
 
         # 1. Outflow from source
         outflow_tx = Transaction.objects.create(
@@ -118,7 +127,86 @@ class AccountBalanceService:
 class BillSplitService:
     """
     Orchestrates group expense splitting and bi-directional integration with Financial Radar.
+    Supports both classic equal/custom splits and Harntung itemized receipt splits.
     """
+
+    @staticmethod
+    def calculate_harntung_shares(
+        gross_amount: Decimal,
+        items: list[dict],
+        participants: list[dict],
+        service_charge_pct: Decimal = Decimal('0.00'),
+        vat_pct: Decimal = Decimal('0.00'),
+        payer_name: str = "Me"
+    ) -> tuple[Decimal, list[dict]]:
+        """
+        Calculates itemized Harntung splits with proportional service charge and VAT.
+        Each item is divided equally among its tagged consumers.
+        Returns (payer_net_share, friend_splits).
+        """
+        raw_shares = {p['name']: Decimal('0.00') for p in participants}
+        items_by_person = {p['name']: [] for p in participants}
+
+        subtotal = Decimal('0.00')
+        for item in items:
+            item_price = Decimal(str(item.get('price', '0.00')))
+            qty = Decimal(str(item.get('quantity', 1)))
+            item_total = item_price * qty
+            subtotal += item_total
+
+            consumers = item.get('consumers', [])
+            if not consumers:
+                consumers = [p['name'] for p in participants]
+
+            consumer_count = Decimal(str(len(consumers)))
+            share_per_person = (item_total / consumer_count).quantize(Decimal('0.01'))
+
+            for c_name in consumers:
+                if c_name not in raw_shares:
+                    raw_shares[c_name] = Decimal('0.00')
+                    items_by_person[c_name] = []
+                raw_shares[c_name] += share_per_person
+                items_by_person[c_name].append({
+                    'name': item.get('name', 'Item'),
+                    'price': float(item_price),
+                    'quantity': float(qty),
+                    'consumer_count': len(consumers),
+                    'share': float(share_per_person)
+                })
+
+        sc_rate = Decimal(str(service_charge_pct)) / Decimal('100.0')
+        vat_rate = Decimal(str(vat_pct)) / Decimal('100.0')
+        effective_multiplier = (Decimal('1.0') + sc_rate) * (Decimal('1.0') + vat_rate)
+
+        final_shares = {}
+        for name, raw in raw_shares.items():
+            final_shares[name] = (raw * effective_multiplier).quantize(Decimal('0.01'))
+
+        # Adjust any rounding difference against gross_amount to maintain double-entry parity
+        calculated_total = sum(final_shares.values(), Decimal('0.00'))
+        if gross_amount > Decimal('0.00') and calculated_total > Decimal('0.00'):
+            diff = gross_amount - calculated_total
+            if payer_name in final_shares:
+                final_shares[payer_name] += diff
+            elif participants:
+                final_shares[participants[0]['name']] += diff
+
+        payer_net = final_shares.get(payer_name, Decimal('0.00'))
+
+        friend_splits = []
+        for p in participants:
+            name = p['name']
+            if name == payer_name:
+                continue
+            friend_splits.append({
+                'counterparty_name': name,
+                'counterparty_contact': p.get('contact', ''),
+                'amount': final_shares.get(name, Decimal('0.00')),
+                'notes': p.get('notes', ''),
+                'items_detail': items_by_person.get(name, [])
+            })
+
+        return payer_net, friend_splits
 
     @staticmethod
     @db_transaction.atomic
@@ -133,14 +221,34 @@ class BillSplitService:
         splits_data: list[dict],
         auto_create_radar_debtors: bool = True,
         notes: str = "",
+        split_metadata: dict = None,
         workspace_project=None
     ) -> Transaction:
         """
         Creates a master transaction with child splits.
         Acquires row lock on account and ensures split sums do not exceed gross amount.
+        Supports Harntung itemized calculation and stores item breakdown per debtor.
         """
         if gross_amount <= Decimal('0.00'):
             raise ValueError("Gross amount must be strictly positive.")
+
+        split_metadata = split_metadata or {}
+
+        # If Harntung itemized payload is provided in split_metadata
+        if split_metadata.get('items') and split_metadata.get('participants'):
+            sc_pct = Decimal(str(split_metadata.get('service_charge_pct', '0.00')))
+            vat_pct = Decimal(str(split_metadata.get('vat_pct', '0.00')))
+            payer_name = split_metadata.get('payer_name', 'Me')
+            payer_net, harntung_splits = BillSplitService.calculate_harntung_shares(
+                gross_amount=gross_amount,
+                items=split_metadata['items'],
+                participants=split_metadata['participants'],
+                service_charge_pct=sc_pct,
+                vat_pct=vat_pct,
+                payer_name=payer_name
+            )
+            net_amount = payer_net
+            splits_data = harntung_splits
 
         split_sum = Decimal('0.00')
         for s in splits_data:
@@ -156,8 +264,13 @@ class BillSplitService:
         if gross_amount != (net_amount + split_sum):
             net_amount = gross_amount - split_sum
 
-        # Lock account row
+        # Lock account row and prevent negative balance for non-credit accounts
+        from apps.ledger.models import AccountType
         locked_account = Account.objects.select_for_update().get(id=account.id, user=user)
+        if locked_account.account_type != AccountType.CREDIT_CARD and locked_account.current_balance < gross_amount:
+            raise ValueError(
+                f"Insufficient funds: {locked_account.name} has balance ฿{locked_account.current_balance:,.2f}, but transaction requires ฿{gross_amount:,.2f}."
+            )
 
         tx = Transaction.objects.create(
             user=user,
@@ -170,6 +283,7 @@ class BillSplitService:
             notes=notes,
             transaction_date=transaction_date,
             is_split=True,
+            split_metadata=split_metadata,
             workspace_project=workspace_project
         )
 
@@ -187,6 +301,7 @@ class BillSplitService:
             c_name = s.get('counterparty_name', 'Friend').strip()
             c_contact = s.get('counterparty_contact', '').strip()
             s_notes = s.get('notes', '').strip()
+            s_items = s.get('items_detail', [])
 
             radar_obligation = None
             if auto_create_radar_debtors:
@@ -207,6 +322,7 @@ class BillSplitService:
                         'origin_bill': title,
                         'origin_transaction_id': str(tx.id),
                         'is_flexible': True,
+                        'items_detail': s_items,
                         'notes': f"Auto-generated from Split Bill '{title}' ({transaction_date}). {s_notes}".strip()
                     }
                 )
@@ -218,7 +334,8 @@ class BillSplitService:
                 amount=s_amount,
                 is_settled=False,
                 debtor_obligation=radar_obligation,
-                notes=s_notes
+                notes=s_notes,
+                items_detail=s_items
             )
 
         return tx
@@ -253,14 +370,31 @@ class BillSplitService:
             category_type=CategoryType.INCOME
         ).first()
 
+        # Determine actual settlement amount (respect partial payments on debtor obligation)
+        settle_amount = locked_split.amount
+        debtor_ob = None
+        if locked_split.debtor_obligation_id:
+            from apps.finance.models import FinancialObligation, PaymentHistory
+            debtor_ob = FinancialObligation.objects.select_for_update().get(id=locked_split.debtor_obligation_id)
+            debtor_meta = debtor_ob.metadata or {}
+            rem = debtor_meta.get('remaining_balance')
+            if rem is not None:
+                settle_amount = Decimal(str(rem))
+
+        if settle_amount <= Decimal('0.00'):
+            locked_split.is_settled = True
+            locked_split.settled_at = timezone.now()
+            locked_split.save(update_fields=['is_settled', 'settled_at'])
+            return None
+
         # 1. Create Inflow Transaction
         inflow_tx = Transaction.objects.create(
             user=locked_split.transaction.user,
             account=locked_account,
             transaction_type=TransactionType.INFLOW,
             category=debt_category,
-            gross_amount=locked_split.amount,
-            net_amount=locked_split.amount,
+            gross_amount=settle_amount,
+            net_amount=settle_amount,
             title=title,
             notes=f"Repayment for split on '{locked_split.transaction.title}' ({locked_split.transaction.transaction_date})",
             transaction_date=now_date
@@ -268,7 +402,7 @@ class BillSplitService:
 
         # 2. Deposit funds into account atomically
         Account.objects.filter(id=locked_account.id).update(
-            current_balance=models.F('current_balance') + locked_split.amount,
+            current_balance=models.F('current_balance') + settle_amount,
             updated_at=timezone.now()
         )
         locked_account.refresh_from_db(fields=['current_balance', 'updated_at'])
@@ -284,19 +418,24 @@ class BillSplitService:
         split.settled_at = locked_split.settled_at
         split.settlement_transaction = inflow_tx
 
-        # 4. If linked to Financial Radar, close the debtor obligation
-        if locked_split.debtor_obligation:
+        # 4. If linked to Financial Radar, close the debtor obligation and link payment history
+        if debtor_ob:
             from apps.finance.models import PaymentHistory
-            debtor_ob = FinancialObligation.objects.select_for_update().get(id=locked_split.debtor_obligation_id)
             debtor_ob.status = ObligationStatus.COMPLETED
-            debtor_ob.save(update_fields=['status'])
+            debtor_meta = debtor_ob.metadata or {}
+            debtor_meta['remaining_balance'] = 0.0
+            debtor_ob.metadata = debtor_meta
+            debtor_ob.save(update_fields=['status', 'metadata'])
 
-            PaymentHistory.objects.create(
+            ph = PaymentHistory.objects.create(
                 user=locked_split.transaction.user,
                 obligation=debtor_ob,
-                paid_amount=locked_split.amount,
+                paid_amount=settle_amount,
                 note=f"Settled via Cash Flow Ledger into {locked_account.name}"
             )
+            inflow_tx.payment_history = ph
+            inflow_tx.obligation = debtor_ob
+            inflow_tx.save(update_fields=['payment_history', 'obligation'])
 
         return inflow_tx
 

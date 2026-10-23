@@ -76,7 +76,8 @@
               : 'bg-zinc-900/60 text-zinc-400 border-zinc-800/80 hover:text-zinc-200 hover:bg-zinc-900'"
           >
             <span
-              class="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-zinc-400"
+              class="w-2 h-2 rounded-full flex-shrink-0 shadow-sm"
+              :style="{ backgroundColor: getPortfolioColor(p.color) }"
             ></span>
             <span>{{ p.name }}</span>
             <span
@@ -130,8 +131,8 @@
     >
       <div class="flex items-center gap-3">
         <span
-          class="w-3 h-3 rounded-full shrink-0"
-          :style="{ backgroundColor: currentPortfolio.color || '#3B82F6' }"
+          class="w-3 h-3 rounded-full shrink-0 shadow-sm"
+          :style="{ backgroundColor: getPortfolioColor(currentPortfolio.color) }"
         ></span>
         <div>
           <div class="flex items-center gap-2">
@@ -169,9 +170,9 @@
           v-if="!currentPortfolio.is_default"
           @click="confirmDeletePortfolio(currentPortfolio)"
           type="button"
-          class="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-rose-950/30 border border-zinc-800 hover:border-rose-500/30 text-rose-400 text-xs font-mono flex items-center gap-1.5"
+          class="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs font-mono flex items-center gap-1.5"
         >
-          <Trash2 class="w-3 h-3 text-rose-400" />
+          <Trash2 class="w-3 h-3 text-zinc-400" />
           <span>Delete</span>
         </button>
       </div>
@@ -465,7 +466,7 @@ import CreatePortfolioModal from '../../components/portfolio/CreatePortfolioModa
 import EditPortfolioModal from '../../components/portfolio/EditPortfolioModal.vue'
 import MoveHoldingModal from '../../components/portfolio/MoveHoldingModal.vue'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
-import type { StockHolding, StockTransaction, InvestmentPortfolio } from '../../types/portfolio'
+import { getPortfolioColor, type StockHolding, type StockTransaction, type InvestmentPortfolio } from '../../types/portfolio'
 import {
   TrendingUp,
   Plus,

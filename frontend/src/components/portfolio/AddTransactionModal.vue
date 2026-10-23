@@ -12,10 +12,10 @@
       <!-- Modal Title -->
       <div class="mb-5">
         <h2 class="text-base font-semibold text-zinc-100 tracking-tight">
-          {{ editingTransaction ? 'Edit Trade Execution' : 'Record Trade Execution' }}
+          {{ editingTransaction ? 'Edit Trade' : 'Record Trade' }}
         </h2>
         <p class="text-xs text-zinc-500 mt-0.5">
-          {{ editingTransaction ? 'Update trade volume, execution price, or trade currency' : 'Search verified financial assets and record execution into your portfolio' }}
+          {{ editingTransaction ? 'Update trade execution details' : 'Log trade execution into your portfolio' }}
         </p>
       </div>
 
@@ -31,7 +31,7 @@
               : 'text-zinc-400 hover:text-zinc-200'
           ]"
         >
-          <ArrowDownLeft class="w-3.5 h-3.5 text-emerald-400" />
+          <ArrowDownLeft class="w-3.5 h-3.5 text-zinc-400" />
           <span>Buy</span>
         </button>
 
@@ -45,7 +45,7 @@
               : 'text-zinc-400 hover:text-zinc-200'
           ]"
         >
-          <ArrowUpRight class="w-3.5 h-3.5 text-rose-400" />
+          <ArrowUpRight class="w-3.5 h-3.5 text-zinc-400" />
           <span>Sell</span>
         </button>
 
@@ -59,7 +59,7 @@
               : 'text-zinc-400 hover:text-zinc-200'
           ]"
         >
-          <Coins class="w-3.5 h-3.5 text-amber-400" />
+          <Coins class="w-3.5 h-3.5 text-zinc-400" />
           <span>Dividend</span>
         </button>
       </div>
@@ -80,11 +80,16 @@
               (Locked to Holding)
             </span>
           </div>
-          <div class="relative">
+          <div class="relative flex items-center">
+            <span
+              v-if="currentSelectedPortfolio"
+              class="w-2.5 h-2.5 rounded-full absolute left-3 pointer-events-none z-10 shadow-sm"
+              :style="{ backgroundColor: getPortfolioColor(currentSelectedPortfolio.color) }"
+            ></span>
             <select
               v-model="form.portfolio"
               :disabled="!!prefillHoldingId"
-              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-sans focus:outline-none focus:border-zinc-600 transition-colors appearance-none cursor-pointer pr-8 disabled:opacity-60 disabled:cursor-not-allowed"
+              class="w-full pl-8 pr-8 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-sans focus:outline-none focus:border-zinc-600 transition-colors appearance-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <option
                 v-for="p in portfolioStore.portfolios"
@@ -125,8 +130,8 @@
             class="p-2.5 rounded-lg bg-zinc-900/90 border border-emerald-500/30 flex items-center justify-between"
           >
             <div class="flex items-center gap-2.5">
-              <div class="w-7 h-7 rounded-md bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-                <CheckCircle2 class="w-4 h-4" />
+              <div class="w-7 h-7 rounded-md bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-300">
+                <CheckCircle2 class="w-4 h-4 text-zinc-300" />
               </div>
               <div>
                 <div class="flex items-center gap-2">
@@ -374,7 +379,7 @@
           <input
             v-model="form.notes"
             type="text"
-            placeholder="e.g. Monthly DCA, Take-profit tranche, Dime deposit"
+            placeholder="Optional notes"
             class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
           />
         </div>
@@ -404,11 +409,12 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { usePortfolioStore } from '../../stores/portfolio'
-import type {
-  AssetType,
-  TransactionType,
-  StockTransaction,
-  MarketAssetSearchResult
+import {
+  getPortfolioColor,
+  type AssetType,
+  type TransactionType,
+  type StockTransaction,
+  type MarketAssetSearchResult
 } from '../../types/portfolio'
 import {
   X,
@@ -512,6 +518,10 @@ const form = ref({
 })
 
 const currencySymbol = computed(() => ((form.value.currency || '').toUpperCase() === 'USD' ? '$' : '฿'))
+
+const currentSelectedPortfolio = computed(() =>
+  portfolioStore.portfolios.find(p => p.id === form.value.portfolio)
+)
 
 const isSubmitDisabled = computed(() => {
   if (portfolioStore.isSubmitting) return true

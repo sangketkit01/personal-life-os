@@ -2,28 +2,28 @@
   <div class="space-y-6 font-sans">
     <!-- Summary Header Cards for BNPL -->
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
-        <span class="text-[10px] font-mono uppercase text-zinc-500 block">Total Credit Limit</span>
-        <div class="mt-2 text-xl font-semibold font-mono text-zinc-100 tabular-nums">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm">
+        <span class="text-[10px] font-mono uppercase text-zinc-400 block">Total Credit Limit</span>
+        <div class="mt-2 text-xl font-bold font-mono text-zinc-100 tabular-nums">
           ฿{{ totalCreditLimit.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[10px] text-zinc-500 mt-1 block">Total approved credit lines across providers</span>
+        <span class="text-[10px] text-zinc-500 mt-1 block">Aggregated approved credit limit</span>
       </div>
 
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
-        <span class="text-[10px] font-mono uppercase text-zinc-500 block">Current Cycle Bill Sum</span>
-        <div class="mt-2 text-xl font-semibold font-mono text-zinc-100 tabular-nums">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm">
+        <span class="text-[10px] font-mono uppercase text-zinc-400 block">Current Cycle Bill Sum</span>
+        <div class="mt-2 text-xl font-bold font-mono text-zinc-100 tabular-nums">
           ฿{{ totalCurrentCycleBills.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[10px] text-zinc-500 mt-1 block">Current billing cycle statement balance</span>
+        <span class="text-[10px] text-zinc-500 mt-1 block">Due this statement cycle</span>
       </div>
 
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
-        <span class="text-[10px] font-mono uppercase text-zinc-500 block">Total Outstanding Debt</span>
-        <div class="mt-2 text-xl font-semibold font-mono text-zinc-100 tabular-nums">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm">
+        <span class="text-[10px] font-mono uppercase text-zinc-400 block">Total Outstanding Debt</span>
+        <div class="mt-2 text-xl font-bold font-mono text-zinc-100 tabular-nums">
           ฿{{ totalRemainingBNPLDebt.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[10px] text-zinc-500 mt-1 block">Consolidated remaining installment balance</span>
+        <span class="text-[10px] text-zinc-500 mt-1 block">Total remaining installment balance</span>
       </div>
     </div>
 
@@ -65,16 +65,16 @@
             v-for="acc in bnplAccounts"
             :key="acc.id"
             @click="selectedAccountId = acc.id"
-            class="p-4 rounded-xl border cursor-pointer transition-all space-y-3"
+            class="p-4 rounded-xl border cursor-pointer transition-all space-y-3 shadow-sm hover:shadow-md"
             :class="[
               selectedAccountId === acc.id
-                ? 'bg-zinc-900 border-zinc-500 shadow-sm'
+                ? 'bg-zinc-900 border-zinc-500'
                 : 'bg-zinc-900/40 border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/60'
             ]"
           >
             <div class="flex items-start justify-between">
               <div>
-                <span class="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
+                <span class="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">
                   {{ acc.metadata?.provider || 'BNPL' }}
                 </span>
                 <h3 class="text-sm font-semibold text-zinc-100 mt-1 font-sans">{{ acc.title }}</h3>
@@ -108,7 +108,7 @@
               <div class="flex flex-wrap items-center gap-1.5 self-end sm:self-auto" @click.stop>
                 <RouterLink
                   :to="`/finance/bnpl/${acc.id}`"
-                  class="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-sans text-[10px] flex items-center gap-1 transition-colors"
+                  class="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 active:scale-95 border border-zinc-800 text-zinc-300 font-sans text-[10px] flex items-center gap-1 transition-all"
                   title="Open Dedicated Account Dossier"
                 >
                   <span>Dossier</span>
@@ -116,14 +116,14 @@
                 </RouterLink>
                 <button
                   @click="emit('openHistory', acc)"
-                  class="p-1 rounded text-zinc-400 hover:text-white"
+                  class="p-1 rounded text-zinc-400 hover:text-white active:scale-95 transition-all"
                   title="Payment History"
                 >
                   <History class="w-3.5 h-3.5" />
                 </button>
                 <button
                   @click="emit('openEdit', acc)"
-                  class="p-1 rounded text-zinc-400 hover:text-white"
+                  class="p-1 rounded text-zinc-400 hover:text-white active:scale-95 transition-all"
                   title="Edit Account"
                 >
                   <Edit2 class="w-3.5 h-3.5" />
@@ -131,7 +131,7 @@
                 <button
                   v-if="acc.status === 'ACTIVE'"
                   @click="emit('openPay', acc)"
-                  class="px-2 py-0.5 rounded bg-zinc-100 hover:bg-white text-zinc-950 font-sans font-semibold text-[10px]"
+                  class="px-2.5 py-0.5 rounded bg-zinc-100 hover:bg-white active:scale-95 text-zinc-950 font-sans font-semibold text-[10px] transition-all shadow-sm"
                 >
                   Pay Bill
                 </button>
@@ -180,7 +180,7 @@
               <input
                 v-model="newOrderForm.title"
                 type="text"
-                placeholder="e.g. Mechanical Keyboard"
+                placeholder="e.g. Wireless Keyboard"
                 class="w-full px-2.5 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-100 text-xs outline-none focus:border-zinc-700 font-mono"
               />
             </div>
@@ -190,7 +190,7 @@
                 v-model.number="newOrderForm.monthly_amount"
                 type="number"
                 step="0.01"
-                placeholder="450.00"
+                placeholder="0.00"
                 class="w-full px-2.5 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-100 text-xs outline-none focus:border-zinc-700 font-mono"
               />
             </div>
@@ -244,7 +244,7 @@
                 <tr
                   v-for="order in activeSubOrders"
                   :key="order.id"
-                  class="hover:bg-zinc-900/40 transition-colors"
+                  class="hover:bg-zinc-800/40 transition-colors"
                 >
                   <td class="py-2.5 pl-4 font-sans font-medium text-zinc-100">{{ order.title }}</td>
                   <td class="py-2.5 text-zinc-300">
@@ -265,7 +265,7 @@
                   <td class="py-2.5 text-right pr-4">
                     <button
                       @click="emit('deleteOrder', order.id)"
-                      class="p-1 rounded text-zinc-600 hover:text-rose-400 transition-colors"
+                      class="p-1 rounded text-zinc-600 hover:text-rose-400 active:scale-95 transition-all"
                       title="Delete Order"
                     >
                       <Trash2 class="w-3.5 h-3.5" />

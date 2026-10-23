@@ -9,20 +9,14 @@
             class="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-400 hover:text-zinc-200 transition-colors"
           >
             <ArrowLeft class="w-3.5 h-3.5" />
-            <span>Cash Flow Radar</span>
+            <span>Cash Flow Ledger</span>
           </RouterLink>
           <span class="text-zinc-600">/</span>
-          <span class="text-xs font-mono text-zinc-300">Category Budgets</span>
+          <span class="text-xs font-mono text-zinc-300">Budgets</span>
         </div>
         <div class="flex items-center gap-2.5">
-          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">Monthly Category Budgets</h1>
-          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-zinc-900 text-zinc-400 border border-zinc-800">
-            BURN RATE CONTROLS
-          </span>
+          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">Category Budgets</h1>
         </div>
-        <p class="text-xs text-zinc-500 mt-1">
-          Set discretionary spending caps per category to prevent lifestyle inflation
-        </p>
       </div>
 
       <div class="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
@@ -30,12 +24,12 @@
           v-model="activeMonth"
           type="month"
           @change="loadBudgets"
-          class="px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-200 outline-none focus:border-zinc-700"
+          class="px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-xs font-mono text-zinc-200 outline-none focus:border-zinc-500 transition-colors"
         />
 
         <button
           @click="showCreateBudgetModal = true"
-          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-all active:scale-[0.98] flex items-center gap-1.5 shadow-sm hover:shadow-white/10"
         >
           <Plus class="w-3.5 h-3.5 text-zinc-950" />
           <span>+ Set Budget</span>
@@ -45,31 +39,31 @@
 
     <!-- Executive Budget Summary Strip -->
     <div v-if="ledgerStore.budgets.length > 0" class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 font-mono text-xs">
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
-        <span class="text-[10px] uppercase text-zinc-500 block">Total Budget Cap</span>
-        <div class="text-xl font-bold text-zinc-100 mt-2 tabular-nums">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-200">
+        <span class="text-[10px] uppercase text-zinc-400 font-semibold block">Total Budget Limit</span>
+        <div class="text-2xl font-bold text-zinc-100 mt-2 tabular-nums tracking-tight">
           ฿{{ totalBudgetCap.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[10px] text-zinc-500 block mt-1">Across {{ ledgerStore.budgets.length }} budgeted categories</span>
+        <span class="text-[11px] text-zinc-400 block mt-1.5">Across {{ ledgerStore.budgets.length }} active categories</span>
       </div>
 
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
-        <span class="text-[10px] uppercase text-zinc-500 block">Total Spent (Month)</span>
-        <div class="text-xl font-bold text-zinc-300 mt-2 tabular-nums">
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-200">
+        <span class="text-[10px] uppercase text-zinc-400 font-semibold block">Total Spent This Month</span>
+        <div class="text-2xl font-bold text-zinc-200 mt-2 tabular-nums tracking-tight">
           ฿{{ totalBudgetSpent.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[10px] text-zinc-500 block mt-1">{{ overallUsagePct }}% of allocated ceiling</span>
+        <span class="text-[11px] text-zinc-400 block mt-1.5">{{ overallUsagePct }}% of allocated limit</span>
       </div>
 
-      <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
-        <span class="text-[10px] uppercase text-zinc-500 block">Remaining Cushion</span>
+      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-200">
+        <span class="text-[10px] uppercase text-zinc-400 font-semibold block">Remaining Buffer</span>
         <div
-          class="text-xl font-bold mt-2 tabular-nums"
+          class="text-2xl font-bold mt-2 tabular-nums tracking-tight"
           :class="totalBudgetCushion < 0 ? 'text-rose-400' : 'text-emerald-400'"
         >
           ฿{{ totalBudgetCushion.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[10px] text-zinc-500 block mt-1">{{ totalBudgetCushion < 0 ? 'Over budget' : 'Available buffer' }}</span>
+        <span class="text-[11px] text-zinc-400 block mt-1.5">{{ totalBudgetCushion < 0 ? '⚠️ Over Budget' : 'Remaining Cushion' }}</span>
       </div>
     </div>
 
@@ -88,25 +82,25 @@
       <div
         v-for="b in ledgerStore.budgets"
         :key="b.id"
-        class="p-5 rounded-xl bg-zinc-900/30 border border-zinc-800/80 hover:border-zinc-700/80 transition-all space-y-4"
+        class="p-5 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 space-y-4"
       >
         <div class="flex items-start justify-between">
           <div>
             <h3 class="text-sm font-semibold text-zinc-100 font-sans">{{ b.category_name }}</h3>
-            <span class="text-[10px] text-zinc-500">{{ b.period_month }}</span>
+            <span class="text-[10px] text-zinc-400">{{ b.period_month }}</span>
           </div>
 
           <div class="flex items-center gap-2">
             <span
               class="text-xs font-bold"
-              :class="b.usage_pct >= 90 ? 'text-rose-400' : (b.usage_pct >= 75 ? 'text-amber-400' : 'text-zinc-300')"
+              :class="b.usage_pct >= 90 ? 'text-rose-400' : (b.usage_pct >= 75 ? 'text-amber-400' : 'text-emerald-400')"
             >
               {{ b.usage_pct }}%
             </span>
             <button
               @click="confirmDeleteBudget(b.id, b.category_name)"
-              class="p-1 rounded text-zinc-600 hover:text-rose-400 transition-colors"
-              title="Delete Category Budget"
+              class="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 active:scale-[0.95] transition-all"
+              title="Delete this budget"
             >
               <Trash2 class="w-3.5 h-3.5" />
             </button>
@@ -115,19 +109,19 @@
 
         <!-- Gauge Progress Bar -->
         <div class="space-y-1.5">
-          <div class="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
+          <div class="w-full bg-zinc-800/80 h-2 rounded-full overflow-hidden">
             <div
               class="h-full rounded-full transition-all duration-300"
-              :class="b.usage_pct >= 90 ? 'bg-rose-500' : (b.usage_pct >= 75 ? 'bg-amber-400' : 'bg-zinc-200')"
+              :class="b.usage_pct >= 90 ? 'bg-rose-500' : (b.usage_pct >= 75 ? 'bg-amber-400' : 'bg-emerald-400')"
               :style="{ width: `${Math.min(100, b.usage_pct)}%` }"
             />
           </div>
 
           <div class="flex justify-between text-xs pt-1">
-            <span class="text-zinc-400">
+            <span class="text-zinc-300">
               Spent: ฿{{ Number(b.spent_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
             </span>
-            <span class="text-zinc-500">
+            <span class="text-zinc-400">
               Limit: ฿{{ Number(b.limit_amount).toLocaleString('en-US') }}
             </span>
           </div>
@@ -135,10 +129,10 @@
 
         <!-- Remaining -->
         <div class="pt-2 border-t border-zinc-800/60 flex items-center justify-between text-xs">
-          <span class="text-[10px] text-zinc-500">Remaining Cushion:</span>
+          <span class="text-[11px] text-zinc-400">Remaining:</span>
           <span
             class="font-bold tabular-nums"
-            :class="Number(b.remaining_amount) < 0 ? 'text-rose-400' : 'text-emerald-400'"
+            :class="Number(b.remaining_amount) < 0 ? 'text-rose-400 font-semibold' : 'text-emerald-400 font-semibold'"
           >
             ฿{{ Number(b.remaining_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
           </span>
@@ -155,20 +149,22 @@
       <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md p-6 shadow-2xl relative my-8 font-mono text-xs">
         <button
           @click="showCreateBudgetModal = false"
-          class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300"
+          class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
         >
           <X class="w-4 h-4" />
         </button>
 
-        <h3 class="text-base font-semibold text-zinc-100 font-sans mb-3">Set Category Budget</h3>
+        <h3 class="text-base font-semibold text-zinc-100 font-sans mb-3">
+          Set Category Budget
+        </h3>
 
         <form @submit.prevent="handleSaveBudget" class="space-y-4">
           <div>
-            <label class="block text-[10px] uppercase text-zinc-400 mb-1">Target Category</label>
+            <label class="block text-[11px] text-zinc-300 mb-1 font-medium font-sans">Expense Category <span class="text-rose-400">*</span></label>
             <select
               v-model="newBudgetCategory"
               required
-              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 font-mono"
+              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
             >
               <option
                 v-for="c in expenseCategories"
@@ -181,29 +177,29 @@
           </div>
 
           <div>
-            <label class="block text-[10px] uppercase text-zinc-400 mb-1">Monthly Ceiling Limit (฿)</label>
+            <label class="block text-[11px] text-zinc-300 mb-1 font-medium font-sans">Monthly Limit (฿) <span class="text-rose-400">*</span></label>
             <input
               v-model.number="newBudgetLimit"
               type="number"
               step="100"
               required
-              placeholder="10000"
-              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 font-mono"
+              placeholder="0.00"
+              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
             />
           </div>
 
-          <div class="flex items-center justify-end gap-2.5 pt-2">
+          <div class="flex items-center justify-end gap-2.5 pt-2 border-t border-zinc-800/80">
             <button
               type="button"
               @click="showCreateBudgetModal = false"
-              class="px-3.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-sans"
+              class="px-3.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-sans transition-all active:scale-[0.98]"
             >
               Cancel
             </button>
             <button
               type="submit"
               :disabled="isSaving"
-              class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 font-sans font-semibold disabled:opacity-50"
+              class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 font-sans font-semibold transition-all active:scale-[0.98] disabled:opacity-50 shadow-sm"
             >
               {{ isSaving ? 'Saving...' : 'Save Budget' }}
             </button>

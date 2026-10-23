@@ -9,29 +9,23 @@
             class="inline-flex items-center gap-1.5 text-xs font-mono text-zinc-400 hover:text-zinc-200 transition-colors"
           >
             <ArrowLeft class="w-3.5 h-3.5" />
-            <span>Cash Flow Radar</span>
+            <span>Cash Flow Ledger</span>
           </RouterLink>
           <span class="text-zinc-600">/</span>
-          <span class="text-xs font-mono text-zinc-300">Transaction Ledger</span>
+          <span class="text-xs font-mono text-zinc-300">Transactions</span>
         </div>
         <div class="flex items-center gap-2.5">
           <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">Transaction Ledger</h1>
-          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-zinc-900 text-zinc-400 border border-zinc-800">
-            AUDIT TRAIL
-          </span>
         </div>
-        <p class="text-xs text-zinc-500 mt-1">
-          Historical log of all inflows, outflows, internal transfers, and group split bills
-        </p>
       </div>
 
       <div class="flex items-center gap-2.5 self-start sm:self-auto">
         <button
           @click="showTransactionModal = true"
-          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-all active:scale-[0.98] flex items-center gap-1.5 shadow-sm hover:shadow-white/10"
         >
           <Plus class="w-3.5 h-3.5 text-zinc-950" />
-          <span>Record Transaction</span>
+          <span>+ Record Transaction</span>
         </button>
       </div>
     </div>
@@ -150,30 +144,41 @@
             <tr
               v-for="tx in ledgerStore.transactions"
               :key="tx.id"
-              class="hover:bg-zinc-900/40 transition-colors"
+              class="hover:bg-zinc-800/50 transition-colors duration-150 group"
             >
               <td class="py-3 px-4 text-zinc-400 whitespace-nowrap">{{ tx.transaction_date }}</td>
-              <td class="py-3 px-4 font-sans font-medium text-zinc-200">
+              <td class="py-3 px-4 font-sans font-medium text-zinc-200 group-hover:text-zinc-100 transition-colors">
                 <div class="flex items-center gap-2 flex-wrap">
                   <span>{{ tx.title }}</span>
                   <span
                     v-if="tx.is_split"
-                    class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 flex items-center gap-1"
+                    class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center gap-1 font-semibold"
                   >
                     <Users class="w-2.5 h-2.5" />
                     <span>Split ({{ tx.splits?.length || 0 }} friends)</span>
                   </span>
                   <span
                     v-if="tx.transfer_destination || tx.transfer_peer"
-                    class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-zinc-900 border border-zinc-800 text-zinc-400"
+                    class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-semibold"
                   >
                     Transfer
                   </span>
+                  <a
+                    v-if="tx.attachments && tx.attachments.length > 0"
+                    :href="tx.attachments[0].drive_view_link || tx.attachments[0].file_url"
+                    target="_blank"
+                    class="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-mono bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white transition-colors"
+                    title="View Receipt Slip in Google Drive"
+                  >
+                    <FileText class="w-2.5 h-2.5 text-zinc-400" />
+                    <span>Slip</span>
+                    <ExternalLink class="w-2 h-2 text-zinc-500" />
+                  </a>
                 </div>
               </td>
               <td class="py-3 px-4 text-zinc-400 font-sans">{{ tx.account_name || 'Account' }}</td>
               <td class="py-3 px-4 text-zinc-400 font-sans">
-                <span class="px-2 py-0.5 rounded text-[10px] bg-zinc-900 border border-zinc-800/80">
+                <span class="px-2 py-0.5 rounded text-[10px] bg-zinc-900 border border-zinc-800/80 group-hover:border-zinc-700 transition-colors">
                   {{ tx.category_name || 'General' }}
                 </span>
               </td>
@@ -188,7 +193,7 @@
               <td class="py-3 px-4 text-right pr-4">
                 <button
                   @click="handleDelete(tx.id)"
-                  class="p-1 rounded text-zinc-600 hover:text-rose-400 transition-colors"
+                  class="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 active:scale-[0.95] transition-all"
                   title="Delete Transaction"
                 >
                   <Trash2 class="w-3.5 h-3.5" />
@@ -257,7 +262,9 @@ import {
   Search,
   Users,
   Trash2,
-  X
+  X,
+  FileText,
+  ExternalLink
 } from 'lucide-vue-next'
 
 const ledgerStore = useLedgerStore()

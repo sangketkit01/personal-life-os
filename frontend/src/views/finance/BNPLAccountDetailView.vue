@@ -159,85 +159,90 @@
         </div>
       </div>
 
-      <!-- TAB 1: STATEMENT RECONCILIATION -->
+      <!-- TAB 1: STATEMENT RECONCILIATION & TIMELINE MATRIX -->
       <div v-if="activeTab === 'STATEMENT'" class="space-y-4">
-        <div class="p-5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-5">
-          <!-- Statement Summary Banner -->
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800/60">
-            <div>
-              <span class="text-[10px] font-mono uppercase text-zinc-500 block">Statement Billing Cycle</span>
-              <h2 class="text-sm font-semibold text-zinc-100 font-sans mt-0.5">
-                Current Consolidated Monthly Bill
-              </h2>
-              <p class="text-xs text-zinc-400 mt-1">
-                Aggregates all installment terms closing on Day {{ account.metadata?.cutoff_day || 25 }}, payable by Day {{ account.metadata?.due_day || 10 }}.
-              </p>
-            </div>
+        <div v-if="statementTimeline.length === 0" class="p-12 text-center text-xs font-mono text-zinc-500 bg-zinc-900/20 rounded-xl border border-zinc-800 space-y-2">
+          <p>No active statement bills due. All purchase orders are settled.</p>
+          <button
+            @click="router.push(`/finance/bnpl/${accountId}/new-order`)"
+            class="px-3 py-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-sans text-xs transition-colors cursor-pointer"
+          >
+            + Create New Order
+          </button>
+        </div>
 
-            <div class="flex items-center gap-3">
-              <div class="text-right font-mono">
-                <span class="text-[10px] text-zinc-500 uppercase block">Total Due</span>
-                <span class="text-base font-semibold text-rose-400 tabular-nums">
-                  ฿{{ Number(account.summary?.current_bill_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+        <div v-else class="space-y-4">
+          <div
+            v-for="stmt in statementTimeline"
+            :key="stmt.statement_month"
+            class="p-5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-4"
+            :class="stmt.is_current ? 'ring-1 ring-zinc-700/60' : ''"
+          >
+            <!-- Month Header Banner -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800/60">
+              <div class="flex items-center gap-2.5">
+                <span
+                  class="text-[9px] font-mono uppercase px-2 py-0.5 rounded font-semibold border"
+                  :class="stmt.is_current ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-zinc-900 text-zinc-400 border-zinc-800'"
+                >
+                  {{ stmt.is_current ? 'DUE NOW' : 'UPCOMING' }}
                 </span>
+                <div>
+                  <h3 class="text-sm font-semibold text-zinc-100 font-sans">
+                    {{ stmt.month_label }}
+                  </h3>
+                  <span class="text-[10px] text-zinc-500 font-mono">
+                    Payable by {{ stmt.due_date }} (Closing Day {{ account?.metadata?.cutoff_day || 25 }})
+                  </span>
+                </div>
               </div>
-              <button
-                @click="openPayStatementModal"
-                class="px-4 py-2 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold font-sans transition-colors flex items-center gap-1.5 shadow-sm"
-              >
-                <Check class="w-3.5 h-3.5" />
-                <span>Pay Statement Bill</span>
-              </button>
-            </div>
-          </div>
 
-          <!-- Active Sub-Orders Line Items Breakdown -->
-          <div class="space-y-2">
-            <h3 class="text-xs font-mono uppercase tracking-wider text-zinc-400 font-semibold">
-              Line Items Due in Current Statement ({{ activeSubOrders.length }})
-            </h3>
-
-            <div v-if="activeSubOrders.length === 0" class="p-8 text-center text-xs font-mono text-zinc-500 bg-zinc-950/40 rounded-lg border border-zinc-800">
-              No orders due in current statement cycle.
+              <div class="flex items-center gap-3">
+                <div class="text-right font-mono">
+                  <span class="text-[10px] text-zinc-500 uppercase block">Statement Total</span>
+                  <span class="text-base font-semibold text-rose-400 tabular-nums">
+                    ฿{{ Number(stmt.total_due).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                  </span>
+                </div>
+                <button
+                  @click="openPaySpecificStatementModal(stmt)"
+                  class="px-3.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold font-sans transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <Check class="w-3.5 h-3.5" />
+                  <span>Pay Bill (฿{{ Number(stmt.total_due).toLocaleString('en-US') }})</span>
+                </button>
+              </div>
             </div>
 
-            <div v-else class="rounded-lg border border-zinc-800 overflow-hidden bg-zinc-950/60">
+            <!-- Itemized Orders Due in this Month -->
+            <div class="rounded-lg border border-zinc-800/80 overflow-hidden bg-zinc-950/60">
               <table class="w-full text-left text-xs font-mono">
                 <thead>
                   <tr class="border-b border-zinc-800 text-[10px] text-zinc-500 uppercase tracking-wider bg-zinc-950">
-                    <th class="py-2.5 pl-4">Purchase Item / Merchant</th>
-                    <th class="py-2.5">Term Due</th>
-                    <th class="py-2.5 text-right">Term Amount</th>
-                    <th class="py-2.5 text-right">Remaining Order Debt</th>
-                    <th class="py-2.5 text-right pr-4">Order Status</th>
+                    <th class="py-2.5 pl-4">Purchase Item / Platform</th>
+                    <th class="py-2.5">Term in Cycle</th>
+                    <th class="py-2.5 text-right">Installment Amount</th>
+                    <th class="py-2.5 text-right pr-4">Order Debt Remaining</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-zinc-800/60">
                   <tr
-                    v-for="order in activeSubOrders"
-                    :key="order.id"
+                    v-for="item in stmt.items"
+                    :key="item.order_id"
                     class="hover:bg-zinc-900/30 transition-colors"
                   >
                     <td class="py-2.5 pl-4">
-                      <div class="font-medium text-zinc-200">{{ order.title }}</div>
-                      <div class="text-[10px] text-zinc-500">
-                        {{ order.metadata?.store || 'Direct Purchase' }}
-                        <span v-if="order.metadata?.order_number"> • {{ order.metadata.order_number }}</span>
-                      </div>
+                      <div class="font-medium text-zinc-200">{{ item.title }}</div>
+                      <div class="text-[10px] text-zinc-500">{{ item.store || 'Direct Purchase' }}</div>
                     </td>
                     <td class="py-2.5 text-zinc-300">
-                      Term {{ (order.metadata?.current_term || 0) + 1 }} of {{ order.metadata?.total_terms || 1 }}
+                      Term {{ item.term_number }} of {{ item.total_terms }}
                     </td>
                     <td class="py-2.5 text-right font-semibold text-rose-400 tabular-nums">
-                      ฿{{ Number(order.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                      ฿{{ Number(item.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                     </td>
-                    <td class="py-2.5 text-right text-zinc-400 tabular-nums">
-                      ฿{{ Number(getOrderRemainingDebt(order)).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
-                    </td>
-                    <td class="py-2.5 text-right pr-4">
-                      <span class="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-zinc-300">
-                        INCLUDED IN BILL
-                      </span>
+                    <td class="py-2.5 text-right text-zinc-400 tabular-nums pr-4">
+                      ฿{{ Number(item.remaining_order_debt).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                     </td>
                   </tr>
                 </tbody>
@@ -372,16 +377,40 @@
             </div>
 
             <!-- Upload File Trigger -->
-            <label class="px-3.5 py-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-mono transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm">
-              <Upload class="w-3.5 h-3.5 text-zinc-400" />
-              <span>{{ isActionLoading ? 'Uploading...' : 'Upload Document' }}</span>
-              <input
-                type="file"
-                class="hidden"
-                accept=".pdf,.png,.jpg,.jpeg,.webp"
-                @change="handleFileUpload"
-              />
-            </label>
+            <div
+              v-if="!storageStore.isConnected"
+              class="p-2.5 rounded bg-zinc-950/60 border border-zinc-800 text-xs flex items-center justify-between gap-3 font-mono"
+            >
+              <div class="flex items-center gap-2 text-zinc-400">
+                <HardDrive class="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                <span>Google Drive required to upload statements</span>
+              </div>
+              <router-link
+                to="/settings"
+                class="text-zinc-200 hover:underline font-mono text-xs font-medium shrink-0"
+              >
+                Settings &rarr;
+              </router-link>
+            </div>
+
+            <div v-else class="space-y-2">
+              <label class="px-3.5 py-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-mono transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm">
+                <Upload class="w-3.5 h-3.5 text-zinc-400" />
+                <span>{{ isActionLoading ? 'Uploading...' : 'Upload Document' }}</span>
+                <input
+                  type="file"
+                  class="hidden"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp"
+                  @change="handleFileUpload"
+                />
+              </label>
+              <div v-if="storageStore.uploadProgress !== null" class="w-full bg-zinc-800 rounded-full h-1 overflow-hidden">
+                <div
+                  class="bg-zinc-200 h-1 transition-all duration-150"
+                  :style="{ width: `${storageStore.uploadProgress}%` }"
+                ></div>
+              </div>
+            </div>
           </div>
 
           <!-- Attachments List -->
@@ -399,7 +428,7 @@
                 <FileText class="w-4 h-4 text-zinc-400 shrink-0" />
                 <div class="truncate">
                   <a
-                    :href="att.file_url || att.file"
+                    :href="att.drive_view_link || att.file_url || att.file"
                     target="_blank"
                     class="text-zinc-200 hover:underline truncate block font-medium"
                   >
@@ -413,7 +442,7 @@
 
               <div class="flex items-center gap-1.5">
                 <a
-                  :href="att.file_url || att.file"
+                  :href="att.drive_download_link || att.drive_view_link || att.file_url || att.file"
                   target="_blank"
                   download
                   class="p-1 rounded text-zinc-400 hover:text-white transition-colors"
@@ -482,7 +511,7 @@
                   </td>
                   <td class="py-2.5 text-right pr-4">
                     <span v-if="p.attachments && p.attachments.length > 0" class="text-zinc-300">
-                      <a :href="p.attachments[0].file_url || p.attachments[0].file" target="_blank" class="hover:underline flex items-center justify-end gap-1 text-[11px]">
+                      <a :href="p.attachments[0].drive_view_link || p.attachments[0].file_url || p.attachments[0].file" target="_blank" class="hover:underline flex items-center justify-end gap-1 text-[11px]">
                         <FileText class="w-3 h-3 text-zinc-400" />
                         <span>Slip</span>
                       </a>
@@ -501,6 +530,9 @@
     <PayModal
       :is-open="showPayModal"
       :obligation="account"
+      :initial-amount="targetPayAmount"
+      :statement-month="targetStatementMonth"
+      :initial-note="targetPayNote"
       @close="showPayModal = false"
       @paid="handlePaymentFinished"
     />
@@ -518,6 +550,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBNPL } from '../../composables/finance/useBNPL'
+import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
 import type { FinancialObligation } from '../../types/finance'
 import PayModal from '../../components/finance/PayModal.vue'
@@ -533,12 +566,14 @@ import {
   History,
   Check,
   Upload,
-  Download
+  Download,
+  HardDrive
 } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToastStore()
+const storageStore = useStorageStore()
 const {
   currentAccount: account,
   subOrders,
@@ -547,7 +582,6 @@ const {
   fetchAccountById,
   deleteAccount,
   deleteOrder,
-  uploadAttachment,
   deleteAttachment
 } = useBNPL()
 
@@ -579,6 +613,14 @@ async function refreshAccount() {
   }
 }
 
+const targetPayAmount = ref<number | undefined>(undefined)
+const targetStatementMonth = ref<string | undefined>(undefined)
+const targetPayNote = ref<string | undefined>(undefined)
+
+const statementTimeline = computed(() => {
+  return account.value?.summary?.statement_timeline || []
+})
+
 const activeSubOrders = computed(() => {
   return subOrders.value.filter(o => o.status === 'ACTIVE')
 })
@@ -597,6 +639,23 @@ function getOrderRemainingDebt(order: FinancialObligation): number {
 }
 
 function openPayStatementModal() {
+  const current = account.value?.summary?.current_statement
+  if (current) {
+    targetPayAmount.value = Number(current.total_due)
+    targetStatementMonth.value = current.statement_month
+    targetPayNote.value = `Statement settlement for ${current.month_label}`
+  } else {
+    targetPayAmount.value = Number(account.value?.summary?.current_bill_amount || 0)
+    targetStatementMonth.value = undefined
+    targetPayNote.value = undefined
+  }
+  showPayModal.value = true
+}
+
+function openPaySpecificStatementModal(stmt: any) {
+  targetPayAmount.value = Number(stmt.total_due)
+  targetStatementMonth.value = stmt.statement_month
+  targetPayNote.value = `Statement settlement for ${stmt.month_label}`
   showPayModal.value = true
 }
 
@@ -619,13 +678,18 @@ async function handleFileUpload(e: Event) {
   const target = e.target as HTMLInputElement
   const file = target.files?.[0]
   if (!file) return
+  if (!storageStore.isConnected) {
+    toast.error('Google Drive connection is required')
+    return
+  }
 
   try {
-    await uploadAttachment(accountId.value, file, 'STATEMENT')
-    toast.success('Document uploaded to vault')
+    await storageStore.uploadDirect(file, 'finance', accountId.value)
+    toast.success('Document uploaded to Google Drive vault')
     target.value = ''
+    await fetchAccountById(accountId.value)
   } catch (err: any) {
-    toast.error('Failed to upload file')
+    toast.error(err?.message || 'Failed to upload file')
   }
 }
 

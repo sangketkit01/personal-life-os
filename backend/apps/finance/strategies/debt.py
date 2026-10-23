@@ -6,9 +6,9 @@ from .base import BaseObligationStrategy
 
 class DebtStrategy(BaseObligationStrategy):
     """
-    Strategy สำหรับหนี้สิน ยืม-คืน (Debt & Lending)
-    - รองรับการทยอยจ่าย (Partial Payment)
-    - ลดทอนยอดหนี้คงเหลือ จนกระทั่งครบ 0 จึงเปลี่ยนเป็น COMPLETED
+    Strategy for debt and lending (peer loans, formal bank loans):
+    - Supports partial payments.
+    - Decrements remaining balance until reaching zero, then marks COMPLETED.
     """
 
     def validate_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
@@ -19,12 +19,14 @@ class DebtStrategy(BaseObligationStrategy):
         reason = str(metadata.get('reason', '')).strip()
         promptpay = str(metadata.get('promptpay', '')).strip()
 
-        # ยอดคงเหลือเริ่มต้น ถ้ายังไม่มี ให้ตั้งเท่ากับยอดเต็ม
+        # Initial remaining balance defaults to principal amount if not set
         remaining_balance = metadata.get('remaining_balance')
         if remaining_balance is not None:
             remaining_balance = str(Decimal(str(remaining_balance)))
 
-        validated = {
+        # Preserve all incoming and existing metadata keys (e.g. split bill origin details)
+        validated = dict(metadata)
+        validated.update({
             'subtype': subtype,
             'counterparty': counterparty,
             'is_flexible': is_flexible,
@@ -32,9 +34,9 @@ class DebtStrategy(BaseObligationStrategy):
             'reason': reason,
             'promptpay': promptpay,
             'remaining_balance': remaining_balance
-        }
+        })
 
-        # เสริมข้อมูลสินเชื่อทางการ (Formal Loan)
+        # Formal loan specific fields
         if subtype == 'FORMAL_LOAN':
             validated.update({
                 'interest_rate_pa': str(Decimal(str(metadata.get('interest_rate_pa', '0.00')))),
@@ -102,38 +104,58 @@ class DebtStrategy(BaseObligationStrategy):
 
         return summary
 
-    def on_paid(self, obligation, paid_amount: Decimal, term_number: int = None, note: str = '') -> Dict[str, Any]:
-        from apps.finance.models import PaymentHistory, ObligationStatus
-
-        if paid_amount is None or paid_amount <= Decimal('0'):
-            raise ValueError("Payment amount must be greater than 0.")
-
-        metadata = obligation.metadata or {}
-        remaining_balance_raw = metadata.get('remaining_balance')
-        if remaining_balance_raw is None:
-            current_remaining = obligation.amount
-        else:
-            current_remaining = Decimal(str(remaining_balance_raw))
+    def on_paid(self, obligation, paid_amount: Decimal = None, term_number: int = None, note: str = '', **kwargs) -> Dict[str, Any]:
+        from apps.finance.models import PaymentHistory, ObligationStatus, FinancialObligation
 
         with transaction.atomic():
-            # 1. Record payment history
+            locked_ob = FinancialObligation.objects.select_for_update().get(id=obligation.id)
+            metadata = locked_ob.metadata or {}
+            remaining_balance_raw = metadata.get('remaining_balance')
+            if remaining_balance_raw is None:
+                current_remaining = locked_ob.amount
+            else:
+                current_remaining = Decimal(str(remaining_balance_raw))
+
+            if current_remaining <= Decimal('0') or locked_ob.status == ObligationStatus.COMPLETED:
+                raise ValueError("This debt obligation is already fully settled.")
+
+            if paid_amount is None:
+                paid_amount = current_remaining
+            else:
+                paid_amount = Decimal(str(paid_amount))
+
+            if paid_amount <= Decimal('0'):
+                raise ValueError("Payment amount must be greater than 0.")
+
+            if paid_amount > current_remaining:
+                raise ValueError(f"Payment amount of ฿{paid_amount:,.2f} exceeds remaining debt balance of ฿{current_remaining:,.2f}.")
+
+            # 1. Record payment history with audit/reversal metadata
             payment = PaymentHistory.objects.create(
-                user=obligation.user,
-                obligation=obligation,
+                user=locked_ob.user,
+                obligation=locked_ob,
                 paid_amount=paid_amount,
-                note=note
+                note=note,
+                metadata={
+                    'prev_remaining_balance': float(current_remaining),
+                    'prev_status': locked_ob.status
+                }
             )
 
-            # 2. คำนวณยอดหนี้คงเหลือใหม่
+            # 2. Recalculate remaining balance
             new_remaining = current_remaining - paid_amount
             if new_remaining <= Decimal('0'):
                 new_remaining = Decimal('0')
-                obligation.status = ObligationStatus.COMPLETED
-                obligation.due_date = None
+                locked_ob.status = ObligationStatus.COMPLETED
+                locked_ob.due_date = None
 
             metadata['remaining_balance'] = float(round(new_remaining, 2))
+            locked_ob.metadata = metadata
+            locked_ob.save()
+
             obligation.metadata = metadata
-            obligation.save()
+            obligation.status = locked_ob.status
+            obligation.due_date = locked_ob.due_date
 
         summary = self.get_summary(obligation)
         summary['payment_id'] = str(payment.id)

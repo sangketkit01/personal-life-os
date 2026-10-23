@@ -12,7 +12,5 @@ urlpatterns = [
     path('api/workspace/', include('apps.workspace.urls')),
     path('api/portfolio/', include('apps.portfolio.urls')),
     path('api/ledger/', include('apps.ledger.urls')),
+    path('api/storage/', include('apps.storage.urls')),
 ]
-
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -2,7 +2,7 @@ import os
 import secrets
 from django.conf import settings
 from django.utils import timezone
-from django.db import models
+from django.db import models, transaction as db_transaction
 from rest_framework import status, views, permissions, response
 from rest_framework.throttling import ScopedRateThrottle
 from .models import User, InviteCode, UserDeviceSession, ActivityLog
@@ -26,11 +26,11 @@ from .tokens import (
 
 
 def set_auth_cookies(res: response.Response, access_token: str, refresh_token: str):
-    """ฟังก์ชันกลางสำหรับฝัง JWT ลง HttpOnly Cookie อย่างปลอดภัย"""
-    # ใน Localhost secure=False แต่ถ้าบน Production (HTTPS) secure=True
+    """Securely attach JWT tokens into HttpOnly cookies."""
+    # In local development secure=False, on production (HTTPS) secure=True
     is_secure = not settings.DEBUG
 
-    # Access Token (อายุ 15 นาที)
+    # Access Token (15-minute validity)
     res.set_cookie(
         key='access_token',
         value=access_token,
@@ -41,7 +41,7 @@ def set_auth_cookies(res: response.Response, access_token: str, refresh_token: s
         path='/'
     )
 
-    # Refresh Token (อายุ 7 วัน)
+    # Refresh Token (7-day validity)
     res.set_cookie(
         key='refresh_token',
         value=refresh_token,
@@ -54,7 +54,7 @@ def set_auth_cookies(res: response.Response, access_token: str, refresh_token: s
 
 
 def clear_auth_cookies(res: response.Response):
-    """ฟังก์ชันกลางสำหรับลบ Cookie ตอน Logout"""
+    """Helper to clear auth cookies on logout."""
     res.delete_cookie(key='access_token', path='/')
     res.delete_cookie(key='refresh_token', path='/')
 
@@ -70,7 +70,7 @@ class RegisterView(views.APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
-        # สร้าง Session สำหรับเครื่องที่สมัคร
+        # Create session for registering device
         device_name = get_device_name(request)
         ip_address = get_client_ip(request)
         user_agent = request.META.get('HTTP_USER_AGENT', '')
@@ -89,11 +89,11 @@ class RegisterView(views.APIView):
         session.refresh_token_hash = hash_token(refresh_token)
         session.save(update_fields=['refresh_token_hash'])
 
-        log_activity(user, 'AUTH', 'REGISTER', 'สมัครสมาชิกบัญชีใหม่สำเร็จ', request=request)
+        log_activity(user, 'AUTH', 'REGISTER', 'Successfully registered new account', request=request)
 
         res = response.Response(
             {
-                'message': 'สมัครสมาชิกสำเร็จ ยินดีต้อนรับสู่ Personal Life OS',
+                'message': 'Registration successful. Welcome to Personal Life OS',
                 'user': UserSerializer(user).data
             },
             status=status.HTTP_201_CREATED
@@ -111,14 +111,14 @@ class LoginView(views.APIView):
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         if not serializer.is_valid():
-            # บันทึก Failed Login Attempt ลง Audit Log หากพบบัญชีผู้ใช้
+            # Record failed login attempt in audit log if account exists
             username_input = request.data.get('username')
-            if username_input:
+            if username_input and isinstance(username_input, str):
                 user_found = User.objects.filter(
                     models.Q(username__iexact=username_input) | models.Q(email__iexact=username_input)
                 ).first()
                 if user_found:
-                    log_activity(user_found, 'AUTH', 'LOGIN_FAILED', 'พยายามเข้าสู่ระบบแต่รหัสผ่านไม่ถูกต้อง', request=request, status='FAILED')
+                    log_activity(user_found, 'AUTH', 'LOGIN_FAILED', 'Failed login attempt: invalid credentials', request=request, status='FAILED')
             serializer.is_valid(raise_exception=True)
 
         user = serializer.validated_data['user']
@@ -127,7 +127,7 @@ class LoginView(views.APIView):
         ip_address = get_client_ip(request)
         user_agent = request.META.get('HTTP_USER_AGENT', '')
 
-        # บันทึก Session ใหม่ของอุปกรณ์ที่เข้าสู่ระบบ
+        # Create session for the logged-in device
         session = UserDeviceSession.objects.create(
             user=user,
             device_name=device_name,
@@ -142,7 +142,7 @@ class LoginView(views.APIView):
         session.refresh_token_hash = hash_token(refresh_token)
         session.save(update_fields=['refresh_token_hash'])
 
-        log_activity(user, 'AUTH', 'LOGIN', f'เข้าสู่ระบบผ่าน {device_name}', request=request)
+        log_activity(user, 'AUTH', 'LOGIN', f'Logged in via {device_name}', request=request)
 
         res = response.Response(
             {
@@ -200,57 +200,60 @@ class RefreshTokenView(views.APIView):
         user_id = payload.get('user_id')
 
         try:
-            session = UserDeviceSession.objects.get(id=session_id, user_id=user_id)
+            with db_transaction.atomic():
+                session = UserDeviceSession.objects.select_for_update().get(id=session_id, user_id=user_id)
+
+                if session.is_revoked:
+                    res = response.Response({'detail': 'Session has been revoked. Please sign in again.'}, status=status.HTTP_401_UNAUTHORIZED)
+                    clear_auth_cookies(res)
+                    return res
+
+                # Verify Token Hash: supports both current token and Grace Period
+                current_hash = hash_token(refresh_token)
+                is_current_token = (session.refresh_token_hash == current_hash)
+                
+                is_grace_token = False
+                if not is_current_token and session.previous_refresh_token_hash == current_hash and session.rotated_at:
+                    grace_seconds = getattr(settings, 'REFRESH_TOKEN_GRACE_PERIOD_SECONDS', 60)
+                    diff_seconds = (timezone.now() - session.rotated_at).total_seconds()
+                    if diff_seconds <= grace_seconds:
+                        is_grace_token = True
+
+                if not is_current_token and not is_grace_token:
+                    # Token Reuse Detected!
+                    session.is_revoked = True
+                    session.save(update_fields=['is_revoked'])
+                    res = response.Response(
+                        {'detail': 'Token reuse detected. Session revoked for security.'},
+                        status=status.HTTP_401_UNAUTHORIZED
+                    )
+                    clear_auth_cookies(res)
+                    return res
+
+                user = session.user
+                if not user.is_active:
+                    return response.Response({'detail': 'User account is deactivated.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+                # Token Rotation: create new access token and refresh token
+                new_access_token = generate_access_token(user)
+                new_refresh_token = generate_refresh_token(user, session.id)
+
+                # Update session hashes: retain previous_refresh_token_hash if during grace window
+                if is_current_token:
+                    session.previous_refresh_token_hash = session.refresh_token_hash
+                    session.rotated_at = timezone.now()
+
+                session.refresh_token_hash = hash_token(new_refresh_token)
+                session.ip_address = get_client_ip(request)
+                session.save(update_fields=['previous_refresh_token_hash', 'refresh_token_hash', 'rotated_at', 'ip_address', 'last_active_at'])
+
+            res = response.Response({'message': 'Token refreshed successfully'}, status=status.HTTP_200_OK)
+            set_auth_cookies(res, new_access_token, new_refresh_token)
+            return res
         except UserDeviceSession.DoesNotExist:
             res = response.Response({'detail': 'Session not found.'}, status=status.HTTP_401_UNAUTHORIZED)
             clear_auth_cookies(res)
             return res
-
-        if session.is_revoked:
-            res = response.Response({'detail': 'Session has been revoked. Please sign in again.'}, status=status.HTTP_401_UNAUTHORIZED)
-            clear_auth_cookies(res)
-            return res
-
-        # Verify Token Hash: supports both current token and Grace Period
-        current_hash = hash_token(refresh_token)
-        is_current_token = (session.refresh_token_hash == current_hash)
-        
-        is_grace_token = False
-        if not is_current_token and session.previous_refresh_token_hash == current_hash and session.rotated_at:
-            grace_seconds = getattr(settings, 'REFRESH_TOKEN_GRACE_PERIOD_SECONDS', 60)
-            diff_seconds = (timezone.now() - session.rotated_at).total_seconds()
-            if diff_seconds <= grace_seconds:
-                is_grace_token = True
-
-        if not is_current_token and not is_grace_token:
-            # Token Reuse Detected!
-            session.is_revoked = True
-            session.save(update_fields=['is_revoked'])
-            res = response.Response(
-                {'detail': 'Token reuse detected. Session revoked for security.'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-            clear_auth_cookies(res)
-            return res
-
-        user = session.user
-        if not user.is_active:
-            return response.Response({'detail': 'User account is deactivated.'}, status=status.HTTP_401_UNAUTHORIZED)
-
-        # Token Rotation: สร้าง Access Token ใหม่ และ Refresh Token ใบใหม่
-        new_access_token = generate_access_token(user)
-        new_refresh_token = generate_refresh_token(user, session.id)
-
-        # เก็บ hash ใบปัจจุบันย้ายไปเป็น previous_refresh_token_hash เพื่อทำ Grace Period 60 วินาที
-        session.previous_refresh_token_hash = session.refresh_token_hash
-        session.refresh_token_hash = hash_token(new_refresh_token)
-        session.rotated_at = timezone.now()
-        session.ip_address = get_client_ip(request)
-        session.save(update_fields=['previous_refresh_token_hash', 'refresh_token_hash', 'rotated_at', 'ip_address', 'last_active_at'])
-
-        res = response.Response({'message': 'ต่ออายุโทเค็นสำเร็จ'}, status=status.HTTP_200_OK)
-        set_auth_cookies(res, new_access_token, new_refresh_token)
-        return res
 
 
 class MeView(views.APIView):
@@ -286,9 +289,9 @@ class RevokeSessionView(views.APIView):
             session = UserDeviceSession.objects.get(id=session_id, user=request.user)
             session.is_revoked = True
             session.save(update_fields=['is_revoked'])
-            return response.Response({'message': 'ยกเลิกเซสชันอุปกรณ์นี้เรียบร้อยแล้ว'})
+            return response.Response({'message': 'Device session revoked successfully'})
         except UserDeviceSession.DoesNotExist:
-            return response.Response({'detail': 'ไม่พบเซสชันนี้'}, status=status.HTTP_404_NOT_FOUND)
+            return response.Response({'detail': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class TelegramConnectTokenView(views.APIView):
@@ -301,7 +304,7 @@ class TelegramConnectTokenView(views.APIView):
         return response.Response({
             'connect_token': token,
             'deep_link': deep_link,
-            'instructions': 'เปิดลิงก์นี้ใน Telegram แล้วกดปุ่ม START เพื่อเชื่อมต่อบอทพ่อบ้านทันที'
+            'instructions': 'Open this link in Telegram and tap START to connect the bot instantly'
         })
 
 
@@ -313,10 +316,20 @@ class InviteCodeView(views.APIView):
         return response.Response(InviteCodeSerializer(invites, many=True).data)
 
     def post(self, request):
-        # สร้างโค้ดบัตรเชิญอัตโนมัติ เช่น LIFE-ABC8-1234
+        raw_max_uses = request.data.get('max_uses', 1)
+        try:
+            max_uses = int(raw_max_uses)
+            if max_uses <= 0 or max_uses > 1000:
+                raise ValueError()
+        except (ValueError, TypeError):
+            return response.Response(
+                {'detail': 'max_uses must be a positive integer between 1 and 1000.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Generate random invite code: e.g. LIFE-ABC8
         random_part = secrets.token_hex(3).upper()
         code = f"LIFE-{random_part}"
-        max_uses = int(request.data.get('max_uses', 1))
 
         invite = InviteCode.objects.create(
             code=code,
@@ -327,7 +340,7 @@ class InviteCodeView(views.APIView):
 
 
 class ActivityLogView(views.APIView):
-    """API ดึงประวัติกิจกรรมความปลอดภัย (Security & Activity Log) ของผู้ใช้"""
+    """API endpoint to retrieve user security and activity audit log."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):

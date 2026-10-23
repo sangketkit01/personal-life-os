@@ -4,13 +4,13 @@ from apps.portfolio.news_service import ingest_news_for_ticker
 
 
 class Command(BaseCommand):
-    help = 'ดึงและแปลข่าวสารหุ้นในพอร์ตอัตโนมัติ (Hourly News Sync / On-Demand)'
+    help = 'Automatically ingest and translate portfolio market news (Hourly News Sync / On-Demand)'
 
     def add_arguments(self, parser):
         parser.add_argument(
             '--ticker',
             type=str,
-            help='ระบุ Ticker เฉพาะตัว เช่น NVDA, PTT.BK, BTC-USD'
+            help='Specify single ticker symbol e.g. NVDA, PTT.BK, BTC-USD'
         )
 
     def handle(self, *args, **options):

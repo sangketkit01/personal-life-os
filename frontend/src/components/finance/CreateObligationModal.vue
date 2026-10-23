@@ -10,9 +10,11 @@
       </button>
 
       <!-- Modal Title -->
-      <div class="mb-5">
-        <h2 class="text-base font-semibold text-zinc-100 tracking-tight">Create Financial Obligation</h2>
-        <p class="text-xs text-zinc-500 mt-0.5">Select category to configure recurring settlements or liability alert schedules</p>
+      <div class="mb-4">
+        <h2 class="text-base font-semibold text-zinc-100 tracking-tight flex items-center gap-2">
+          <span>Create Obligation</span>
+          <span class="text-xs font-normal text-zinc-500 font-mono">Financial Commitment</span>
+        </h2>
       </div>
 
       <!-- Type Selector Tabs -->
@@ -22,11 +24,11 @@
           :key="t.value"
           type="button"
           @click="selectedType = t.value"
-          class="py-1.5 px-2 rounded text-center transition-colors flex flex-col items-center gap-1"
+          class="py-1.5 px-2 rounded text-center transition-all active:scale-[0.98] flex flex-col items-center gap-1"
           :class="[
             selectedType === t.value
-              ? 'bg-zinc-800 text-zinc-100 shadow-sm'
-              : 'text-zinc-400 hover:text-zinc-200'
+              ? 'bg-zinc-800 text-zinc-100 shadow-sm font-semibold'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
           ]"
         >
           <component :is="t.icon" class="w-3.5 h-3.5" />
@@ -142,7 +144,7 @@
               type="number"
               min="1"
               max="31"
-              placeholder="e.g. 25"
+              placeholder="25"
               class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
             />
           </div>
@@ -159,7 +161,7 @@
                 type="number"
                 step="0.01"
                 required
-                placeholder="150000"
+                placeholder="0.00"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -169,7 +171,7 @@
                 v-model.number="form.metadata.flat_rate_pa"
                 type="number"
                 step="0.01"
-                placeholder="4.50"
+                placeholder="0.00"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -203,7 +205,7 @@
               <input
                 v-model="form.metadata.vehicle_model"
                 type="text"
-                placeholder="Honda Forza 350 (1AB 9999)"
+                placeholder="e.g. Honda Civic"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -212,7 +214,7 @@
               <input
                 v-model="form.metadata.lender"
                 type="text"
-                placeholder="Krungsri Auto / Tisco"
+                placeholder="e.g. Krungsri Auto"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -230,7 +232,7 @@
                 type="number"
                 step="0.01"
                 required
-                placeholder="25000"
+                placeholder="0.00"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -239,7 +241,7 @@
               <input
                 v-model="form.metadata.provider"
                 type="text"
-                placeholder="Shopee SPayLater / TikTok"
+                placeholder="e.g. Shopee SPayLater"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -299,7 +301,7 @@
             <input
               v-model="form.metadata.lender"
               type="text"
-              placeholder="e.g. KBank, Citi, Apple Store"
+              placeholder="e.g. KBank, Apple Store"
               class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
             />
           </div>
@@ -315,7 +317,7 @@
                 v-model="form.metadata.counterparty"
                 type="text"
                 required
-                placeholder="e.g. Tum, Freelance Partner"
+                placeholder="e.g. Alex Wong"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -343,7 +345,7 @@
               <input
                 v-model="form.metadata.promptpay"
                 type="text"
-                placeholder="PromptPay to receive money"
+                placeholder="PromptPay number"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -368,7 +370,7 @@
               <input
                 v-model="form.metadata.account_email"
                 type="email"
-                placeholder="work@gmail.com"
+                placeholder="name@example.com"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -378,7 +380,7 @@
             <input
               v-model="form.metadata.cancel_url"
               type="url"
-              placeholder="https://service.com/account/billing/cancel"
+              placeholder="https://..."
               class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
             />
           </div>
@@ -412,7 +414,7 @@
             <input
               v-model="form.metadata.account_email"
               type="text"
-              placeholder="user@example.com"
+              placeholder="name@example.com"
               class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
             />
           </div>
@@ -423,14 +425,14 @@
           <button
             type="button"
             @click="emit('close')"
-            class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors"
+            class="px-3.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-all active:scale-[0.98]"
           >
             Cancel
           </button>
           <button
             type="submit"
             :disabled="isSubmitting"
-            class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors disabled:opacity-50"
+            class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-50 shadow-sm"
           >
             {{ isSubmitting ? 'Saving...' : 'Create Obligation' }}
           </button>
@@ -487,14 +489,14 @@ const form = ref({
 
 const titlePlaceholder = computed(() => {
   if (selectedType.value === 'INSTALLMENT') {
-    if (selectedSubtype.value === 'HIRE_PURCHASE') return 'e.g. Honda Forza 350, Yamaha XMAX'
-    if (selectedSubtype.value === 'BNPL_ACCOUNT') return 'e.g. Shopee SPayLater, LazPayLater'
-    return 'e.g. iPhone 16 Pro 0% 10 Months'
+    if (selectedSubtype.value === 'HIRE_PURCHASE') return 'e.g. Vehicle Hire Purchase'
+    if (selectedSubtype.value === 'BNPL_ACCOUNT') return 'e.g. Shopee SPayLater'
+    return 'e.g. iPhone 16'
   }
-  if (selectedType.value === 'FREE_TRIAL') return 'e.g. Canva Pro Trial, Notion AI Free Trial'
-  if (selectedType.value === 'SUBSCRIPTION') return 'e.g. Netflix 4K, iCloud 200GB, VPS Cloud'
+  if (selectedType.value === 'FREE_TRIAL') return 'e.g. Canva Pro Trial'
+  if (selectedType.value === 'SUBSCRIPTION') return 'e.g. Netflix, Spotify'
   if (selectedType.value === 'DEBT') {
-    return form.value.direction === 'INFLOW' ? 'e.g. Tum borrowed for car repair' : 'e.g. Emergency loan from friend'
+    return form.value.direction === 'INFLOW' ? 'e.g. Friend loan receivable' : 'e.g. Personal bank loan'
   }
   return ''
 })

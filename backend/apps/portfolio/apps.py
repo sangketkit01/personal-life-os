@@ -8,12 +8,12 @@ class PortfolioConfig(AppConfig):
     name = 'apps.portfolio'
 
     def ready(self):
-        # หลีกเลี่ยงการรัน scheduler ขณะทำ migrate, test หรือคำสั่ง CLI อื่นๆ
+        # Avoid running scheduler during migrate, test, or CLI management commands
         skip_commands = ['migrate', 'makemigrations', 'test', 'collectstatic', 'shell']
         if any(cmd in sys.argv for cmd in skip_commands):
             return
 
-        # ป้องกันการรันซ้ำ 2 ครั้งเมื่อใช้ Django runserver auto-reloader
+        # Prevent double execution with Django runserver auto-reloader
         is_main_worker = os.environ.get('RUN_MAIN') == 'true' or 'runserver' not in sys.argv
         if is_main_worker:
             try:

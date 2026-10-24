@@ -10,6 +10,12 @@ class LanguageChoices(models.TextChoices):
     TH = 'th', 'Thai'
 
 
+class ThemeChoices(models.TextChoices):
+    DARK = 'dark', 'Dark'
+    LIGHT = 'light', 'Light'
+    SYSTEM = 'system', 'System'
+
+
 class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     telegram_chat_id = models.CharField(
@@ -38,6 +44,12 @@ class User(AbstractUser):
         choices=LanguageChoices.choices,
         default=LanguageChoices.EN,
         verbose_name="Preferred Language"
+    )
+    preferred_theme = models.CharField(
+        max_length=10,
+        choices=ThemeChoices.choices,
+        default=ThemeChoices.DARK,
+        verbose_name="Preferred Theme"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

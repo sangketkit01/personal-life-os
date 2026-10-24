@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import apiClient from '../api/client'
 import type { User } from '../types'
 import { setLocale } from '../i18n'
+import { setThemeMode } from '../theme'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
@@ -59,6 +60,9 @@ export const useAuthStore = defineStore('auth', () => {
       if (user.value?.preferred_language) {
         setLocale(user.value.preferred_language, { syncBackend: false })
       }
+      if (user.value?.preferred_theme) {
+        setThemeMode(user.value.preferred_theme, { syncBackend: false })
+      }
       startProactiveRefresh()
       return user.value
     } catch {
@@ -76,6 +80,9 @@ export const useAuthStore = defineStore('auth', () => {
     if (user.value?.preferred_language) {
       setLocale(user.value.preferred_language, { syncBackend: false })
     }
+    if (user.value?.preferred_theme) {
+      setThemeMode(user.value.preferred_theme, { syncBackend: false })
+    }
     startProactiveRefresh()
     return response.data
   }
@@ -85,6 +92,9 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = response.data.user
     if (user.value?.preferred_language) {
       setLocale(user.value.preferred_language, { syncBackend: false })
+    }
+    if (user.value?.preferred_theme) {
+      setThemeMode(user.value.preferred_theme, { syncBackend: false })
     }
     startProactiveRefresh()
     return response.data
@@ -115,7 +125,7 @@ export const useAuthStore = defineStore('auth', () => {
     return response.data
   }
 
-  async function updatePreferences(payload: { preferred_language: 'en' | 'th' }) {
+  async function updatePreferences(payload: { preferred_language?: 'en' | 'th'; preferred_theme?: 'dark' | 'light' | 'system' }) {
     const response = await apiClient.patch<User>('/auth/me/', payload)
     user.value = response.data
     return user.value

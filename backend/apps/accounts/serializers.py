@@ -18,6 +18,7 @@ class UserSerializer(serializers.ModelSerializer):
             'telegram_chat_id',
             'is_telegram_connected',
             'preferred_language',
+            'preferred_theme',
             'created_at'
         )
         read_only_fields = ('id', 'username', 'email', 'telegram_chat_id', 'created_at')

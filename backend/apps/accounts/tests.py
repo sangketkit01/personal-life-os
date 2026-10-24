@@ -298,3 +298,36 @@ class PreferredLanguageTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.user.refresh_from_db()
         self.assertEqual(self.user.preferred_language, 'en')
+
+
+class PreferredThemeTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='themewriter',
+            email='theme@test.com',
+            password='Password123!'
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_me_returns_default_theme(self):
+        """GET /api/auth/me/ returns preferred_theme 'dark' by default."""
+        res = self.client.get('/api/auth/me/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['preferred_theme'], 'dark')
+
+    def test_me_patch_updates_theme(self):
+        """PATCH /api/auth/me/ persists preferred_theme to the database."""
+        for theme in ('light', 'system'):
+            res = self.client.patch('/api/auth/me/', {'preferred_theme': theme}, format='json')
+            self.assertEqual(res.status_code, status.HTTP_200_OK)
+            self.assertEqual(res.data['preferred_theme'], theme)
+            self.user.refresh_from_db()
+            self.assertEqual(self.user.preferred_theme, theme)
+
+    def test_me_patch_rejects_invalid_theme(self):
+        """PATCH with an unsupported theme code returns HTTP 400."""
+        res = self.client.patch('/api/auth/me/', {'preferred_theme': 'neon'}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.preferred_theme, 'dark')

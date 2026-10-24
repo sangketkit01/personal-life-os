@@ -5,6 +5,55 @@
       <p class="text-xs text-zinc-500 mt-0.5">{{ t('st.subtitle') }}</p>
     </div>
 
+    <!-- Theme & Appearance -->
+    <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
+      <div class="p-4 border-b border-zinc-800/80 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-md bg-zinc-900 text-zinc-200 flex items-center justify-center border border-zinc-800">
+            <component :is="themeMode === 'light' ? Sun : themeMode === 'system' ? Monitor : Moon" class="w-4 h-4" />
+          </div>
+          <div>
+            <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t('st.theme.title') }}</h2>
+          </div>
+        </div>
+        <span class="text-[10px] font-mono px-2 py-0.5 rounded border uppercase bg-zinc-900 text-zinc-300 border-zinc-800">
+          {{ themeMode === 'dark' ? t('st.theme.badge') : themeMode === 'light' ? 'LIGHT' : 'SYSTEM' }}
+        </span>
+      </div>
+      <div class="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <button type="button" @click="switchTheme('dark')"
+          class="p-3.5 rounded-lg border text-left transition-all"
+          :class="themeMode === 'dark' ? 'bg-zinc-900 border-zinc-600 shadow-sm' : 'bg-zinc-950/40 border-zinc-800/80 hover:border-zinc-700'">
+          <div class="flex items-center justify-between">
+            <Moon class="w-4 h-4" :class="themeMode === 'dark' ? 'text-indigo-400' : 'text-zinc-500'" />
+            <CheckCircle2 v-if="themeMode === 'dark'" class="w-4 h-4 text-emerald-400" />
+          </div>
+          <span class="text-sm font-semibold block mt-1.5" :class="themeMode === 'dark' ? 'text-zinc-100' : 'text-zinc-300'">{{ t('st.theme.dark') }}</span>
+          <p class="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">{{ t('st.theme.darkSub') }}</p>
+        </button>
+        <button type="button" @click="switchTheme('light')"
+          class="p-3.5 rounded-lg border text-left transition-all"
+          :class="themeMode === 'light' ? 'bg-zinc-900 border-zinc-600 shadow-sm' : 'bg-zinc-950/40 border-zinc-800/80 hover:border-zinc-700'">
+          <div class="flex items-center justify-between">
+            <Sun class="w-4 h-4" :class="themeMode === 'light' ? 'text-amber-400' : 'text-zinc-500'" />
+            <CheckCircle2 v-if="themeMode === 'light'" class="w-4 h-4 text-emerald-400" />
+          </div>
+          <span class="text-sm font-semibold block mt-1.5" :class="themeMode === 'light' ? 'text-zinc-100' : 'text-zinc-300'">{{ t('st.theme.light') }}</span>
+          <p class="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">{{ t('st.theme.lightSub') }}</p>
+        </button>
+        <button type="button" @click="switchTheme('system')"
+          class="p-3.5 rounded-lg border text-left transition-all"
+          :class="themeMode === 'system' ? 'bg-zinc-900 border-zinc-600 shadow-sm' : 'bg-zinc-950/40 border-zinc-800/80 hover:border-zinc-700'">
+          <div class="flex items-center justify-between">
+            <Monitor class="w-4 h-4" :class="themeMode === 'system' ? 'text-sky-400' : 'text-zinc-500'" />
+            <CheckCircle2 v-if="themeMode === 'system'" class="w-4 h-4 text-emerald-400" />
+          </div>
+          <span class="text-sm font-semibold block mt-1.5" :class="themeMode === 'system' ? 'text-zinc-100' : 'text-zinc-300'">{{ t('st.theme.system') }}</span>
+          <p class="text-[11px] text-zinc-500 mt-0.5 leading-relaxed">{{ t('st.theme.systemSub') }}</p>
+        </button>
+      </div>
+    </div>
+
     <!-- 0. Language & Localization -->
     <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
       <div class="p-4 border-b border-zinc-800/80 flex items-center justify-between">
@@ -466,6 +515,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { locale, setLocale, t, formatLocaleDate } from '../i18n'
+import { themeMode, setThemeMode, type ThemeMode } from '../theme'
 import type { AppLocale } from '../i18n'
 import { useStorageStore } from '../stores/storage'
 import { useToastStore } from '../stores/toast'
@@ -474,6 +524,9 @@ import type { UserDeviceSession, InviteCode, ActivityLog } from '../types'
 import ConfirmModal from '../components/common/ConfirmModal.vue'
 import {
   Languages,
+  Moon,
+  Sun,
+  Monitor,
   CheckCircle2,
   Bot,
   Laptop,
@@ -490,6 +543,18 @@ import {
 const authStore = useAuthStore()
 const storageStore = useStorageStore()
 const toast = useToastStore()
+
+async function switchTheme(mode: ThemeMode) {
+  if (themeMode.value === mode) return
+  setThemeMode(mode, { syncBackend: false })
+  try {
+    await authStore.updatePreferences({ preferred_theme: mode })
+    const toastKey = mode === 'dark' ? 'st.theme.switchedDark' : mode === 'light' ? 'st.theme.switchedLight' : 'st.theme.switchedSystem'
+    toast.success(t(toastKey))
+  } catch {
+    toast.error(t('st.theme.saveFailed'))
+  }
+}
 
 async function switchLanguage(next: AppLocale) {
   if (locale.value === next) return

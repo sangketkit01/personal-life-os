@@ -7,7 +7,22 @@
     <title>frontend</title>
   </head>
   <body>
-    <div id="app"></div>
+    <script>
+    (function () {
+      try {
+        var mode = localStorage.getItem('life_os_theme') || 'dark';
+        var resolved = mode === 'system'
+          ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+          : (mode === 'light' ? 'light' : 'dark');
+        document.documentElement.dataset.theme = resolved;
+        document.documentElement.dataset.themeMode = mode;
+        document.documentElement.style.colorScheme = resolved;
+      } catch (e) {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    })();
+  </script>
+  <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

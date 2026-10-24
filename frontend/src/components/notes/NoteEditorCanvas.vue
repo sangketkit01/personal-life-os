@@ -149,25 +149,26 @@
           <div class="relative shrink-0">
             <button
               type="button"
-              class="w-8 h-8 rounded-lg bg-zinc-900/70 hover:bg-zinc-800 border border-zinc-800/90 flex items-center justify-center text-base transition-colors"
+              class="w-8 h-8 rounded-lg bg-zinc-900/70 hover:bg-zinc-800 border border-zinc-800/90 flex items-center justify-center text-zinc-300 transition-colors"
               title="Change note icon"
               @click="showIconPicker = !showIconPicker"
             >
-              {{ currentEmoji }}
+              <component :is="currentIcon" class="w-4 h-4" />
             </button>
             <div
               v-if="showIconPicker"
               class="absolute z-30 top-full mt-1.5 left-0 p-1.5 rounded-lg bg-zinc-950 border border-zinc-700/80 shadow-2xl grid grid-cols-4 gap-1 w-36"
             >
               <button
-                v-for="emoji in ICON_PRESETS"
-                :key="emoji.key"
+                v-for="preset in NOTE_ICON_PRESETS"
+                :key="preset.key"
                 type="button"
-                class="w-7 h-7 rounded-md flex items-center justify-center text-sm transition-colors"
-                :class="editorIcon === emoji.key ? 'bg-zinc-800 ring-1 ring-zinc-500' : 'hover:bg-zinc-900'"
-                @click="selectIcon(emoji.key)"
+                class="w-7 h-7 rounded-md flex items-center justify-center transition-colors"
+                :class="editorIcon === preset.key ? 'bg-zinc-800 ring-1 ring-zinc-500 text-zinc-100' : 'hover:bg-zinc-900 text-zinc-400'"
+                :title="preset.label"
+                @click="selectIcon(preset.key)"
               >
-                {{ emoji.emoji }}
+                <component :is="preset.icon" class="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -303,6 +304,7 @@ import {
   X
 } from 'lucide-vue-next'
 import NotionBlockEditor from '../workspace/NotionBlockEditor.vue'
+import { NOTE_ICON_PRESETS, iconComponentFor } from '../../utils/iconPresets'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
 import { stripHtml } from '../../utils/richText'
@@ -330,17 +332,6 @@ const NOTE_COLORS: Array<{ key: NoteColor; label: string; dot: string }> = [
   { key: 'ROSE', label: 'Rose', dot: '#fb7185' }
 ]
 
-const ICON_PRESETS = [
-  { key: 'file-text', emoji: '📄' },
-  { key: 'clipboard', emoji: '📋' },
-  { key: 'target', emoji: '🎯' },
-  { key: 'book', emoji: '📚' },
-  { key: 'rocket', emoji: '🚀' },
-  { key: 'home', emoji: '🏠' },
-  { key: 'chart', emoji: '📈' },
-  { key: 'palette', emoji: '🎨' }
-]
-
 // ===== Editor state (synced from the active note) =====
 const editorTitle = ref('')
 const editorIcon = ref('file-text')
@@ -364,9 +355,7 @@ const inlinePinInput = ref<HTMLInputElement | null>(null)
 
 const locked = computed(() => props.note.is_locked && !props.isVerified)
 
-const currentEmoji = computed(() => {
-  return ICON_PRESETS.find(item => item.key === editorIcon.value)?.emoji || '📄'
-})
+const currentIcon = computed(() => iconComponentFor(editorIcon.value))
 
 watch(locked, (isLockedNow) => {
   if (isLockedNow) {
@@ -460,7 +449,25 @@ function syncFromNote() {
   newTagDraft.value = ''
 
   const incomingBlocks = (props.note.blocks || []).map(b => ({ ...b }))
-  editorBlocks.value = incomingBlocks.length > 0 ? incomingBlocks : [createDefaultParagraphBlock()]
+  if (incomingBlocks.length > 0) {
+    editorBlocks.value = incomingBlocks
+  } else if ((props.note.content || '').trim()) {
+    // Pre-block-era note: the text lives in note.content - lift it into a
+    // paragraph block instead of showing an empty page (autosave persists it).
+    editorBlocks.value = [{
+      id: crypto.randomUUID(),
+      type: 'paragraph',
+      content: props.note.content,
+      indent: 0
+    }]
+    nextTick(() => {
+      suppressSyncWatch = false
+    })
+    markDirty()
+    return
+  } else {
+    editorBlocks.value = [createDefaultParagraphBlock()]
+  }
 
   nextTick(() => {
     suppressSyncWatch = false

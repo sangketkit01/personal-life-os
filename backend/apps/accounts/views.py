@@ -287,6 +287,13 @@ class MeView(views.APIView):
     def get(self, request):
         return response.Response(UserSerializer(request.user).data)
 
+    def patch(self, request):
+        """Update the authenticated user's preferences (e.g. preferred_language)."""
+        serializer = UserSerializer(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return response.Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class ChangePasswordView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]

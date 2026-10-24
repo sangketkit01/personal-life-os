@@ -17,7 +17,7 @@
             class="w-11 h-11 rounded-lg flex items-center justify-center text-lg shrink-0 border"
             :style="{ backgroundColor: `${project.color}1A`, borderColor: `${project.color}40` }"
           >
-            {{ iconEmoji(project.icon) }}
+            <component :is="iconComponentFor(project.icon)" class="w-5 h-5" />
           </div>
 
           <div class="min-w-0">
@@ -71,7 +71,7 @@
               type="button"
               @click="showDeleteProjectConfirm = true"
               class="p-1.5 rounded-md text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 transition-colors"
-              title="Delete project"
+              :title="t('pd.deleteProject')"
             >
               <Trash2 class="w-3.5 h-3.5" />
             </button>
@@ -86,7 +86,7 @@
           :key="link.id"
           class="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-md bg-zinc-900/60 border border-zinc-800 group/link"
         >
-          <span class="text-[11px]">{{ linkTypeIcon(link.link_type) }}</span>
+          <component :is="linkTypeIcon(link.link_type)" class="w-3.5 h-3.5 text-zinc-400 shrink-0" />
           <a
             :href="link.url"
             target="_blank"
@@ -128,7 +128,7 @@
         :class="activeTab === tab.key ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'"
       >
         <component :is="tab.icon" class="w-3.5 h-3.5" />
-        <span>{{ tab.label }}</span>
+        <span>{{ t(tab.labelKey) }}</span>
         <span class="text-[10px] font-mono text-zinc-500">{{ tab.count() }}</span>
       </button>
     </div>
@@ -136,13 +136,13 @@
     <!-- ======== Tab 1: Kanban Board ======== -->
     <div v-if="activeTab === 'board'">
       <div class="flex items-center justify-between mb-3">
-        <p class="text-[11px] font-mono text-zinc-500">Drag cards between columns or use the quick action buttons.</p>
+        <p class="text-[11px] font-mono text-zinc-500">{{ t('pd.dragHint') }}</p>
         <button
           @click="openQuickCreate(null, 'TODO')"
           class="px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0"
         >
           <Plus class="w-3.5 h-3.5" />
-          <span>New Task</span>
+          <span>{{ t('pd.newTask') }}</span>
         </button>
       </div>
 
@@ -190,7 +190,7 @@
             @click="selectPage(note.id)"
           >
             <div class="flex items-center gap-2">
-              <span class="text-xs shrink-0">{{ iconEmoji(note.icon) }}</span>
+              <span class="shrink-0 text-zinc-400"><component :is="iconComponentFor(note.icon)" class="w-3.5 h-3.5" /></span>
               <span class="text-xs font-medium text-zinc-200 truncate flex-1">{{ note.title || 'Untitled' }}</span>
               <Pin v-if="note.is_pinned" class="w-3 h-3 text-zinc-400 fill-zinc-400 shrink-0" />
             </div>
@@ -216,14 +216,15 @@
             <div class="flex items-center gap-2 flex-wrap">
               <div class="flex items-center gap-1">
                 <button
-                  v-for="emoji in ICON_PRESETS"
-                  :key="emoji.key"
+                  v-for="preset in PROJECT_ICON_PRESETS"
+                  :key="preset.key"
                   type="button"
-                  @click="pageIcon = emoji.key; markPageDirty()"
-                  class="w-6 h-6 rounded-md flex items-center justify-center text-xs transition-colors border"
-                  :class="pageIcon === emoji.key ? 'bg-zinc-800 border-zinc-600' : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700'"
+                  @click="pageIcon = preset.key; markPageDirty()"
+                  class="w-6 h-6 rounded-md flex items-center justify-center transition-colors border"
+                  :class="pageIcon === preset.key ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700 text-zinc-400'"
+                  :title="preset.label"
                 >
-                  {{ emoji.emoji }}
+                  <component :is="preset.icon" class="w-3 h-3" />
                 </button>
               </div>
               <span class="mx-1 w-px h-5 bg-zinc-800 hidden sm:block" />
@@ -297,9 +298,9 @@
         <div class="flex items-center justify-between">
           <h3 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono flex items-center gap-2">
             <HardDrive class="w-3.5 h-3.5 text-zinc-500" />
-            Google Drive Project Vault
+            {{ t('pd.vault') }}
           </h3>
-          <span class="text-[10px] font-mono text-zinc-500">{{ projectAttachments.length }} files</span>
+          <span class="text-[10px] font-mono text-zinc-500">{{ t('pd.filesCount', { count: projectAttachments.length }) }}</span>
         </div>
 
         <div
@@ -319,8 +320,8 @@
           </template>
           <div v-else class="flex flex-col items-center gap-1.5">
             <Upload class="w-5 h-5 text-zinc-500" />
-            <p class="text-xs text-zinc-400">Drag & drop files or click to upload to Google Drive</p>
-            <p class="text-[10px] font-mono text-zinc-600">Zero-disk vault — files stream directly to your Drive</p>
+            <p class="text-xs text-zinc-400">{{ t('pd.dropUpload') }}</p>
+            <p class="text-[10px] font-mono text-zinc-600">{{ t('pd.zeroDisk') }}</p>
           </div>
         </div>
 
@@ -328,9 +329,9 @@
           v-else
           class="rounded-lg bg-zinc-900/40 border border-dashed border-zinc-800 p-4 text-center text-[11px] text-zinc-500"
         >
-          Google Drive is not connected. Link it in
-          <RouterLink to="/settings" class="text-zinc-300 underline hover:text-white">Settings</RouterLink>
-          to enable the project vault.
+          {{ t('pd.noDrive') }}
+          <RouterLink to="/settings" class="text-zinc-300 underline hover:text-white">{{ t('nav.settings') }}</RouterLink>
+          {{ t('pd.toEnable') }}
         </div>
 
         <!-- Attachments table -->
@@ -338,11 +339,11 @@
           <table class="w-full text-left">
             <thead>
               <tr class="border-b border-zinc-800/80 bg-zinc-900/40">
-                <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500">File</th>
-                <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500 hidden sm:table-cell">Size</th>
-                <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500 hidden md:table-cell">Linked Task</th>
-                <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500 hidden md:table-cell">Uploaded</th>
-                <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500 text-right">Actions</th>
+                <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500">{{ t('pd.col.file') }}</th>
+                <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500 hidden sm:table-cell">{{ t('pd.col.size') }}</th>
+                <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500 hidden md:table-cell">{{ t('pd.col.linkedTask') }}</th>
+                <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500 hidden md:table-cell">{{ t('pd.col.uploaded') }}</th>
+                <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500 text-right">{{ t('pd.col.actions') }}</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-zinc-800/50">
@@ -409,7 +410,7 @@
         <div class="flex items-center justify-between">
           <h3 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono flex items-center gap-2">
             <Link2 class="w-3.5 h-3.5 text-zinc-500" />
-            All Project Links
+            {{ t('pd.linksDir') }}
           </h3>
           <button
             type="button"
@@ -435,14 +436,14 @@
                 <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500">Type</th>
                 <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500">Title</th>
                 <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500 hidden md:table-cell">URL</th>
-                <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500 text-right">Actions</th>
+                <th class="px-4 py-2 text-[10px] font-mono uppercase text-zinc-500 text-right">{{ t('pd.col.actions') }}</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-zinc-800/50">
               <tr v-for="link in workspaceStore.links" :key="link.id" class="hover:bg-zinc-900/40 transition-colors group/row">
                 <td class="px-4 py-2.5">
                   <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800 flex items-center gap-1.5 w-fit">
-                    <span>{{ linkTypeIcon(link.link_type) }}</span>
+                    <component :is="linkTypeIcon(link.link_type)" class="w-3 h-3" />
                     {{ link.link_type }}
                   </span>
                 </td>
@@ -695,14 +696,15 @@
               />
               <span class="mx-1 w-px h-5 bg-zinc-800" />
               <button
-                v-for="emoji in ICON_PRESETS"
-                :key="emoji.key"
+                v-for="preset in PROJECT_ICON_PRESETS"
+                :key="preset.key"
                 type="button"
-                @click="projectForm.icon = emoji.key"
-                class="w-7 h-7 rounded-md flex items-center justify-center text-sm transition-colors border"
-                :class="projectForm.icon === emoji.key ? 'bg-zinc-800 border-zinc-600' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'"
+                @click="projectForm.icon = preset.key"
+                class="w-7 h-7 rounded-md flex items-center justify-center transition-colors border"
+                :class="projectForm.icon === preset.key ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700 text-zinc-400'"
+                :title="preset.label"
               >
-                {{ emoji.emoji }}
+                <component :is="preset.icon" class="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -803,9 +805,14 @@ import {
   Columns3,
   Download,
   Eye,
+  FileSpreadsheet,
   FileText,
+  Github,
+  Globe,
   HardDrive,
   Link2,
+  Palette,
+  PenTool,
   Pencil,
   Pin,
   Plus,
@@ -813,6 +820,9 @@ import {
   Upload,
   X
 } from 'lucide-vue-next'
+import { PROJECT_ICON_PRESETS, iconComponentFor } from '../../utils/iconPresets'
+import { t } from '../../i18n'
+import type { Component } from 'vue'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
@@ -851,22 +861,11 @@ const isUploading = ref(false)
 const uploadPct = ref(0)
 
 const COLOR_PRESETS = ['#3B82F6', '#8B5CF6', '#EC4899', '#EF4444', '#F59E0B', '#10B981', '#06B6D4', '#71717A']
-const ICON_PRESETS = [
-  { key: 'briefcase', emoji: '💼' },
-  { key: 'rocket', emoji: '🚀' },
-  { key: 'target', emoji: '🎯' },
-  { key: 'book', emoji: '📚' },
-  { key: 'wrench', emoji: '🔧' },
-  { key: 'home', emoji: '🏠' },
-  { key: 'chart', emoji: '📈' },
-  { key: 'palette', emoji: '🎨' }
-]
-
 const TABS = [
-  { key: 'board', label: 'Kanban Board', icon: Columns3, count: () => projectTasks.value.length },
-  { key: 'calendar', label: 'Calendar', icon: Calendar, count: () => projectTasks.value.length + workspaceStore.events.length },
-  { key: 'pages', label: 'Pages & Notes', icon: BookOpen, count: () => workspaceStore.notes.length },
-  { key: 'files', label: 'Documents & Links', icon: HardDrive, count: () => projectAttachments.value.length + workspaceStore.links.length }
+  { key: 'board', labelKey: 'pd.tabs.board', icon: Columns3, count: () => projectTasks.value.length },
+  { key: 'calendar', labelKey: 'pd.tabs.calendar', icon: Calendar, count: () => projectTasks.value.length + workspaceStore.events.length },
+  { key: 'pages', labelKey: 'pd.tabs.pages', icon: BookOpen, count: () => workspaceStore.notes.length },
+  { key: 'files', labelKey: 'pd.tabs.files', icon: HardDrive, count: () => projectAttachments.value.length + workspaceStore.links.length }
 ]
 
 // ===== Tab state (synced with ?tab=) =====
@@ -1353,10 +1352,6 @@ async function deleteAttachment() {
 }
 
 // ===== Helpers =====
-function iconEmoji(icon: string): string {
-  return ICON_PRESETS.find(i => i.key === icon)?.emoji || '💼'
-}
-
 function statusBadgeClass(status: ProjectStatus): string {
   switch (status) {
     case 'ACTIVE':
@@ -1372,21 +1367,17 @@ function statusBadgeClass(status: ProjectStatus): string {
   }
 }
 
-function linkTypeIcon(type: ProjectLinkType): string {
-  switch (type) {
-    case 'CANVA':
-      return '🎨'
-    case 'FIGMA':
-      return '🖌️'
-    case 'GITHUB':
-      return '💻'
-    case 'SHEET':
-      return '📄'
-    case 'WEBSITE':
-      return '🌐'
-    default:
-      return '🔗'
-  }
+const LINK_TYPE_ICONS: Record<ProjectLinkType, Component> = {
+  CANVA: Palette,
+  FIGMA: PenTool,
+  GITHUB: Github,
+  SHEET: FileSpreadsheet,
+  WEBSITE: Globe,
+  OTHER: Link2
+}
+
+function linkTypeIcon(type: ProjectLinkType): Component {
+  return LINK_TYPE_ICONS[type] || Link2
 }
 
 function formatFileSize(bytes: number): string {

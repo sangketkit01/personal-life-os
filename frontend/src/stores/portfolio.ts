@@ -43,8 +43,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   async function fetchPortfolios() {
     try {
       const res = await apiClient.get<InvestmentPortfolio[]>('/portfolio/portfolios/')
-      portfolios.value = res.data
-      return res.data
+      // The ViewSet response is DRF-paginated ({count, next, previous, results}).
+      // Storing the raw dict made v-for iterate next/previous (null) and crash
+      // the whole render tree with "Cannot read properties of null (reading 'id')".
+      const data = res.data as any
+      portfolios.value = Array.isArray(data) ? data : (data?.results || [])
+      return portfolios.value
     } catch (err: any) {
       console.error('Failed to load portfolios', err)
       throw err

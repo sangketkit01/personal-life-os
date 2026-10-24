@@ -11,8 +11,16 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'telegram_chat_id', 'is_telegram_connected', 'created_at')
-        read_only_fields = ('id', 'telegram_chat_id', 'created_at')
+        fields = (
+            'id',
+            'username',
+            'email',
+            'telegram_chat_id',
+            'is_telegram_connected',
+            'preferred_language',
+            'created_at'
+        )
+        read_only_fields = ('id', 'username', 'email', 'telegram_chat_id', 'created_at')
 
     def get_is_telegram_connected(self, obj):
         return bool(obj.telegram_chat_id)

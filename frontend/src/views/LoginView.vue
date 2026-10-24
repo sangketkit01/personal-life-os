@@ -7,7 +7,7 @@
           <Command class="w-4 h-4" />
         </div>
         <h1 class="text-base font-semibold text-zinc-100 tracking-tight">Personal Life OS</h1>
-        <p class="text-xs text-zinc-500 mt-1">Authenticate to access management console</p>
+        <p class="text-xs text-zinc-500 mt-1">{{ t('auth.subtitle') }}</p>
       </div>
 
       <!-- Error Alert -->
@@ -18,7 +18,7 @@
       <!-- Form -->
       <form @submit.prevent="handleLogin" class="space-y-3.5">
         <div>
-          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Username or Email</label>
+          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">{{ t('auth.usernameOrEmail') }}</label>
           <input
             v-model="form.username"
             type="text"
@@ -30,7 +30,7 @@
         </div>
 
         <div>
-          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Password</label>
+          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">{{ t('auth.password') }}</label>
           <input
             v-model="form.password"
             type="password"
@@ -46,7 +46,7 @@
           :disabled="isSubmitting"
           class="w-full py-2 px-4 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs transition-colors disabled:opacity-50 mt-1"
         >
-          {{ isSubmitting ? 'Authenticating...' : 'Sign In' }}
+          {{ isSubmitting ? t('auth.authenticating') : t('auth.loginBtn') }}
         </button>
       </form>
 
@@ -65,6 +65,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { t } from '../i18n'
 import { Command } from 'lucide-vue-next'
 
 const router = useRouter()

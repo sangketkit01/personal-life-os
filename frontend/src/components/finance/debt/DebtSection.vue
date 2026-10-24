@@ -111,7 +111,7 @@
                   Debtor
                 </span>
                 <span v-if="debtor.metadata?.contact" class="text-xs text-zinc-400 font-mono">
-                  📞 {{ debtor.metadata.contact }}
+                  <Phone class="w-3 h-3 inline" /> {{ debtor.metadata.contact }}
                 </span>
               </div>
               <h3 class="text-sm font-semibold text-zinc-100 mt-1 font-sans">
@@ -311,10 +311,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import {
+ ref, computed } from 'vue'
 import { useToastStore } from '../../../stores/toast'
 import type { FinancialObligation } from '../../../types/finance'
 import {
+  Phone,
+
   UserCheck,
   HandCoins,
   Plus,

@@ -4,13 +4,13 @@
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
       <div>
         <div class="flex items-center gap-2.5">
-          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">System Overview</h1>
+          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">{{ t('ov.title') }}</h1>
           <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-zinc-900 text-zinc-400 border border-zinc-800">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-            Operational
+            {{ t('ov.operational') }}
           </span>
         </div>
-        <p class="text-xs text-zinc-500 mt-1">Logged in as {{ authStore.user?.username }} • Central command for obligations, assets, and tasks</p>
+        <p class="text-xs text-zinc-500 mt-1">{{ t('ov.loggedInAs', { name: authStore.user?.username || '' }) }}</p>
       </div>
 
       <div class="flex items-center gap-2.5">
@@ -19,14 +19,14 @@
           class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 text-xs font-medium transition-colors flex items-center gap-1.5"
         >
           <CreditCard class="w-3.5 h-3.5 text-zinc-400" />
-          <span>Financial Radar</span>
+          <span>{{ t('nav.finance') }}</span>
         </RouterLink>
         <RouterLink
           to="/portfolio"
           class="px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5"
         >
           <TrendingUp class="w-3.5 h-3.5 text-zinc-950" />
-          <span>Portfolio</span>
+          <span>{{ t('ov.portfolio') }}</span>
         </RouterLink>
       </div>
     </div>
@@ -36,60 +36,60 @@
       <!-- 1. Monthly Burn Rate -->
       <div class="p-4 rounded-lg bg-zinc-900/40 border border-zinc-800/80 relative">
         <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-500">
-          <span>Monthly Burn Rate</span>
-          <span>Fixed</span>
+          <span>{{ t('ov.burnRate') }}</span>
+          <span>{{ t('ov.fixed') }}</span>
         </div>
         <div class="mt-2.5 flex items-baseline gap-1.5">
           <span class="text-xl font-semibold font-mono text-zinc-100 tabular-nums">
             ฿{{ Number(financeStore.overview?.confirmed_burn_rate || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
           </span>
-          <span class="text-[11px] text-zinc-500 font-mono">/ mo</span>
+          <span class="text-[11px] text-zinc-500 font-mono">{{ t('ov.perMonth') }}</span>
         </div>
         <div class="mt-3 text-[11px] text-zinc-500 flex items-center gap-1.5 border-t border-zinc-800/50 pt-2.5">
           <span class="w-1.5 h-1.5 rounded-full bg-zinc-400"></span>
-          <span>Total committed fixed obligations</span>
+          <span>{{ t('ov.totalFixed') }}</span>
         </div>
       </div>
 
       <!-- 2. Due in Next 7 Days -->
       <div class="p-4 rounded-lg bg-zinc-900/40 border border-zinc-800/80 relative">
         <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-500">
-          <span>Due In 7 Days</span>
-          <span>Upcoming</span>
+          <span>{{ t('ov.dueIn7') }}</span>
+          <span>{{ t('ov.upcoming') }}</span>
         </div>
         <div class="mt-2.5 flex items-baseline gap-1.5">
           <span class="text-xl font-semibold font-mono text-zinc-100 tabular-nums">
             {{ financeStore.overview?.upcoming_7_days_count || 0 }}
           </span>
-          <span class="text-[11px] text-zinc-500 font-mono">items</span>
+          <span class="text-[11px] text-zinc-500 font-mono">{{ t('ov.items') }}</span>
         </div>
         <div class="mt-3 text-[11px] text-zinc-500 flex items-center gap-1.5 border-t border-zinc-800/50 pt-2.5">
           <span
             class="w-1.5 h-1.5 rounded-full"
             :class="(financeStore.overview?.upcoming_7_days_count || 0) > 0 ? 'bg-amber-400' : 'bg-emerald-400'"
           />
-          <span>{{ (financeStore.overview?.upcoming_7_days_count || 0) > 0 ? 'Pending settlements this week' : 'No upcoming payments' }}</span>
+          <span>{{ (financeStore.overview?.upcoming_7_days_count || 0) > 0 ? t('ov.pendingSettlements') : t('ov.noUpcoming') }}</span>
         </div>
       </div>
 
       <!-- 3. Free Trial Liability -->
       <div class="p-4 rounded-lg bg-zinc-900/40 border border-zinc-800/80 relative">
         <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-500">
-          <span>Trial Liability</span>
-          <span>Risk</span>
+          <span>{{ t('ov.trialLiability') }}</span>
+          <span>{{ t('ov.risk') }}</span>
         </div>
         <div class="mt-2.5 flex items-baseline gap-1.5">
           <span class="text-xl font-semibold font-mono text-zinc-100 tabular-nums">
             {{ financeStore.overview?.active_trials_count || 0 }}
           </span>
-          <span class="text-[11px] text-zinc-500 font-mono">active trials</span>
+          <span class="text-[11px] text-zinc-500 font-mono">{{ t('ov.activeTrials') }}</span>
         </div>
         <div class="mt-3 text-[11px] text-zinc-500 flex items-center gap-1.5 border-t border-zinc-800/50 pt-2.5">
           <span
             class="w-1.5 h-1.5 rounded-full"
             :class="(financeStore.overview?.critical_trials_count || 0) > 0 ? 'bg-rose-400' : 'bg-zinc-500'"
           />
-          <span>Potential risk: ฿{{ Number(financeStore.overview?.potential_risk_amount || 0).toLocaleString('th-TH') }}</span>
+          <span>{{ t('ov.potentialRisk', { amount: Number(financeStore.overview?.potential_risk_amount || 0).toLocaleString('th-TH') }) }}</span>
         </div>
       </div>
 
@@ -99,7 +99,7 @@
         class="p-4 rounded-lg bg-zinc-900/40 border border-zinc-800/80 hover:border-zinc-700/80 transition-colors block group relative"
       >
         <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-500">
-          <span>Portfolio Value</span>
+          <span>{{ t('ov.portfolioValue') }}</span>
           <span
             class="font-mono text-[10px] tabular-nums"
             :class="Number(activePortfolioSummary.total_unrealized_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'"
@@ -115,9 +115,9 @@
         <div class="mt-3 text-[11px] text-zinc-500 flex items-center justify-between border-t border-zinc-800/50 pt-2.5">
           <span class="flex items-center gap-1.5">
             <span class="w-1.5 h-1.5 rounded-full bg-zinc-400"></span>
-            <span>{{ portfolioStore.overview?.active_assets_count || 0 }} assets tracked</span>
+            <span>{{ t('ov.assetsTracked', { count: portfolioStore.overview?.active_assets_count || 0 }) }}</span>
           </span>
-          <span class="text-[10px] font-mono text-zinc-400 group-hover:text-zinc-200 transition-colors">Details →</span>
+          <span class="text-[10px] font-mono text-zinc-400 group-hover:text-zinc-200 transition-colors">{{ t('ov.details') }}</span>
         </div>
       </RouterLink>
     </div>
@@ -127,15 +127,15 @@
       <div class="px-5 py-3.5 border-b border-zinc-800/80 flex items-center justify-between">
         <div class="flex items-center gap-2">
           <Calendar class="w-3.5 h-3.5 text-zinc-400" />
-          <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Upcoming In 7 Days</h2>
+          <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t('ov.upcomingIn7') }}</h2>
         </div>
         <RouterLink to="/finance" class="text-[11px] font-mono text-zinc-400 hover:text-zinc-200 transition-colors">
-          View all in Radar →
+          {{ t('ov.viewAllRadar') }}
         </RouterLink>
       </div>
 
       <div v-if="(financeStore.overview?.upcoming_7_days?.length || 0) === 0" class="p-8 text-center text-xs text-zinc-500 font-mono">
-        No upcoming bills or trials requiring settlement within the next 7 days.
+        {{ t('ov.noUpcomingBills') }}
       </div>
 
       <div v-else class="divide-y divide-zinc-800/60 font-mono text-xs">
@@ -152,7 +152,7 @@
             <div>
               <div class="text-xs font-medium text-zinc-200 font-sans">{{ bill.title }}</div>
               <div class="text-[10px] text-zinc-500">
-                {{ bill.days_left === 0 ? 'Due today' : `Due in ${bill.days_left} day${bill.days_left > 1 ? 's' : ''}` }}
+                {{ bill.days_left === 0 ? t('ov.dueToday') : t('ov.dueInDays', { days: bill.days_left }) }}
               </div>
             </div>
           </div>
@@ -165,7 +165,7 @@
               to="/finance"
               class="px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-sans text-zinc-300 transition-colors"
             >
-              Manage
+              {{ t('ov.manage') }}
             </RouterLink>
           </div>
         </div>
@@ -177,22 +177,22 @@
       <div class="px-5 py-3.5 border-b border-zinc-800/80 flex items-center justify-between">
         <div class="flex items-center gap-2">
           <Newspaper class="w-3.5 h-3.5 text-zinc-400" />
-          <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Today's Market Intelligence</h2>
+          <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t('ov.marketIntel') }}</h2>
         </div>
         <RouterLink to="/portfolio" class="text-[11px] font-mono text-zinc-400 hover:text-zinc-200 transition-colors">
-          View all in Portfolio →
+          {{ t('ov.viewAllPortfolio') }}
         </RouterLink>
       </div>
 
       <div v-if="portfolioStore.isLoadingNews" class="p-8 text-center text-xs text-zinc-500 font-mono">
         <RefreshCw class="w-4 h-4 animate-spin mx-auto mb-2 text-zinc-400" />
-        Loading today's headlines...
+        {{ t('ov.loadingHeadlines') }}
       </div>
 
       <div v-else-if="todayNews.length === 0" class="p-8 text-center text-xs text-zinc-500 font-mono">
-        No market news recorded for today yet.
+        {{ t('ov.noNewsToday') }}
         <RouterLink to="/portfolio" class="text-zinc-300 underline ml-1 hover:text-white">
-          Go to Portfolio to sync
+          {{ t('ov.goSync') }}
         </RouterLink>
       </div>
 
@@ -207,7 +207,7 @@
               <button
                 @click="goToAssetDetail(article.ticker)"
                 class="px-1.5 py-0.5 rounded text-[10px] font-bold font-mono bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white border border-zinc-700/60 transition-colors"
-                title="View Asset Details"
+                :title="t('ov.viewAsset')"
               >
                 ${{ article.ticker }}
               </button>
@@ -251,7 +251,7 @@
                 target="_blank"
                 rel="noopener noreferrer"
                 class="text-zinc-500 hover:text-zinc-200 p-1"
-                title="Original external article"
+                :title="t('ov.originalArticle')"
               >
                 <ExternalLink class="w-3 h-3" />
               </a>
@@ -280,7 +280,7 @@
               @click="goToNewsDetail(article.id)"
               class="inline-flex items-center gap-1 text-[11px] font-mono text-zinc-300 hover:text-white font-semibold transition-colors group"
             >
-              <span>Read Full Intelligence & AI Summary</span>
+              <span>{{ t('ov.readFull') }}</span>
               <span class="group-hover:translate-x-0.5 transition-transform">→</span>
             </button>
           </div>
@@ -295,10 +295,10 @@
         <div class="px-5 py-3.5 border-b border-zinc-800/80 flex items-center justify-between">
           <div class="flex items-center gap-2">
             <CreditCard class="w-3.5 h-3.5 text-zinc-400" />
-            <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Obligations Breakdown</h2>
+            <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t('ov.obligationsBreakdown') }}</h2>
           </div>
           <RouterLink to="/finance" class="text-[11px] font-mono text-zinc-400 hover:text-zinc-200 transition-colors">
-            Open Radar →
+            {{ t('ov.openRadar') }}
           </RouterLink>
         </div>
 
@@ -306,40 +306,40 @@
           <div class="p-2.5 rounded bg-zinc-900/60 border border-zinc-800/60 flex items-center justify-between">
             <span class="text-zinc-400 flex items-center gap-2">
               <span class="w-1.5 h-1.5 rounded-full bg-zinc-500"></span>
-              Installment Schedules
+              {{ t('ov.installmentSchedules') }}
             </span>
             <span class="font-mono text-zinc-200 font-medium">
-              {{ financeStore.overview?.items_by_type?.INSTALLMENT?.length || 0 }} items
+              {{ financeStore.overview?.items_by_type?.INSTALLMENT?.length || 0 }} {{ t('ov.items') }}
             </span>
           </div>
 
           <div class="p-2.5 rounded bg-zinc-900/60 border border-zinc-800/60 flex items-center justify-between">
             <span class="text-zinc-400 flex items-center gap-2">
               <span class="w-1.5 h-1.5 rounded-full bg-zinc-500"></span>
-              Free Trial Alerts
+              {{ t('ov.freeTrialAlerts') }}
             </span>
             <span class="font-mono text-zinc-200 font-medium">
-              {{ financeStore.overview?.items_by_type?.FREE_TRIAL?.length || 0 }} items
+              {{ financeStore.overview?.items_by_type?.FREE_TRIAL?.length || 0 }} {{ t('ov.items') }}
             </span>
           </div>
 
           <div class="p-2.5 rounded bg-zinc-900/60 border border-zinc-800/60 flex items-center justify-between">
             <span class="text-zinc-400 flex items-center gap-2">
               <span class="w-1.5 h-1.5 rounded-full bg-zinc-500"></span>
-              Subscriptions
+              {{ t('ov.subscriptions') }}
             </span>
             <span class="font-mono text-zinc-200 font-medium">
-              {{ financeStore.overview?.items_by_type?.SUBSCRIPTION?.length || 0 }} items
+              {{ financeStore.overview?.items_by_type?.SUBSCRIPTION?.length || 0 }} {{ t('ov.items') }}
             </span>
           </div>
 
           <div class="p-2.5 rounded bg-zinc-900/60 border border-zinc-800/60 flex items-center justify-between">
             <span class="text-zinc-400 flex items-center gap-2">
               <span class="w-1.5 h-1.5 rounded-full bg-zinc-500"></span>
-              Debt Settlements
+              {{ t('ov.debtSettlements') }}
             </span>
             <span class="font-mono text-zinc-200 font-medium">
-              {{ financeStore.overview?.items_by_type?.DEBT?.length || 0 }} items
+              {{ financeStore.overview?.items_by_type?.DEBT?.length || 0 }} {{ t('ov.items') }}
             </span>
           </div>
         </div>
@@ -350,10 +350,10 @@
         <div class="px-5 py-3.5 border-b border-zinc-800/80 flex items-center justify-between">
           <div class="flex items-center gap-2">
             <FolderKanban class="w-3.5 h-3.5 text-zinc-400" />
-            <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Document Pipeline</h2>
+            <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t('ov.documentPipeline') }}</h2>
           </div>
           <RouterLink to="/workspace" class="text-[11px] font-mono text-zinc-400 hover:text-zinc-200 transition-colors">
-            Open Board →
+            {{ t('ov.openBoard') }}
           </RouterLink>
         </div>
 
@@ -361,40 +361,40 @@
           <div class="p-2.5 rounded bg-zinc-900/60 border border-zinc-800/60 flex items-center justify-between">
             <span class="text-zinc-400 flex items-center gap-2">
               <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-              To Do Tasks
+              {{ t('ov.todoTasks') }}
             </span>
             <span class="font-mono text-zinc-200 font-medium">
-              {{ workspaceStore.overview?.pipeline_counts?.todo || 0 }} tasks
+              {{ workspaceStore.overview?.pipeline_counts?.todo || 0 }} {{ t('common.tasks') }}
             </span>
           </div>
 
           <div class="p-2.5 rounded bg-zinc-900/60 border border-zinc-800/60 flex items-center justify-between">
             <span class="text-zinc-400 flex items-center gap-2">
               <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-              Doing / In Progress
+              {{ t('ov.doingTasks') }}
             </span>
             <span class="font-mono text-zinc-200 font-medium">
-              {{ workspaceStore.overview?.pipeline_counts?.doing || 0 }} tasks
+              {{ workspaceStore.overview?.pipeline_counts?.doing || 0 }} {{ t('common.tasks') }}
             </span>
           </div>
 
           <div class="p-2.5 rounded bg-zinc-900/60 border border-zinc-800/60 flex items-center justify-between">
             <span class="text-zinc-400 flex items-center gap-2">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              Completed Tasks
+              {{ t('ov.completedTasks') }}
             </span>
             <span class="font-mono text-zinc-200 font-medium">
-              {{ workspaceStore.overview?.pipeline_counts?.done || 0 }} tasks
+              {{ workspaceStore.overview?.pipeline_counts?.done || 0 }} {{ t('common.tasks') }}
             </span>
           </div>
 
           <div class="p-2.5 rounded bg-zinc-900/60 border border-zinc-800/60 flex items-center justify-between">
             <span class="text-zinc-400 flex items-center gap-2">
               <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
-              Upcoming Deadlines (7 Days)
+              {{ t('ov.upcomingDeadlines') }}
             </span>
             <span class="font-mono text-zinc-200 font-medium">
-              {{ workspaceStore.overview?.upcoming_deadlines_count || 0 }} deadlines
+              {{ workspaceStore.overview?.upcoming_deadlines_count || 0 }} {{ t('ov.deadlines') }}
             </span>
           </div>
         </div>
@@ -411,6 +411,7 @@ import { useFinanceStore } from '../stores/finance'
 import { useWorkspaceStore } from '../stores/workspace'
 import { usePortfolioStore } from '../stores/portfolio'
 import { useToastStore } from '../stores/toast'
+import { t, formatLocaleDate } from '../i18n'
 import type { StockNewsArticle } from '../types/portfolio'
 import {
   CreditCard,
@@ -461,11 +462,7 @@ function getSentimentClass(sentiment: string) {
 
 function formatDateTime(dateStr: string) {
   if (!dateStr) return ''
-  const d = new Date(dateStr)
-  return d.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  return formatLocaleDate(dateStr, 'datetime')
 }
 
 function getSummary(article: StockNewsArticle): string {

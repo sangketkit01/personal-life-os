@@ -1,5 +1,5 @@
 <template>
-  <div ref="rootEl" class="relative" @keydown="handleKeydown" @click="handleEditorClick" @paste="handlePaste">
+  <div ref="rootEl" class="relative" @keydown="handleKeydown" @click="handleEditorClick" @paste="handlePaste" @mousedown="handleEditorMouseDown" @mousemove="handleEditorMouseMove" @mouseup="handleEditorMouseUp">
     <!-- Sticky Rich Formatting Toolbar -->
     <div class="sticky top-0 z-20 -mx-1 px-1 py-2 mb-3 border-b border-zinc-800/60 bg-zinc-950/95 backdrop-blur flex items-center gap-1 flex-wrap select-none">
       <!-- Inline styles -->
@@ -49,8 +49,9 @@
 
       <!-- Block types -->
       <div class="flex items-center gap-0.5 pr-1.5 mr-0.5 border-r border-zinc-800/70">
-        <button v-for="bt in BLOCK_TYPE_BUTTONS" :key="bt.type" type="button" class="h-6 px-1.5 rounded text-[10px] font-mono transition-colors" :class="toolBtnClass" :title="bt.title" @mousedown.prevent @click="changeType(bt.type)">
-          {{ bt.icon }}
+        <button v-for="bt in BLOCK_TYPE_BUTTONS" :key="bt.type" type="button" class="h-6 px-1.5 rounded text-[10px] font-mono transition-colors flex items-center justify-center" :class="toolBtnClass" :title="bt.title" @mousedown.prevent @click="changeType(bt.type)">
+          <component v-if="bt.iconComp" :is="bt.iconComp" class="w-3.5 h-3.5" />
+          <span v-else>{{ bt.icon }}</span>
         </button>
       </div>
 
@@ -539,7 +540,10 @@
             class="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left text-xs text-zinc-300 transition-colors"
             :class="optIdx === slashMenu.selectedIndex ? 'bg-zinc-800 text-zinc-100' : 'hover:bg-zinc-900'"
           >
-            <span class="w-5 text-center text-zinc-500 font-mono text-[10px]">{{ option.icon }}</span>
+            <span class="w-5 flex justify-center text-zinc-500">
+              <component v-if="option.iconComp" :is="option.iconComp" class="w-3.5 h-3.5" />
+              <span v-else-if="option.icon" class="font-mono text-[10px]">{{ option.icon }}</span>
+            </span>
             <span>{{ option.label }}</span>
           </button>
           <div v-if="slashOptions.length === 0" class="px-2 py-2 text-[11px] text-zinc-500 font-mono">
@@ -708,7 +712,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch, type Component } from 'vue'
 import {
   AlignCenter,
   AlignLeft,
@@ -732,6 +736,7 @@ import {
   Maximize2,
   Mic,
   Paperclip,
+  Quote,
   SwitchCamera,
   Table2,
   Trash2,
@@ -806,31 +811,40 @@ function findIndexForNode(node: Node | null): number {
   return -1
 }
 
-const BLOCK_LIBRARY: Array<{ type: NoteBlockType; label: string; icon: string }> = [
+interface BlockLibraryEntry {
+  type: NoteBlockType
+  label: string
+  /** Typographic glyph (P, H1, • ...) rendered as text. */
+  icon?: string
+  /** Lucide component rendered instead of the glyph when present. */
+  iconComp?: Component
+}
+
+const BLOCK_LIBRARY: BlockLibraryEntry[] = [
   { type: 'h1', label: 'Heading 1', icon: 'H1' },
   { type: 'h2', label: 'Heading 2', icon: 'H2' },
   { type: 'h3', label: 'Heading 3', icon: 'H3' },
   { type: 'paragraph', label: 'Text', icon: '¶' },
-  { type: 'todo', label: 'To-do Checkbox', icon: '☑' },
+  { type: 'todo', label: 'To-do Checkbox', iconComp: ListTodo },
   { type: 'bullet', label: 'Bullet List', icon: '•' },
   { type: 'numbered', label: 'Numbered List', icon: '1.' },
-  { type: 'callout', label: 'Callout Box', icon: '💡' },
+  { type: 'callout', label: 'Callout Box', iconComp: Lightbulb },
   { type: 'code', label: 'Code Block', icon: '{}' },
-  { type: 'quote', label: 'Quote', icon: '❝' },
+  { type: 'quote', label: 'Quote', iconComp: Quote },
   { type: 'divider', label: 'Divider', icon: '—' },
-  { type: 'image', label: 'Image', icon: '🖼' },
-  { type: 'audio', label: 'Audio / Voice Memo', icon: '🎙' },
-  { type: 'file', label: 'File / Document', icon: '📎' },
-  { type: 'table', label: 'Table', icon: '▦' }
+  { type: 'image', label: 'Image', iconComp: ImageIcon },
+  { type: 'audio', label: 'Audio / Voice Memo', iconComp: Mic },
+  { type: 'file', label: 'File / Document', iconComp: Paperclip },
+  { type: 'table', label: 'Table', iconComp: Table2 }
 ]
 
-const BLOCK_TYPE_BUTTONS: Array<{ type: NoteBlockType; icon: string; title: string }> = [
+const BLOCK_TYPE_BUTTONS: Array<{ type: NoteBlockType; icon?: string; title: string; iconComp?: Component }> = [
   { type: 'paragraph', icon: 'P', title: 'Text' },
   { type: 'h1', icon: 'H1', title: 'Heading 1' },
   { type: 'h2', icon: 'H2', title: 'Heading 2' },
   { type: 'h3', icon: 'H3', title: 'Heading 3' },
-  { type: 'quote', icon: '❝', title: 'Quote' },
-  { type: 'callout', icon: '💡', title: 'Callout' },
+  { type: 'quote', title: 'Quote', iconComp: Quote },
+  { type: 'callout', title: 'Callout', iconComp: Lightbulb },
   { type: 'divider', icon: '—', title: 'Divider' }
 ]
 
@@ -1205,41 +1219,115 @@ function execFormat(command: string, value?: string) {
     syncBlockFromDom(startIdx)
     return
   }
-  // Multi-block selection: apply per block with sub-ranges, then restore selection
+
+  // Multi-block selection. execCommand only operates on the FOCUSED editable,
+  // so we must focus each block and re-apply its sub-range before formatting.
   const sel = window.getSelection()
-  const original = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null
+  const active = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null
+  if (!active) return
+
+  // Snapshot every per-block sub-range BEFORE any DOM mutation happens
+  const subRanges: Array<{ idx: number; range: Range }> = []
   for (let i = startIdx; i <= endIdx; i++) {
     const el = blockRefs.get(i)
     if (!el || !isEditable(el)) continue
     const sub = document.createRange()
-    if (i === startIdx && original) {
-      sub.setStart(original.startContainer, original.startOffset)
+    if (i === startIdx) {
+      sub.setStart(active.startContainer, active.startOffset)
       sub.setEnd(el, el.childNodes.length)
-    } else if (i === endIdx && original) {
+    } else if (i === endIdx) {
       sub.setStart(el, 0)
-      sub.setEnd(original.endContainer, original.endOffset)
+      sub.setEnd(active.endContainer, active.endOffset)
     } else {
       sub.selectNodeContents(el)
     }
+    if (!sub.collapsed) {
+      subRanges.push({ idx: i, range: sub })
+    }
+  }
+
+  for (const { idx, range: sub } of subRanges) {
+    const el = blockRefs.get(idx)
+    if (!el || !sub.startContainer.isConnected) continue
+    el.focus({ preventScroll: true })
     sel?.removeAllRanges()
     sel?.addRange(sub)
     document.execCommand(command, false, value)
-    syncBlockFromDom(i)
+    syncBlockFromDom(idx)
   }
-  if (original && sel) {
-    sel.removeAllRanges()
-    sel.addRange(original)
+
+  // Restore the cross-block selection (re-anchor if the DOM was rewritten)
+  if (sel) {
+    const elA = blockRefs.get(startIdx)
+    const elB = blockRefs.get(endIdx)
+    if (elA && elB) {
+      try {
+        const restored = document.createRange()
+        if (active.startContainer.isConnected) {
+          restored.setStart(active.startContainer, active.startOffset)
+        } else {
+          restored.setStart(elA, 0)
+        }
+        if (active.endContainer.isConnected) {
+          restored.setEnd(active.endContainer, active.endOffset)
+        } else {
+          restored.setEnd(elB, elB.childNodes.length)
+        }
+        sel.removeAllRanges()
+        sel.addRange(restored)
+      } catch {
+        /* selection restore is best-effort */
+      }
+    }
   }
 }
 
 function execInlineCode() {
   const sel = window.getSelection()
   if (!sel || sel.rangeCount === 0) return
-  const text = sel.toString()
-  if (!text) return
-  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  document.execCommand('insertHTML', false, `<code>${escaped}</code>`)
-  syncBlockFromDom(currentEditableIndex())
+  const range = getSelectionBlockRange()
+  if (!range) return
+  const [startIdx, endIdx] = range
+  if (startIdx === endIdx) {
+    const text = sel.toString()
+    if (!text) return
+    const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    document.execCommand('insertHTML', false, `<code>${escaped}</code>`)
+    syncBlockFromDom(startIdx)
+    return
+  }
+
+  const active = sel.getRangeAt(0).cloneRange()
+  const subRanges: Array<{ idx: number; range: Range }> = []
+  for (let i = startIdx; i <= endIdx; i++) {
+    const el = blockRefs.get(i)
+    if (!el || !isEditable(el)) continue
+    const sub = document.createRange()
+    if (i === startIdx) {
+      sub.setStart(active.startContainer, active.startOffset)
+      sub.setEnd(el, el.childNodes.length)
+    } else if (i === endIdx) {
+      sub.setStart(el, 0)
+      sub.setEnd(active.endContainer, active.endOffset)
+    } else {
+      sub.selectNodeContents(el)
+    }
+    if (!sub.collapsed) {
+      subRanges.push({ idx: i, range: sub })
+    }
+  }
+  for (const { idx, range: sub } of subRanges) {
+    const el = blockRefs.get(idx)
+    if (!el || !sub.startContainer.isConnected) continue
+    const text = sub.toString()
+    if (!text) continue
+    el.focus({ preventScroll: true })
+    sel.removeAllRanges()
+    sel.addRange(sub)
+    const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    document.execCommand('insertHTML', false, `<code>${escaped}</code>`)
+    syncBlockFromDom(idx)
+  }
 }
 
 function syncBlockFromDom(index: number) {
@@ -1347,6 +1435,89 @@ function unlinkAt(anchor: HTMLAnchorElement | null) {
   document.execCommand('unlink')
   const index = findIndexByRef(anchor.closest('.rich-editable') as HTMLElement)
   if (index !== -1) syncBlockFromDom(index)
+}
+
+// ===== Cross-block mouse drag selection =====
+// Native browser selection is clamped inside a single contenteditable element,
+// so dragging from one block to another would stop at the line break.
+// We track the anchor point on mousedown and manually extend the selection
+// to whichever block the pointer is over using caretRangeFromPoint.
+
+let mouseDragAnchor: { blockIndex: number; offsetNode: Node; offset: number } | null = null
+
+function handleEditorMouseDown(event: MouseEvent) {
+  mouseDragAnchor = null
+  if (event.button !== 0) return
+  const target = event.target as HTMLElement
+  if (!target.isContentEditable) return
+  // mousedown fires BEFORE the browser collapses the previous selection,
+  // so derive the anchor from the physical click point - never from the
+  // stale selection (which may still span a previous cross-block range).
+  const pointRange = caretRangeFromPoint(event.clientX, event.clientY)
+  if (!pointRange) return
+  const blockIndex = findIndexForNode(pointRange.startContainer)
+  if (blockIndex === -1) return
+  mouseDragAnchor = { blockIndex, offsetNode: pointRange.startContainer, offset: pointRange.startOffset }
+}
+
+function handleEditorMouseMove(event: MouseEvent) {
+  if (!(event.buttons & 1)) {
+    mouseDragAnchor = null
+    return
+  }
+  if (!mouseDragAnchor) return
+  if (!mouseDragAnchor.offsetNode.isConnected) {
+    // The anchor text node was replaced by a re-render - restart anchoring
+    mouseDragAnchor = null
+    return
+  }
+  const anchorIdx = mouseDragAnchor.blockIndex
+  const pointRange = caretRangeFromPoint(event.clientX, event.clientY)
+  if (!pointRange) return
+  const currentIdx = findIndexForNode(pointRange.startContainer)
+  // Same block: let the browser extend the native selection itself
+  if (currentIdx === -1 || currentIdx === anchorIdx) return
+  const elA = blockRefs.get(anchorIdx)
+  const elB = blockRefs.get(currentIdx)
+  if (!elA || !elB || !isEditable(elA) || !isEditable(elB)) return
+
+  const range = document.createRange()
+  if (currentIdx > anchorIdx) {
+    range.setStart(mouseDragAnchor.offsetNode, mouseDragAnchor.offset)
+    range.setEnd(pointRange.startContainer, pointRange.startOffset)
+  } else {
+    range.setStart(pointRange.startContainer, pointRange.startOffset)
+    range.setEnd(mouseDragAnchor.offsetNode, mouseDragAnchor.offset)
+  }
+  const sel = window.getSelection()
+  sel?.removeAllRanges()
+  sel?.addRange(range)
+}
+
+function handleEditorMouseUp() {
+  mouseDragAnchor = null
+}
+
+function caretRangeFromPoint(x: number, y: number): Range | null {
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+    caretRangeFromPoint?: (x: number, y: number) => Range | null
+  }
+  if (doc.caretPositionFromPoint) {
+    const pos = doc.caretPositionFromPoint(x, y)
+    if (pos && rootEl.value?.contains(pos.offsetNode)) {
+      const r = document.createRange()
+      r.setStart(pos.offsetNode, pos.offset)
+      r.collapse(true)
+      return r
+    }
+    return null
+  }
+  if (doc.caretRangeFromPoint) {
+    const r = doc.caretRangeFromPoint(x, y)
+    if (r && rootEl.value?.contains(r.startContainer)) return r
+  }
+  return null
 }
 
 // ===== Selection bubble =====
@@ -2328,10 +2499,12 @@ function cancelRecording() {
 
 onMounted(() => {
   document.addEventListener('selectionchange', handleSelectionChange)
+  window.addEventListener('mouseup', handleEditorMouseUp)
 })
 
 onUnmounted(() => {
   document.removeEventListener('selectionchange', handleSelectionChange)
+  window.removeEventListener('mouseup', handleEditorMouseUp)
 })
 
 onBeforeUnmount(() => {

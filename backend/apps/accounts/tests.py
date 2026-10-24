@@ -266,3 +266,35 @@ class AuthTestCase(TestCase):
         )
         session = UserDeviceSession.objects.filter(user=self.admin).first()
         self.assertEqual(session.ip_address, '127.0.0.1')
+
+
+class PreferredLanguageTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='languser',
+            email='lang@test.com',
+            password='Password123!'
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_me_returns_default_language(self):
+        """GET /api/auth/me/ returns preferred_language 'en' by default."""
+        res = self.client.get('/api/auth/me/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['preferred_language'], 'en')
+
+    def test_me_patch_updates_language(self):
+        """PATCH /api/auth/me/ persists preferred_language 'th' to the database."""
+        res = self.client.patch('/api/auth/me/', {'preferred_language': 'th'}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['preferred_language'], 'th')
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.preferred_language, 'th')
+
+    def test_me_patch_rejects_invalid_language(self):
+        """PATCH with an unsupported language code returns HTTP 400."""
+        res = self.client.patch('/api/auth/me/', {'preferred_language': 'fr'}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.preferred_language, 'en')

@@ -18,18 +18,18 @@
       <!-- Form -->
       <form @submit.prevent="handleRegister" class="space-y-3.5">
         <div>
-          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Invite Code</label>
+          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">{{ t('auth.inviteCode') }}</label>
           <input
             v-model="form.invite_code"
             type="text"
             required
-            placeholder="e.g. LIFE-FOUNDER-2026"
+            :placeholder="t('auth.inviteCodePlaceholder')"
             class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs font-mono text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors uppercase"
           />
         </div>
 
         <div>
-          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Username</label>
+          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">{{ t('auth.username') }}</label>
           <input
             v-model="form.username"
             type="text"
@@ -40,7 +40,7 @@
         </div>
 
         <div>
-          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Email</label>
+          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">{{ t('auth.email') }}</label>
           <input
             v-model="form.email"
             type="email"
@@ -51,7 +51,7 @@
         </div>
 
         <div>
-          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Password</label>
+          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">{{ t('auth.password') }}</label>
           <input
             v-model="form.password"
             type="password"
@@ -73,9 +73,9 @@
 
       <!-- Footer link to login -->
       <div class="mt-6 pt-5 border-t border-zinc-800/80 text-center text-xs text-zinc-500">
-        Already have credentials?
+        {{ t('auth.haveInvite') }}
         <RouterLink to="/login" class="text-zinc-300 hover:text-white font-medium ml-1 transition-colors">
-          Sign In →
+          {{ t('auth.loginLink') }} →
         </RouterLink>
       </div>
     </div>
@@ -86,6 +86,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { t } from '../i18n'
 import { Ticket } from 'lucide-vue-next'
 
 const router = useRouter()

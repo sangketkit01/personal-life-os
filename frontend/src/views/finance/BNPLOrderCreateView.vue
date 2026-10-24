@@ -124,7 +124,7 @@
             v-if="isDownPaymentInsufficient"
             class="p-2 rounded bg-rose-500/10 border border-rose-500/30 text-rose-400 text-[11px] font-mono flex items-center gap-1.5"
           >
-            <span>⚠️ Insufficient account balance for this down payment.</span>
+            <span class="flex items-center gap-1"><AlertTriangle class="w-3.5 h-3.5" /> Insufficient account balance for this down payment.</span>
           </div>
         </div>
 
@@ -267,12 +267,15 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, onMounted } from 'vue'
+import {
+ reactive, ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBNPL } from '../../composables/finance/useBNPL'
 import { useLedgerStore } from '../../stores/ledger'
 import { useToastStore } from '../../stores/toast'
-import { ArrowLeft, Check } from 'lucide-vue-next'
+import {
+  AlertTriangle,
+ ArrowLeft, Check } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()

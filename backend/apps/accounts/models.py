@@ -5,6 +5,11 @@ from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
 
 
+class LanguageChoices(models.TextChoices):
+    EN = 'en', 'English'
+    TH = 'th', 'Thai'
+
+
 class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     telegram_chat_id = models.CharField(
@@ -27,6 +32,12 @@ class User(AbstractUser):
         blank=True,
         related_name='invitees',
         verbose_name="Invited By"
+    )
+    preferred_language = models.CharField(
+        max_length=5,
+        choices=LanguageChoices.choices,
+        default=LanguageChoices.EN,
+        verbose_name="Preferred Language"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

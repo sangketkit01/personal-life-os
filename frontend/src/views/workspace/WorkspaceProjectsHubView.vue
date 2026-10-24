@@ -4,12 +4,12 @@
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
       <div>
         <div class="flex items-center gap-2.5">
-          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">Projects Hub</h1>
+          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">{{ t('ws.title') }}</h1>
           <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-zinc-900 text-zinc-400 border border-zinc-800">
-            WORKSPACE 2.0
+            {{ t('ws.badge') }}
           </span>
         </div>
-        <p class="text-xs text-zinc-500 mt-1">Notion-style project hub with boards, calendars, pages and a Google Drive vault</p>
+        <p class="text-xs text-zinc-500 mt-1">{{ t('ws.subtitle') }}</p>
       </div>
 
       <button
@@ -17,7 +17,7 @@
         class="px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 self-start"
       >
         <Plus class="w-3.5 h-3.5" />
-        <span>New Project</span>
+        <span>{{ t('ws.newProject') }}</span>
       </button>
     </div>
 
@@ -26,39 +26,39 @@
       <div class="p-4 rounded-lg bg-zinc-900/30 border border-zinc-800/80">
         <div class="flex items-center gap-2 mb-2">
           <FolderKanban class="w-3.5 h-3.5 text-zinc-500" />
-          <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Active Projects</span>
+          <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-500">{{ t('ws.metric.active') }}</span>
         </div>
         <div class="text-2xl font-semibold text-zinc-100 font-mono">{{ metricActiveProjects }}</div>
-        <div class="text-[10px] font-mono text-zinc-600 mt-1">{{ metricPlanning }} in planning</div>
+        <div class="text-[10px] font-mono text-zinc-600 mt-1">{{ t('ws.metric.inPlanning', { count: metricPlanning }) }}</div>
       </div>
 
       <div class="p-4 rounded-lg bg-zinc-900/30 border border-zinc-800/80">
         <div class="flex items-center gap-2 mb-2">
           <Activity class="w-3.5 h-3.5 text-sky-400/70" />
-          <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-500">In Progress (Doing)</span>
+          <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-500">{{ t('ws.metric.inProgress') }}</span>
         </div>
         <div class="text-2xl font-semibold text-zinc-100 font-mono">{{ metricDoing }}</div>
-        <div class="text-[10px] font-mono text-zinc-600 mt-1">{{ metricTodo }} in backlog</div>
+        <div class="text-[10px] font-mono text-zinc-600 mt-1">{{ t('ws.metric.inBacklog', { count: metricTodo }) }}</div>
       </div>
 
       <div class="p-4 rounded-lg bg-zinc-900/30 border border-zinc-800/80">
         <div class="flex items-center gap-2 mb-2">
           <CalendarClock class="w-3.5 h-3.5 text-amber-400/70" />
-          <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Due in 7 Days</span>
+          <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-500">{{ t('ws.metric.dueIn7') }}</span>
         </div>
         <div class="text-2xl font-semibold text-zinc-100 font-mono">{{ metricDueSoon }}</div>
         <div class="text-[10px] font-mono mt-1" :class="metricOverdue > 0 ? 'text-rose-400' : 'text-zinc-600'">
-          {{ metricOverdue }} overdue
+          {{ t('ws.metric.overdue', { count: metricOverdue }) }}
         </div>
       </div>
 
       <div class="p-4 rounded-lg bg-zinc-900/30 border border-zinc-800/80">
         <div class="flex items-center gap-2 mb-2">
           <BookOpen class="w-3.5 h-3.5 text-zinc-500" />
-          <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Knowledge Pages</span>
+          <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-500">{{ t('ws.metric.knowledge') }}</span>
         </div>
         <div class="text-2xl font-semibold text-zinc-100 font-mono">{{ metricNotes }}</div>
-        <div class="text-[10px] font-mono text-zinc-600 mt-1">across all projects</div>
+        <div class="text-[10px] font-mono text-zinc-600 mt-1">{{ t('ws.metric.acrossAll') }}</div>
       </div>
     </div>
 
@@ -72,7 +72,7 @@
           class="px-3 py-1 rounded text-xs font-medium transition-colors"
           :class="activeFilter === tab.key ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'"
         >
-          {{ tab.label }}
+          {{ t(tab.labelKey) }}
           <span class="ml-1 text-[10px] font-mono text-zinc-500">{{ filteredProjects(tab.key).length }}</span>
         </button>
       </div>
@@ -82,7 +82,7 @@
         <input
           v-model="searchQuery"
           type="text"
-          placeholder="Search projects..."
+          :placeholder="t('ws.searchProjects')"
           class="w-full bg-zinc-900/60 border border-zinc-800/80 rounded-md pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-600"
         />
       </div>
@@ -91,12 +91,12 @@
     <!-- Projects Grid -->
     <div v-if="visibleProjects.length === 0" class="p-12 rounded-lg bg-zinc-900/30 border border-zinc-800 text-center space-y-3">
       <FolderKanban class="w-8 h-8 text-zinc-700 mx-auto" />
-      <p class="text-xs font-mono text-zinc-500">No projects here yet.</p>
+      <p class="text-xs font-mono text-zinc-500">{{ t('ws.empty') }}</p>
       <button
         @click="openCreateModal()"
         class="px-3 py-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-medium transition-colors inline-block"
       >
-        + Create your first project
+        {{ t('ws.createFirst') }}
       </button>
     </div>
 
@@ -117,7 +117,7 @@
                 class="w-8 h-8 rounded-md flex items-center justify-center text-sm shrink-0 border"
                 :style="{ backgroundColor: `${project.color}1A`, borderColor: `${project.color}40` }"
               >
-                {{ iconEmoji(project.icon) }}
+                <component :is="iconComponentFor(project.icon)" class="w-4 h-4" />
               </div>
               <div class="min-w-0">
                 <h3 class="text-sm font-semibold text-zinc-100 truncate group-hover:text-white transition-colors">{{ project.name }}</h3>
@@ -139,7 +139,7 @@
               type="button"
               @click.stop="openEditModal(project)"
               class="p-1 rounded text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800 transition-colors shrink-0"
-              title="Edit project"
+              :title="t('ws.editProject')"
             >
               <Pencil class="w-3.5 h-3.5" />
             </button>
@@ -152,7 +152,7 @@
           <!-- Completion progress -->
           <div class="mt-auto space-y-1.5">
             <div class="flex items-center justify-between text-[10px] font-mono text-zinc-500">
-              <span>Task Progress</span>
+              <span>{{ t('ws.taskProgress') }}</span>
               <span>{{ project.completed_tasks_count }}/{{ project.total_tasks_count }} ({{ progressPct(project) }}%)</span>
             </div>
             <div class="h-1.5 rounded-full bg-zinc-900 border border-zinc-800/60 overflow-hidden">
@@ -165,10 +165,10 @@
 
           <!-- Counters footer -->
           <div class="pt-2.5 border-t border-zinc-800/60 flex items-center justify-between text-[10px] font-mono text-zinc-500">
-            <span title="Tasks">📋 {{ project.total_tasks_count }}</span>
-            <span title="Pages">📝 {{ project.notes_count }}</span>
-            <span title="Links">🔗 {{ project.links_count }}</span>
-            <span title="Files">📎 {{ project.attachments_count }}</span>
+            <span class="flex items-center gap-1" title="Tasks"><ListTodo class="w-3 h-3" /> {{ project.total_tasks_count }}</span>
+            <span class="flex items-center gap-1" title="Pages"><StickyNote class="w-3 h-3" /> {{ project.notes_count }}</span>
+            <span class="flex items-center gap-1" title="Links"><Link2 class="w-3 h-3" /> {{ project.links_count }}</span>
+            <span class="flex items-center gap-1" title="Files"><Paperclip class="w-3 h-3" /> {{ project.attachments_count }}</span>
           </div>
         </div>
       </div>
@@ -189,52 +189,52 @@
         </button>
 
         <h3 class="text-sm font-semibold text-zinc-100 mb-1">
-          {{ editingProject ? 'Edit Project' : 'Create New Project' }}
+          {{ editingProject ? t('ws.modal.edit') : t('ws.modal.create') }}
         </h3>
-        <p class="text-xs text-zinc-500 mb-4">Organize tasks, pages, links and files under one roof.</p>
+        <p class="text-xs text-zinc-500 mb-4">{{ t('ws.modal.subtitle') }}</p>
 
         <div class="space-y-3.5">
           <div>
-            <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">Project Name *</label>
+            <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">{{ t('ws.modal.name') }}</label>
             <input
               v-model="form.name"
               type="text"
-              placeholder="e.g. Client Website Redesign"
+              :placeholder="t('ws.modal.namePlaceholder')"
               class="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-600"
             />
           </div>
 
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">Status</label>
+              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">{{ t('ws.modal.status') }}</label>
               <select
                 v-model="form.status"
                 class="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-100 outline-none focus:border-zinc-600"
               >
-                <option value="PLANNING">Planning</option>
-                <option value="ACTIVE">Active</option>
-                <option value="ON_HOLD">On Hold</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="ARCHIVED">Archived</option>
+                <option value="PLANNING">{{ t('st.status.planning') }}</option>
+                <option value="ACTIVE">{{ t('st.status.active') }}</option>
+                <option value="ON_HOLD">{{ t('st.status.onHold') }}</option>
+                <option value="COMPLETED">{{ t('st.status.completed') }}</option>
+                <option value="ARCHIVED">{{ t('st.status.archived') }}</option>
               </select>
             </div>
             <div>
-              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">Category</label>
+              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">{{ t('ws.modal.category') }}</label>
               <select
                 v-model="form.category"
                 class="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-100 outline-none focus:border-zinc-600"
               >
-                <option value="GENERAL">General</option>
-                <option value="CLIENT">Client</option>
-                <option value="INTERNAL">Internal</option>
-                <option value="PERSONAL">Personal</option>
-                <option value="DEV">Dev</option>
+                <option value="GENERAL">{{ t('st.category.general') }}</option>
+                <option value="CLIENT">{{ t('st.category.client') }}</option>
+                <option value="INTERNAL">{{ t('st.category.internal') }}</option>
+                <option value="PERSONAL">{{ t('st.category.personal') }}</option>
+                <option value="DEV">{{ t('st.category.dev') }}</option>
               </select>
             </div>
           </div>
 
           <div>
-            <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1.5">Color & Icon</label>
+            <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1.5">{{ t('ws.modal.colorIcon') }}</label>
             <div class="flex items-center gap-2 flex-wrap">
               <button
                 v-for="color in COLOR_PRESETS"
@@ -247,21 +247,22 @@
               />
               <span class="mx-1 w-px h-5 bg-zinc-800" />
               <button
-                v-for="emoji in ICON_PRESETS"
-                :key="emoji.emoji"
+                v-for="preset in PROJECT_ICON_PRESETS"
+                :key="preset.key"
                 type="button"
-                @click="form.icon = emoji.key"
-                class="w-7 h-7 rounded-md flex items-center justify-center text-sm transition-colors border"
-                :class="form.icon === emoji.key ? 'bg-zinc-800 border-zinc-600' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'"
+                @click="form.icon = preset.key"
+                class="w-7 h-7 rounded-md flex items-center justify-center transition-colors border"
+                :class="form.icon === preset.key ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700 text-zinc-400'"
+                :title="preset.label"
               >
-                {{ emoji.emoji }}
+                <component :is="preset.icon" class="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
 
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">Start Date</label>
+              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">{{ t('ws.modal.startDate') }}</label>
               <input
                 v-model="form.start_date"
                 type="date"
@@ -269,7 +270,7 @@
               />
             </div>
             <div>
-              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">Target Date</label>
+              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">{{ t('ws.modal.targetDate') }}</label>
               <input
                 v-model="form.target_date"
                 type="date"
@@ -279,11 +280,11 @@
           </div>
 
           <div>
-            <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">Description</label>
+            <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">{{ t('ws.modal.description') }}</label>
             <textarea
               v-model="form.description"
               rows="3"
-              placeholder="Project goal, scope, stakeholders..."
+              :placeholder="t('ws.modal.descPlaceholder')"
               class="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-600 resize-y"
             />
           </div>
@@ -295,7 +296,7 @@
             @click="showProjectModal = false"
             class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors"
           >
-            Cancel
+            {{ t('cancel') }}
           </button>
           <button
             type="button"
@@ -303,7 +304,7 @@
             :disabled="isSubmitting"
             class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors shadow-sm disabled:opacity-50"
           >
-            {{ editingProject ? 'Save Changes' : 'Create Project' }}
+            {{ editingProject ? t('ws.modal.saveBtn') : t('ws.modal.createBtn') }}
           </button>
         </div>
       </div>
@@ -316,14 +317,19 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Activity,
-  BookOpen,
   CalendarClock,
   FolderKanban,
+  Link2,
+  ListTodo,
+  Paperclip,
   Pencil,
   Plus,
   Search,
+  StickyNote,
   X
 } from 'lucide-vue-next'
+import { PROJECT_ICON_PRESETS, iconComponentFor } from '../../utils/iconPresets'
+import { t } from '../../i18n'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
 import type { ProjectStatus, WorkspaceProject } from '../../types/workspace'
@@ -333,23 +339,12 @@ const workspaceStore = useWorkspaceStore()
 const toast = useToastStore()
 
 const COLOR_PRESETS = ['#3B82F6', '#8B5CF6', '#EC4899', '#EF4444', '#F59E0B', '#10B981', '#06B6D4', '#71717A']
-const ICON_PRESETS = [
-  { key: 'briefcase', emoji: '💼' },
-  { key: 'rocket', emoji: '🚀' },
-  { key: 'target', emoji: '🎯' },
-  { key: 'book', emoji: '📚' },
-  { key: 'wrench', emoji: '🔧' },
-  { key: 'home', emoji: '🏠' },
-  { key: 'chart', emoji: '📈' },
-  { key: 'palette', emoji: '🎨' }
-]
-
 type FilterKey = 'active' | 'done' | 'archived'
 
-const filterTabs: Array<{ key: FilterKey; label: string }> = [
-  { key: 'active', label: 'Active Projects' },
-  { key: 'done', label: 'Completed / On Hold' },
-  { key: 'archived', label: 'Archived' }
+const filterTabs: Array<{ key: FilterKey; labelKey: string }> = [
+  { key: 'active', labelKey: 'ws.tab.active' },
+  { key: 'done', labelKey: 'ws.tab.done' },
+  { key: 'archived', labelKey: 'ws.tab.archived' }
 ]
 
 const activeFilter = ref<FilterKey>('active')
@@ -425,10 +420,6 @@ function progressPct(project: WorkspaceProject): number {
   const total = project.total_tasks_count || 0
   if (total === 0) return 0
   return Math.round(((project.completed_tasks_count || 0) / total) * 100)
-}
-
-function iconEmoji(icon: string): string {
-  return ICON_PRESETS.find(i => i.key === icon)?.emoji || '💼'
 }
 
 function statusBadgeClass(status: ProjectStatus): string {

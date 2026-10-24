@@ -17,7 +17,7 @@
             :class="column.dotClass"
             :style="column.status === 'DOING' ? 'animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;' : ''"
           />
-          <h3 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ column.label }}</h3>
+          <h3 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t(column.labelKey) }}</h3>
         </div>
         <div class="flex items-center gap-1.5">
           <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
@@ -27,7 +27,7 @@
             type="button"
             @click="emit('create-task', column.status)"
             class="p-0.5 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
-            :title="`Add task to ${column.label}`"
+            :title="t('kanban.addTask', { column: t(column.labelKey) })"
           >
             <Plus class="w-3.5 h-3.5" />
           </button>
@@ -40,7 +40,7 @@
           v-if="columnTasks(column.status).length === 0"
           class="p-8 text-center text-xs font-mono text-zinc-600 border border-dashed border-zinc-800/80 rounded"
         >
-          {{ column.emptyText }}
+          {{ t(column.emptyKey) }}
         </div>
 
         <div
@@ -99,7 +99,7 @@
               class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400"
               :class="{ 'text-emerald-400': checklistCompleted(task) === checklistTotal(task) }"
             >
-              ✓ {{ checklistCompleted(task) }}/{{ checklistTotal(task) }}
+              <Check class="w-2.5 h-2.5" /> {{ checklistCompleted(task) }}/{{ checklistTotal(task) }}
             </span>
 
             <span class="ml-auto flex items-center gap-1.5 text-zinc-600">
@@ -118,7 +118,7 @@
               class="px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 text-[10px] transition-colors flex items-center gap-1"
             >
               <ArrowLeft class="w-3 h-3" />
-              <span>{{ column.prevLabel }}</span>
+              <span>{{ t(column.prevLabelKey) }}</span>
             </button>
             <span v-else />
 
@@ -131,7 +131,7 @@
                 ? 'bg-zinc-100 hover:bg-white text-zinc-950 font-semibold'
                 : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'"
             >
-              <span>{{ column.nextLabel }}</span>
+              <span>{{ t(column.nextLabelKey) }}</span>
               <ArrowRight v-if="column.status !== 'DONE'" class="w-3 h-3" />
               <Check v-else class="w-3 h-3" />
             </button>
@@ -145,6 +145,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ArrowLeft, ArrowRight, Check, FileText, Link2, Paperclip, Plus } from 'lucide-vue-next'
+import { t } from '../../i18n'
 import type { TaskDocument, TaskPriority, TaskStatus, DeadlineInfo } from '../../types/workspace'
 
 const props = defineProps<{
@@ -165,33 +166,33 @@ const draggedTaskId = ref('')
 const columns = [
   {
     status: 'TODO' as TaskStatus,
-    label: 'To Do',
+    labelKey: 'kanban.toDo',
     dotClass: 'bg-amber-400',
-    emptyText: 'No tasks to do',
+    emptyKey: 'kanban.noTasks',
     prevStatus: null,
-    prevLabel: '',
+    prevLabelKey: '',
     nextStatus: 'DOING' as TaskStatus,
-    nextLabel: 'Start'
+    nextLabelKey: 'kanban.start'
   },
   {
     status: 'DOING' as TaskStatus,
-    label: 'Doing / In Progress',
+    labelKey: 'kanban.doing',
     dotClass: 'bg-sky-400',
-    emptyText: 'Nothing in progress',
+    emptyKey: 'kanban.noTasks',
     prevStatus: 'TODO' as TaskStatus,
-    prevLabel: 'Back',
+    prevLabelKey: 'kanban.back',
     nextStatus: 'DONE' as TaskStatus,
-    nextLabel: 'Complete'
+    nextLabelKey: 'kanban.complete'
   },
   {
     status: 'DONE' as TaskStatus,
-    label: 'Done',
+    labelKey: 'kanban.done',
     dotClass: 'bg-emerald-400',
-    emptyText: 'No completed tasks',
+    emptyKey: 'kanban.noTasks',
     prevStatus: 'DOING' as TaskStatus,
-    prevLabel: 'Reopen',
+    prevLabelKey: 'kanban.reopen',
     nextStatus: null,
-    nextLabel: ''
+    nextLabelKey: ''
   }
 ]
 

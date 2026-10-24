@@ -4,12 +4,12 @@
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
       <div>
         <div class="flex items-center gap-2.5">
-          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">Radar Overview</h1>
+          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">{{ t('nav.finance.radar') }}</h1>
           <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-zinc-900 text-zinc-400 border border-zinc-800">
             TIMELINE & CASHFLOW
           </span>
         </div>
-        <p class="text-xs text-zinc-500 mt-1">Command center: Fixed burn rate, upcoming settlement calendar, and early warning radar</p>
+        <p class="text-xs text-zinc-500 mt-1">{{ t('fin.subtitle') }}</p>
       </div>
 
       <div class="flex items-center gap-2.5 self-start sm:self-auto">
@@ -18,14 +18,14 @@
           class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
         >
           <Plus class="w-3.5 h-3.5 text-zinc-950" />
-          <span>New Obligation</span>
+          <span>{{ t('pd.newTask') }}</span>
         </button>
       </div>
     </div>
 
     <!-- Dashboard Content -->
     <div v-if="financeStore.isLoading" class="p-12 text-center text-xs font-mono text-zinc-500">
-      Loading radar data...
+      {{ t('ov.loadingHeadlines') }}
     </div>
 
     <FinanceRadarDashboard
@@ -55,6 +55,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFinanceStore } from '../../stores/finance'
+import { t } from '../../i18n'
 import type { FinancialObligation } from '../../types/finance'
 import FinanceRadarDashboard from '../../components/finance/overview/FinanceRadarDashboard.vue'
 import CreateObligationModal from '../../components/finance/CreateObligationModal.vue'

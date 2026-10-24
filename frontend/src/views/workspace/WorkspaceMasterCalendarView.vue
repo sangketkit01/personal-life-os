@@ -4,12 +4,12 @@
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
       <div>
         <div class="flex items-center gap-2.5">
-          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">Master Calendar</h1>
+          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">{{ t('cal.title') }}</h1>
           <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-zinc-900 text-zinc-400 border border-zinc-800">
-            ALL PROJECTS
+            {{ t('cal.badge') }}
           </span>
         </div>
-        <p class="text-xs text-zinc-500 mt-1">Tasks, deadlines and standalone schedules across every project. Click any day to add an entry.</p>
+        <p class="text-xs text-zinc-500 mt-1">{{ t('cal.subtitle') }}</p>
       </div>
 
       <button
@@ -17,7 +17,7 @@
         class="px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 self-start"
       >
         <Plus class="w-3.5 h-3.5" />
-        <span>New Entry</span>
+        <span>{{ t('cal.newEntry') }}</span>
       </button>
     </div>
 
@@ -27,7 +27,7 @@
         v-model="filterProject"
         class="bg-zinc-900/60 border border-zinc-800/80 rounded-md px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-zinc-600"
       >
-        <option value="">All Projects</option>
+        <option value="">{{ t('cal.allProjects') }}</option>
         <option v-for="p in workspaceStore.projects" :key="p.id" :value="p.id">{{ p.name }}</option>
       </select>
 
@@ -35,7 +35,7 @@
         v-model="filterPriority"
         class="bg-zinc-900/60 border border-zinc-800/80 rounded-md px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-zinc-600"
       >
-        <option value="">All Priorities</option>
+        <option value="">{{ t('cal.allPriorities') }}</option>
         <option value="URGENT">Urgent</option>
         <option value="HIGH">High</option>
         <option value="MEDIUM">Medium</option>
@@ -43,7 +43,7 @@
       </select>
 
       <div class="text-[11px] font-mono text-zinc-500 ml-auto">
-        {{ filteredTasks.length }} tasks • {{ filteredEvents.length }} events
+        {{ t('cal.tasksEvents', { tasks: filteredTasks.length, events: filteredEvents.length }) }}
       </div>
     </div>
 
@@ -94,6 +94,7 @@ import { computed, onMounted, ref } from 'vue'
 import { Plus } from 'lucide-vue-next'
 import { useWorkspaceStore } from '../../stores/workspace'
 import WorkspaceCalendarGrid from '../../components/workspace/WorkspaceCalendarGrid.vue'
+import { t } from '../../i18n'
 import TaskSidePeekDrawer from '../../components/workspace/TaskSidePeekDrawer.vue'
 import CalendarQuickCreateModal from '../../components/workspace/CalendarQuickCreateModal.vue'
 import CalendarEventModal from '../../components/workspace/CalendarEventModal.vue'

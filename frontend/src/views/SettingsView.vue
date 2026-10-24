@@ -1,8 +1,59 @@
 <template>
   <div class="space-y-6 max-w-4xl mx-auto font-sans">
     <div class="pb-4 border-b border-zinc-800/80">
-      <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">Settings & Security</h1>
-      <p class="text-xs text-zinc-500 mt-0.5">Manage active device sessions, Telegram Butler webhook authorization, and membership invite codes</p>
+      <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">{{ t('st.title') }}</h1>
+      <p class="text-xs text-zinc-500 mt-0.5">{{ t('st.subtitle') }}</p>
+    </div>
+
+    <!-- 0. Language & Localization -->
+    <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
+      <div class="p-4 border-b border-zinc-800/80 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-md bg-zinc-900 text-zinc-200 flex items-center justify-center border border-zinc-800">
+            <Languages class="w-4 h-4" />
+          </div>
+          <div>
+            <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t('st.lang.title') }}</h2>
+            <p class="text-xs text-zinc-500">{{ t('st.lang.subtitle') }}</p>
+          </div>
+        </div>
+
+        <span class="text-[10px] font-mono px-2 py-0.5 rounded border uppercase bg-zinc-900 text-zinc-300 border-zinc-800">
+          {{ locale === 'th' ? 'TH' : 'EN' }}
+        </span>
+      </div>
+
+      <div class="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <button
+          type="button"
+          @click="switchLanguage('en')"
+          class="p-3.5 rounded-lg border text-left transition-all group"
+          :class="locale === 'en'
+            ? 'bg-zinc-900 border-zinc-600 shadow-sm'
+            : 'bg-zinc-950/40 border-zinc-800/80 hover:border-zinc-700'"
+        >
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-semibold" :class="locale === 'en' ? 'text-zinc-100' : 'text-zinc-300'">English (EN)</span>
+            <CheckCircle2 v-if="locale === 'en'" class="w-4 h-4 text-emerald-400" />
+          </div>
+          <p class="text-[11px] text-zinc-500 mt-1 leading-relaxed">{{ t('st.lang.enSub') }}</p>
+        </button>
+
+        <button
+          type="button"
+          @click="switchLanguage('th')"
+          class="p-3.5 rounded-lg border text-left transition-all group"
+          :class="locale === 'th'
+            ? 'bg-zinc-900 border-zinc-600 shadow-sm'
+            : 'bg-zinc-950/40 border-zinc-800/80 hover:border-zinc-700'"
+        >
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-semibold" :class="locale === 'th' ? 'text-zinc-100' : 'text-zinc-300'">ภาษาไทย (TH)</span>
+            <CheckCircle2 v-if="locale === 'th'" class="w-4 h-4 text-emerald-400" />
+          </div>
+          <p class="text-[11px] text-zinc-500 mt-1 leading-relaxed">เมนูและป้ายกำกับภาษาไทย พร้อมสรุปข่าวหุ้นแปลไทยอัตโนมัติ</p>
+        </button>
+      </div>
     </div>
 
     <!-- 1. Telegram Butler Connection -->
@@ -13,8 +64,8 @@
             <Bot class="w-4 h-4" />
           </div>
           <div>
-            <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Telegram Butler Bot</h2>
-            <p class="text-xs text-zinc-500">10:00 AM daily alert with interactive settlement actions</p>
+            <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t('st.tg.title') }}</h2>
+            <p class="text-xs text-zinc-500">{{ t('st.tg.subtitle') }}</p>
           </div>
         </div>
 
@@ -26,15 +77,15 @@
               : 'bg-zinc-900 text-zinc-500 border-zinc-800'
           ]"
         >
-          {{ authStore.user?.is_telegram_connected ? 'CONNECTED' : 'DISCONNECTED' }}
+          {{ authStore.user?.is_telegram_connected ? t('st.tg.connected') : t('st.tg.disconnected') }}
         </span>
       </div>
 
       <div class="p-4">
         <div v-if="authStore.user?.is_telegram_connected" class="p-3 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono flex items-center justify-between gap-3">
           <div class="flex items-center gap-2">
-            <span class="text-zinc-400">Linked Chat ID: <strong class="text-zinc-100 font-semibold">{{ authStore.user.telegram_chat_id }}</strong></span>
-            <span class="text-[11px] text-emerald-400">• Active</span>
+            <span class="text-zinc-400">{{ t('st.tg.linkedChat') }} <strong class="text-zinc-100 font-semibold">{{ authStore.user.telegram_chat_id }}</strong></span>
+            <span class="text-[11px] text-emerald-400">{{ t('st.tg.active') }}</span>
           </div>
           <button
             @click="handleDisconnectTelegram"
@@ -42,18 +93,18 @@
             type="button"
             class="px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-rose-400 text-xs font-sans transition-colors disabled:opacity-50"
           >
-            {{ isDisconnectingTelegram ? 'Disconnecting...' : 'Disconnect' }}
+            {{ isDisconnectingTelegram ? t('st.tg.disconnecting') : t('st.tg.disconnect') }}
           </button>
         </div>
 
         <div v-else class="flex items-center justify-between p-3 rounded-md bg-zinc-900/60 border border-zinc-800">
-          <span class="text-xs text-zinc-400">Authorize @brandy_personal_os_bot to receive private 1-on-1 notifications</span>
+          <span class="text-xs text-zinc-400">{{ t('st.tg.authorizeBot') }}</span>
           <button
             @click="handleConnectTelegram"
             :disabled="isGeneratingToken"
             class="px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors disabled:opacity-50"
           >
-            {{ isGeneratingToken ? 'Generating...' : 'Connect Telegram' }}
+            {{ isGeneratingToken ? t('st.tg.generating') : t('st.tg.connect') }}
           </button>
         </div>
       </div>
@@ -67,8 +118,8 @@
             <HardDrive class="w-4 h-4 text-zinc-400" />
           </div>
           <div>
-            <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Google Drive Cloud Storage</h2>
-            <p class="text-xs text-zinc-500 mt-0.5">Exclusive cloud storage for transaction slips, contracts, and documents (Zero-Disk Architecture)</p>
+            <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t('st.drive.title') }}</h2>
+            <p class="text-xs text-zinc-500 mt-0.5">{{ t('st.drive.subtitle') }}</p>
           </div>
         </div>
 
@@ -80,7 +131,7 @@
               : 'bg-zinc-900 text-zinc-500 border-zinc-800'
           ]"
         >
-          {{ storageStore.isConnected ? 'CONNECTED' : 'DISCONNECTED' }}
+          {{ storageStore.isConnected ? t('st.tg.connected') : t('st.tg.disconnected') }}
         </span>
       </div>
 
@@ -88,10 +139,10 @@
         <div v-if="storageStore.isConnected" class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
           <div class="space-y-0.5">
             <div class="text-zinc-300">
-              Connected Account: <strong class="text-zinc-100 font-semibold">{{ storageStore.googleEmail }}</strong>
+              {{ t('st.drive.connectedAccount') }} <strong class="text-zinc-100 font-semibold">{{ storageStore.googleEmail }}</strong>
             </div>
             <div class="text-[11px] text-zinc-500">
-              Cloud Directory: Personal Life OS (Ledger, Finance, Portfolio, Workspace)
+              {{ t('st.drive.cloudDir') }}
             </div>
           </div>
           <div class="flex items-center gap-2">
@@ -101,7 +152,7 @@
               target="_blank"
               class="px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-sans transition-colors flex items-center gap-1.5"
             >
-              <span>Open in Drive</span>
+              <span>{{ t('st.drive.openInDrive') }}</span>
               <ExternalLink class="w-3.5 h-3.5 text-zinc-400" />
             </a>
             <button
@@ -110,15 +161,15 @@
               type="button"
               class="px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs font-sans transition-colors"
             >
-              Disconnect
+              {{ t('st.tg.disconnect') }}
             </button>
           </div>
         </div>
 
         <div v-else class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-md bg-zinc-900/60 border border-zinc-800">
           <div>
-            <div class="text-xs text-zinc-200 font-medium">Google Drive connection is required for file storage</div>
-            <p class="text-[11px] text-zinc-500 mt-0.5">Connect your Google Drive account to enable receipt uploads and contract attachments</p>
+            <div class="text-xs text-zinc-200 font-medium">{{ t('st.drive.required') }}</div>
+            <p class="text-[11px] text-zinc-500 mt-0.5">{{ t('st.drive.requiredSub') }}</p>
           </div>
           <button
             @click="storageStore.startConnect"
@@ -127,7 +178,7 @@
             class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm shrink-0"
           >
             <CloudUpload class="w-3.5 h-3.5 text-zinc-950" />
-            <span>{{ storageStore.isConnecting ? 'Opening...' : 'Connect Google Drive' }}</span>
+            <span>{{ storageStore.isConnecting ? t('st.drive.opening') : t('st.drive.connect') }}</span>
           </button>
         </div>
       </div>
@@ -137,15 +188,15 @@
     <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
       <div class="p-4 border-b border-zinc-800/80 flex items-center justify-between">
         <div>
-          <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Password & Account Credentials</h2>
-          <p class="text-xs text-zinc-500 mt-0.5">Rotate your account password and automatically revoke all other device sessions</p>
+          <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t('st.pw.title') }}</h2>
+          <p class="text-xs text-zinc-500 mt-0.5">{{ t('st.pw.subtitle') }}</p>
         </div>
       </div>
 
       <form @submit.prevent="handleChangePassword" class="p-4 space-y-3">
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Current Password</label>
+            <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">{{ t('st.pw.current') }}</label>
             <input
               v-model="passwordForm.current_password"
               type="password"
@@ -156,14 +207,14 @@
             />
           </div>
           <div>
-            <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">New Password</label>
+            <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">{{ t('st.pw.new') }}</label>
             <input
               v-model="passwordForm.new_password"
               type="password"
               required
               minlength="8"
               autocomplete="new-password"
-              placeholder="Minimum 8 characters"
+              :placeholder="t('st.pw.minChars')"
               class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
             />
           </div>
@@ -174,7 +225,7 @@
             :disabled="isChangingPassword"
             class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors disabled:opacity-50"
           >
-            {{ isChangingPassword ? 'Updating...' : 'Update Password' }}
+            {{ isChangingPassword ? t('st.pw.updating') : t('st.pw.update') }}
           </button>
         </div>
       </form>
@@ -184,8 +235,8 @@
     <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
       <div class="p-4 border-b border-zinc-800/80 flex items-center justify-between gap-2">
         <div>
-          <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Active Sessions & Devices</h2>
-          <p class="text-xs text-zinc-500 mt-0.5">Track hardware fingerprints and revoke unauthorized sessions</p>
+          <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t('st.sess.title') }}</h2>
+          <p class="text-xs text-zinc-500 mt-0.5">{{ t('st.sess.subtitle') }}</p>
         </div>
         <div class="flex items-center gap-2">
           <button
@@ -194,7 +245,7 @@
             type="button"
             class="px-2.5 py-1 rounded bg-zinc-900 hover:bg-rose-950/20 text-zinc-400 hover:text-rose-400 border border-zinc-800 hover:border-rose-500/30 text-[11px] font-mono transition-colors"
           >
-            Revoke All Others
+            {{ t('st.sess.revokeAll') }}
           </button>
           <button
             @click="fetchSessions"
@@ -202,7 +253,7 @@
             class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1 font-mono"
           >
             <RefreshCw class="w-3 h-3" />
-            <span>Sync</span>
+            <span>{{ t('st.sess.sync') }}</span>
           </button>
         </div>
       </div>
@@ -224,11 +275,11 @@
                   v-if="session.is_current"
                   class="text-[9px] font-mono px-1 py-0.2 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/60"
                 >
-                  CURRENT
+                  {{ t('st.sess.current') }}
                 </span>
               </div>
               <div class="text-[10px] text-zinc-500 mt-0.5">
-                IP: {{ session.ip_address || 'Internal' }} • Last active: {{ new Date(session.last_active_at).toLocaleDateString('en-GB') }}
+                IP: {{ session.ip_address || t('st.sess.internal') }} • {{ t('st.sess.lastActive') }} {{ formatLocaleDate(session.last_active_at) }}
               </div>
             </div>
           </div>
@@ -238,7 +289,7 @@
             @click="revokeSession(session.id)"
             class="px-2 py-1 rounded bg-zinc-900 hover:bg-rose-950/20 text-zinc-400 hover:text-rose-400 border border-zinc-800 hover:border-rose-500/30 text-[11px] transition-colors"
           >
-            Revoke
+            {{ t('st.sess.revoke') }}
           </button>
         </div>
       </div>
@@ -248,21 +299,21 @@
     <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
       <div class="p-4 border-b border-zinc-800/80 flex items-center justify-between">
         <div>
-          <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Invitation Access Codes</h2>
-          <p class="text-xs text-zinc-500 mt-0.5">Generate single-use invite codes (1 Code = 1 User) to onboard trusted peers</p>
+          <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t('st.inv.title') }}</h2>
+          <p class="text-xs text-zinc-500 mt-0.5">{{ t('st.inv.subtitle') }}</p>
         </div>
         <button
           @click="createInviteCode"
           class="px-2.5 py-1 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1"
         >
           <Plus class="w-3 h-3 text-zinc-950" />
-          <span>New Invite Code</span>
+          <span>{{ t('st.inv.new') }}</span>
         </button>
       </div>
 
       <div class="p-4">
         <div v-if="invites.length === 0" class="p-8 text-center text-xs font-mono text-zinc-500">
-          No invite codes generated yet.
+          {{ t('st.inv.empty') }}
         </div>
 
         <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -274,9 +325,9 @@
             <div>
               <div class="text-xs font-bold text-zinc-200 tracking-wider">{{ inv.code }}</div>
               <div class="text-[10px] text-zinc-500 mt-0.5">
-                <span v-if="inv.used_by_username" class="text-zinc-400">Used by @{{ inv.used_by_username }} (1/1)</span>
-                <span v-else-if="inv.is_active" class="text-emerald-400">Available (1 User)</span>
-                <span v-else>Exhausted ({{ inv.uses_count }}/1)</span>
+                <span v-if="inv.used_by_username" class="text-zinc-400">{{ t('st.inv.usedBy') }} @{{ inv.used_by_username }} (1/1)</span>
+                <span v-else-if="inv.is_active" class="text-emerald-400">{{ t('st.inv.available') }}</span>
+                <span v-else>{{ t('st.inv.exhausted') }} ({{ inv.uses_count }}/1)</span>
               </div>
             </div>
             <div class="flex items-center gap-1.5">
@@ -287,7 +338,7 @@
                 class="px-2 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-[10px] transition-colors flex items-center gap-1"
               >
                 <Copy class="w-3 h-3" />
-                <span>Copy</span>
+                <span>{{ t('st.inv.copy') }}</span>
               </button>
               <button
                 @click="deleteInviteCode(inv.id, inv.code)"
@@ -311,8 +362,8 @@
             <ShieldCheck class="w-4 h-4 text-zinc-400" />
           </div>
           <div>
-            <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Security & Activity Audit Log</h2>
-            <p class="text-xs text-zinc-500 mt-0.5">Immutable audit trail of authentication events, financial operations, and portfolio executions</p>
+            <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t('st.log.title') }}</h2>
+            <p class="text-xs text-zinc-500 mt-0.5">{{ t('st.log.subtitle') }}</p>
           </div>
         </div>
         <button
@@ -321,25 +372,25 @@
           class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1 font-mono disabled:opacity-50"
         >
           <RefreshCw class="w-3 h-3" :class="{ 'animate-spin': isLoadingLogs }" />
-          <span>Sync</span>
+          <span>{{ t('st.sess.sync') }}</span>
         </button>
       </div>
 
       <div class="p-4">
         <div v-if="auditLogs.length === 0" class="p-8 text-center text-xs font-mono text-zinc-500">
-          No security activity recorded yet.
+          {{ t('st.log.empty') }}
         </div>
 
         <div v-else class="overflow-x-auto">
           <table class="w-full text-left text-xs font-mono">
             <thead>
               <tr class="border-b border-zinc-800/80 text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">
-                <th class="pb-2.5">Timestamp</th>
-                <th class="pb-2.5">Domain</th>
-                <th class="pb-2.5">Action</th>
-                <th class="pb-2.5">Description</th>
-                <th class="pb-2.5">Origin / Device</th>
-                <th class="pb-2.5 text-right">Status</th>
+                <th class="pb-2.5">{{ t('st.log.timestamp') }}</th>
+                <th class="pb-2.5">{{ t('st.log.domain') }}</th>
+                <th class="pb-2.5">{{ t('st.log.action') }}</th>
+                <th class="pb-2.5">{{ t('st.log.description') }}</th>
+                <th class="pb-2.5">{{ t('st.log.origin') }}</th>
+                <th class="pb-2.5 text-right">{{ t('st.log.status') }}</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-zinc-800/50">
@@ -375,7 +426,7 @@
 
                 <!-- Origin / Device -->
                 <td class="py-2.5 text-zinc-500 text-[11px] whitespace-nowrap">
-                  <span>{{ log.device_name || 'System' }}</span>
+                  <span>{{ log.device_name || t('st.log.system') }}</span>
                   <span v-if="log.ip_address" class="text-zinc-600 ml-1">({{ log.ip_address }})</span>
                 </td>
 
@@ -414,12 +465,16 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
+import { locale, setLocale, t, formatLocaleDate } from '../i18n'
+import type { AppLocale } from '../i18n'
 import { useStorageStore } from '../stores/storage'
 import { useToastStore } from '../stores/toast'
 import apiClient from '../api/client'
 import type { UserDeviceSession, InviteCode, ActivityLog } from '../types'
 import ConfirmModal from '../components/common/ConfirmModal.vue'
 import {
+  Languages,
+  CheckCircle2,
   Bot,
   Laptop,
   Plus,
@@ -435,6 +490,18 @@ import {
 const authStore = useAuthStore()
 const storageStore = useStorageStore()
 const toast = useToastStore()
+
+async function switchLanguage(next: AppLocale) {
+  if (locale.value === next) return
+  // UI reacts instantly; persist to backend without double-patching
+  setLocale(next, { syncBackend: false })
+  try {
+    await authStore.updatePreferences({ preferred_language: next })
+    toast.success(next === 'th' ? t('st.lang.switchedTh') : t('st.lang.switchedEn'))
+  } catch {
+    toast.error(t('st.lang.saveFailed'))
+  }
+}
 
 const isGeneratingToken = ref(false)
 const isDisconnectingTelegram = ref(false)
@@ -452,7 +519,7 @@ const confirmModal = reactive({
   isOpen: false,
   title: '',
   message: '',
-  confirmText: 'Confirm',
+  confirmText: t('common.confirm'),
   isDanger: true,
   action: () => {}
 })
@@ -468,25 +535,25 @@ async function handleConnectTelegram() {
     const data = await authStore.generateTelegramConnect()
     window.open(data.deep_link, '_blank')
   } catch (err) {
-    toast.error('Failed to generate connection link')
+    toast.error(t('st.tg.linkFailed'))
   } finally {
     isGeneratingToken.value = false
   }
 }
 
 function handleDisconnectTelegram() {
-  confirmModal.title = 'Disconnect Telegram Bot'
-  confirmModal.message = 'Are you sure you want to disconnect Telegram Bot? You will no longer receive daily notifications until reconnected.'
-  confirmModal.confirmText = 'Disconnect'
+  confirmModal.title = t('st.tg.disconnectTitle')
+  confirmModal.message = t('st.tg.disconnectMsg')
+  confirmModal.confirmText = t('st.tg.disconnect')
   confirmModal.isDanger = true
   confirmModal.action = async () => {
     isDisconnectingTelegram.value = true
     try {
       await authStore.disconnectTelegram()
       await fetchAuditLogs()
-      toast.info('Telegram account disconnected')
+      toast.info(t('st.tg.disconnectedToast'))
     } catch (err) {
-      toast.error('Failed to disconnect Telegram account')
+      toast.error(t('st.tg.disconnectFailed'))
     } finally {
       isDisconnectingTelegram.value = false
     }
@@ -502,10 +569,10 @@ async function handleChangePassword() {
     passwordForm.value.new_password = ''
     await fetchSessions()
     await fetchAuditLogs()
-    toast.success(res.message || 'Password updated successfully')
+    toast.success(res.message || t('st.pw.success'))
   } catch (err: any) {
     const errorData = err.response?.data
-    let msg = 'Failed to update password'
+    let msg = t('st.pw.failed')
     if (errorData) {
       if (typeof errorData.detail === 'string') msg = errorData.detail
       else {
@@ -536,16 +603,16 @@ async function revokeSession(id: string) {
     await apiClient.post(`/auth/sessions/${id}/revoke/`)
     await fetchSessions()
     await fetchAuditLogs()
-    toast.info('Session revoked successfully')
+    toast.info(t('st.sess.revokedToast'))
   } catch (err) {
-    toast.error('Failed to revoke session')
+    toast.error(t('st.sess.revokeFailed'))
   }
 }
 
 function revokeOtherSessions() {
-  confirmModal.title = 'Revoke All Other Sessions'
-  confirmModal.message = 'Are you sure you want to revoke all other active device sessions? Other logged-in devices will be signed out immediately.'
-  confirmModal.confirmText = 'Revoke All Others'
+  confirmModal.title = t('st.sess.revokeAllTitle')
+  confirmModal.message = t('st.sess.revokeAllMsg')
+  confirmModal.confirmText = t('st.sess.revokeAll')
   confirmModal.isDanger = true
   confirmModal.action = async () => {
     try {
@@ -554,7 +621,7 @@ function revokeOtherSessions() {
       await fetchAuditLogs()
       toast.info(res.data.message || 'Other sessions revoked')
     } catch (err) {
-      toast.error('Failed to revoke other sessions')
+      toast.error(t('st.sess.revokeFailed'))
     }
   }
   confirmModal.isOpen = true
@@ -574,25 +641,25 @@ async function createInviteCode() {
     await apiClient.post('/auth/invites/')
     await fetchInvites()
     await fetchAuditLogs()
-    toast.success('Generated new single-use invite code (1 User)')
+    toast.success(t('st.inv.createdToast'))
   } catch (err) {
     toast.error('Failed to create invite code')
   }
 }
 
 function deleteInviteCode(id: string, code: string) {
-  confirmModal.title = 'Delete Invite Code'
-  confirmModal.message = `Are you sure you want to delete invite code "${code}"? This action cannot be undone.`
-  confirmModal.confirmText = 'Delete Code'
+  confirmModal.title = t('st.inv.deleteTitle')
+  confirmModal.message = t('st.inv.deleteMsg', { code })
+  confirmModal.confirmText = t('st.inv.deleteConfirm')
   confirmModal.isDanger = true
   confirmModal.action = async () => {
     try {
       await apiClient.delete(`/auth/invites/${id}/`)
       await fetchInvites()
       await fetchAuditLogs()
-      toast.info(`Deleted invite code ${code}`)
+      toast.info(t('st.inv.deletedToast', { code }))
     } catch (err) {
-      toast.error('Failed to delete invite code')
+      toast.error(t('st.inv.createFailed'))
     }
   }
   confirmModal.isOpen = true
@@ -600,7 +667,7 @@ function deleteInviteCode(id: string, code: string) {
 
 function copyCode(code: string) {
   navigator.clipboard.writeText(code)
-  toast.success(`Copied invite code ${code} to clipboard`)
+  toast.success(t('st.inv.copiedToast', { code }))
 }
 
 async function fetchAuditLogs() {
@@ -618,12 +685,7 @@ async function fetchAuditLogs() {
 function formatLogTime(dateStr: string) {
   if (!dateStr) return ''
   const d = new Date(dateStr)
-  return d.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  return formatLocaleDate(d, 'datetime')
 }
 
 function getCategoryClass(_category: string) {
@@ -644,9 +706,9 @@ function getStatusClass(status: string) {
 }
 
 function handleDisconnectDrive() {
-  confirmModal.title = 'Disconnect Google Drive'
-  confirmModal.message = 'Are you sure you want to disconnect Google Drive? Uploading new files will be disabled until you reconnect.'
-  confirmModal.confirmText = 'Disconnect'
+  confirmModal.title = t('st.drive.disconnectTitle')
+  confirmModal.message = t('st.drive.disconnectMsg')
+  confirmModal.confirmText = t('st.tg.disconnect')
   confirmModal.isDanger = true
   confirmModal.action = async () => {
     await storageStore.disconnect()

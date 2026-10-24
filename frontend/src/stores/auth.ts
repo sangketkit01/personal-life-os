@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import apiClient from '../api/client'
 import type { User } from '../types'
+import { setLocale } from '../i18n'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
@@ -55,6 +56,9 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await apiClient.get<User>('/auth/me/')
       user.value = response.data
+      if (user.value?.preferred_language) {
+        setLocale(user.value.preferred_language, { syncBackend: false })
+      }
       startProactiveRefresh()
       return user.value
     } catch {
@@ -69,6 +73,9 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(credentials: { username: string; password: string }) {
     const response = await apiClient.post<{ message: string; user: User }>('/auth/login/', credentials)
     user.value = response.data.user
+    if (user.value?.preferred_language) {
+      setLocale(user.value.preferred_language, { syncBackend: false })
+    }
     startProactiveRefresh()
     return response.data
   }
@@ -76,6 +83,9 @@ export const useAuthStore = defineStore('auth', () => {
   async function register(data: { username: string; email: string; password: string; invite_code: string }) {
     const response = await apiClient.post<{ message: string; user: User }>('/auth/register/', data)
     user.value = response.data.user
+    if (user.value?.preferred_language) {
+      setLocale(user.value.preferred_language, { syncBackend: false })
+    }
     startProactiveRefresh()
     return response.data
   }
@@ -105,7 +115,14 @@ export const useAuthStore = defineStore('auth', () => {
     return response.data
   }
 
+  async function updatePreferences(payload: { preferred_language: 'en' | 'th' }) {
+    const response = await apiClient.patch<User>('/auth/me/', payload)
+    user.value = response.data
+    return user.value
+  }
+
   return {
+    updatePreferences,
     user,
     isLoading,
     isAuthenticated,

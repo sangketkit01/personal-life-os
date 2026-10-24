@@ -37,47 +37,47 @@
           <!-- 2. Properties Grid -->
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">Status</label>
+              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">{{ t('ti.status') }}</label>
               <select
                 v-model="draft.status"
                 class="w-full bg-zinc-900 border border-zinc-800 rounded-md px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-zinc-600"
                 @change="saveNow()"
               >
-                <option value="TODO">To Do</option>
-                <option value="DOING">Doing / In Progress</option>
-                <option value="DONE">Done</option>
-                <option value="ARCHIVED">Archived</option>
+                <option value="TODO">{{ t('opt.todo') }}</option>
+                <option value="DOING">{{ t('opt.doing') }}</option>
+                <option value="DONE">{{ t('opt.done') }}</option>
+                <option value="ARCHIVED">{{ t('opt.archived') }}</option>
               </select>
             </div>
 
             <div>
-              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">Priority</label>
+              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">{{ t('ti.priority') }}</label>
               <select
                 v-model="draft.priority"
                 class="w-full bg-zinc-900 border border-zinc-800 rounded-md px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-zinc-600"
                 @change="saveNow()"
               >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="URGENT">Urgent</option>
+                <option value="LOW">{{ t('opt.low') }}</option>
+                <option value="MEDIUM">{{ t('opt.medium') }}</option>
+                <option value="HIGH">{{ t('opt.high') }}</option>
+                <option value="URGENT">{{ t('opt.urgent') }}</option>
               </select>
             </div>
 
             <div>
-              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">Project</label>
+              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">{{ t('ti.project') }}</label>
               <select
                 v-model="draft.project"
                 class="w-full bg-zinc-900 border border-zinc-800 rounded-md px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-zinc-600"
                 @change="saveNow()"
               >
-                <option :value="null">No project</option>
+                <option :value="null">{{ t('opt.noProject') }}</option>
                 <option v-for="p in workspaceStore.projects" :key="p.id" :value="p.id">{{ p.name }}</option>
               </select>
             </div>
 
             <div>
-              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">Start Date</label>
+              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">{{ t('ti.startDate') }}</label>
               <input
                 v-model="draft.start_date"
                 type="date"
@@ -87,7 +87,7 @@
             </div>
 
             <div class="col-span-2">
-              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">Due Date / Deadline</label>
+              <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">{{ t('ti.dueDate') }}</label>
               <input
                 v-model="draft.deadline"
                 type="datetime-local"
@@ -108,7 +108,7 @@
           <div class="space-y-2.5">
             <div class="flex items-center justify-between">
               <h4 class="text-[11px] font-mono uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                <ListChecks class="w-3.5 h-3.5" /> Checklist
+                <ListChecks class="w-3.5 h-3.5" /> {{ t('ti.checklist') }}
               </h4>
               <span v-if="draft.checklist.length > 0" class="text-[10px] font-mono text-zinc-500">
                 {{ completedCount }}/{{ draft.checklist.length }}
@@ -156,7 +156,7 @@
             <input
               v-model="newChecklistTitle"
               type="text"
-              placeholder="+ Add checklist item... (Enter)"
+              :placeholder="t('ti.addChecklist')"
               class="w-full bg-zinc-900/30 border border-zinc-800/60 rounded-md px-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-600 font-sans"
               @keydown.enter.prevent="addChecklistItem"
             />
@@ -198,7 +198,7 @@
               <input
                 v-model="newLink.title"
                 type="text"
-                placeholder="Title"
+                :placeholder="t('ti.linkTitle')"
                 class="w-28 bg-zinc-900/30 border border-zinc-800/60 rounded-md px-2 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-600"
               />
               <input
@@ -221,13 +221,13 @@
           <!-- 5. Google Drive Attachments -->
           <div class="space-y-2.5">
             <h4 class="text-[11px] font-mono uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-              <Paperclip class="w-3.5 h-3.5" /> Drive Attachments
+              <Paperclip class="w-3.5 h-3.5" /> {{ t('ti.drive') }}
             </h4>
 
             <div v-if="!storageStore.isConnected" class="p-2.5 rounded-md bg-zinc-900/40 border border-dashed border-zinc-800 text-[11px] text-zinc-500">
-              Google Drive is not connected. Link it in
-              <RouterLink to="/settings" class="text-zinc-300 underline hover:text-white">Settings</RouterLink>
-              to attach files.
+              {{ t('ti.noDrive') }}
+              <RouterLink to="/settings" class="text-zinc-300 underline hover:text-white">{{ t('nav.settings') }}</RouterLink>
+              {{ t('ti.toAttach') }}
             </div>
 
             <template v-else>
@@ -252,7 +252,7 @@
                 </div>
                 <div v-else class="text-[11px] text-zinc-500 flex items-center justify-center gap-1.5">
                   <Upload class="w-3.5 h-3.5" />
-                  <span>Click or drop a file to upload to Google Drive</span>
+                  <span>{{ t('ti.dropUpload') }}</span>
                 </div>
               </div>
 
@@ -307,12 +307,12 @@
           <!-- 6. Task Notes -->
           <div class="space-y-2">
             <h4 class="text-[11px] font-mono uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-              <FileText class="w-3.5 h-3.5" /> Notes
+              <FileText class="w-3.5 h-3.5" /> {{ t('ti.notes') }}
             </h4>
             <textarea
               v-model="draft.notes"
               rows="4"
-              placeholder="Detailed instructions, context, acceptance criteria..."
+              :placeholder="t('ti.notesPlaceholder')"
               class="w-full bg-zinc-900/40 border border-zinc-800/60 rounded-md px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-600 resize-y font-sans leading-relaxed"
               @input="scheduleSave()"
             />
@@ -326,21 +326,21 @@
             @click="showDeleteConfirm = true"
             class="px-2.5 py-1.5 rounded-md text-xs font-medium text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 transition-colors flex items-center gap-1.5"
           >
-            <Trash2 class="w-3.5 h-3.5" /> Delete Task
+            <Trash2 class="w-3.5 h-3.5" /> {{ t('ti.deleteTask') }}
           </button>
 
           <div class="flex items-center gap-2">
             <span v-if="isSaving" class="text-[10px] font-mono text-zinc-500 flex items-center gap-1">
-              <Loader2 class="w-3 h-3 animate-spin" /> Saving...
+              <Loader2 class="w-3 h-3 animate-spin" /> {{ t('ti.saving') }}
             </span>
-            <span v-else-if="saveError" class="text-[10px] font-mono text-rose-400">Save failed</span>
-            <span v-else class="text-[10px] font-mono text-zinc-600">Auto-saved</span>
+            <span v-else-if="saveError" class="text-[10px] font-mono text-rose-400">{{ t('ti.saveFailed') }}</span>
+            <span v-else class="text-[10px] font-mono text-zinc-600">{{ t('ti.autoSaved') }}</span>
             <button
               type="button"
               @click="emit('close')"
               class="px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors"
             >
-              Close
+              {{ t('ti.close') }}
             </button>
           </div>
         </div>
@@ -350,9 +350,9 @@
     <!-- Delete Task Confirmation -->
     <ConfirmModal
       :is-open="showDeleteConfirm"
-      title="Delete this task?"
-      :message="`'${task?.title}' will be permanently removed. This action cannot be undone.`"
-      confirm-text="Delete Task"
+      :title="t('ti.deleteConfirmTitle')"
+      :message="t('ti.deleteConfirmMsg', { title: task?.title || '' })"
+      :confirm-text="t('ti.deleteConfirmBtn')"
       @confirm="handleDeleteTask"
       @cancel="showDeleteConfirm = false"
     />
@@ -360,9 +360,9 @@
     <!-- Delete Attachment Confirmation -->
     <ConfirmModal
       :is-open="!!attachmentToDelete"
-      title="Delete this file?"
-      :message="`'${attachmentToDelete?.file_name}' will be removed from Google Drive and this task.`"
-      confirm-text="Delete File"
+      :title="t('ti.deleteFileTitle')"
+      :message="t('ti.deleteFileMsg', { name: attachmentToDelete?.file_name || '' })"
+      :confirm-text="t('ti.deleteFileBtn')"
       @confirm="handleDeleteAttachment"
       @cancel="attachmentToDelete = null"
     />
@@ -399,6 +399,7 @@ import {
   X
 } from 'lucide-vue-next'
 import ConfirmModal from '../common/ConfirmModal.vue'
+import { t } from '../../i18n'
 import DriveFilePreviewModal from '../common/DriveFilePreviewModal.vue'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useStorageStore } from '../../stores/storage'
@@ -580,7 +581,7 @@ async function saveNowFor(taskId: string) {
     emit('updated', updated)
   } catch {
     saveError.value = true
-    toast.error('Failed to save task')
+    toast.error(t('ti.saveFailedToast'))
   } finally {
     isSaving.value = false
   }
@@ -730,9 +731,9 @@ async function handleDeleteAttachment() {
       }
     }
     emit('refresh')
-    toast.info('Attachment deleted')
+    toast.info(t('ti.fileDeleted'))
   } catch {
-    toast.error('Failed to delete attachment')
+    toast.error(t('pd.uploadFailed'))
   }
 }
 
@@ -745,9 +746,9 @@ async function handleDeleteTask() {
   try {
     await workspaceStore.deleteTask(taskId)
     emit('deleted', taskId)
-    toast.info('Task deleted')
+    toast.info(t('ti.taskDeleted'))
   } catch {
-    toast.error('Failed to delete task')
+    toast.error(t('ti.deleteFailed'))
   }
 }
 

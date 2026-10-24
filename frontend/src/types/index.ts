@@ -4,6 +4,7 @@ export interface User {
   email: string
   telegram_chat_id: string | null
   is_telegram_connected: boolean
+  preferred_language?: 'en' | 'th'
   created_at: string
 }
 

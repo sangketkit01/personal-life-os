@@ -154,7 +154,7 @@
               @click="setArticleLang(article.id, 'EN')"
               type="button"
               class="px-1.5 py-0.5 rounded transition-colors"
-              :class="getArticleLang(article.id) === 'EN' ? 'bg-zinc-800 text-zinc-100 font-semibold' : 'text-zinc-500 hover:text-zinc-300'"
+              :class="getArticleLang(article) === 'EN' ? 'bg-zinc-800 text-zinc-100 font-semibold' : 'text-zinc-500 hover:text-zinc-300'"
             >
               EN
             </button>
@@ -163,7 +163,7 @@
               :disabled="translatingIds.has(article.id)"
               type="button"
               class="px-1.5 py-0.5 rounded transition-colors flex items-center gap-1"
-              :class="getArticleLang(article.id) === 'TH' ? 'bg-zinc-800 text-zinc-100 font-semibold' : 'text-zinc-500 hover:text-zinc-300'"
+              :class="getArticleLang(article) === 'TH' ? 'bg-zinc-800 text-zinc-100 font-semibold' : 'text-zinc-500 hover:text-zinc-300'"
             >
               <Loader2 v-if="translatingIds.has(article.id)" class="w-2.5 h-2.5 animate-spin" />
               <span>TH</span>
@@ -266,6 +266,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePortfolioStore } from '../../stores/portfolio'
+import { locale } from '../../i18n'
 import { useToastStore } from '../../stores/toast'
 import MarketStatusBar from '../../components/portfolio/MarketStatusBar.vue'
 import type { StockNewsArticle } from '../../types/portfolio'
@@ -331,8 +332,11 @@ function getSentimentEmoji(sentiment: string) {
   }
 }
 
-function getArticleLang(id: string): 'EN' | 'TH' {
-  return articleLangMap[id] || 'EN'
+function getArticleLang(article: StockNewsArticle): 'EN' | 'TH' {
+  if (articleLangMap[article.id]) return articleLangMap[article.id]
+  // Default to the active app locale - TH only when a Thai translation exists
+  if (locale.value === 'th' && (article.title_th || article.summary_th)) return 'TH'
+  return 'EN'
 }
 
 function setArticleLang(id: string, lang: 'EN' | 'TH') {
@@ -357,14 +361,14 @@ async function toggleThaiLang(article: StockNewsArticle) {
 }
 
 function getArticleTitle(article: StockNewsArticle): string {
-  if (getArticleLang(article.id) === 'TH' && article.title_th) {
+  if (getArticleLang(article) === 'TH' && article.title_th) {
     return article.title_th
   }
   return article.title
 }
 
 function getArticleSummary(article: StockNewsArticle): string {
-  if (getArticleLang(article.id) === 'TH' && article.summary_th) {
+  if (getArticleLang(article) === 'TH' && article.summary_th) {
     return article.summary_th
   }
   return article.summary || ''

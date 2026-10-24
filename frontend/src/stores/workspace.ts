@@ -23,6 +23,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const events = ref<CalendarEvent[]>([])
   const standaloneNotes = ref<Note[]>([])
   const trashedNotes = ref<Note[]>([])
+  const standalonePinnedCount = ref(0)
   const folders = ref<NoteFolder[]>([])
   const isLoading = ref<boolean>(false)
   const selectedProjectId = ref<string | null>(null)
@@ -259,6 +260,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   // ===== Standalone notes (/notes) =====
 
+  /** Sidebar badge count - reads only the pagination total, never touches the lists. */
+  async function fetchStandalonePinnedCount() {
+    const res = await apiClient.get<Record<string, any>>('/workspace/notes/', {
+      params: { standalone: 'true', is_pinned: 'true' }
+    })
+    const data = res.data as any
+    standalonePinnedCount.value = typeof data?.count === 'number' ? data.count : extractList<Note>(data).length
+    return standalonePinnedCount.value
+  }
+
   async function fetchStandaloneNotes(filters: Record<string, string> = {}) {
     // Fetch live and trashed lists in parallel so Smart View badge counts
     // stay accurate no matter which view is currently open.
@@ -391,6 +402,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     deleteEvent,
     standaloneNotes,
     trashedNotes,
+    standalonePinnedCount,
+    fetchStandalonePinnedCount,
     fetchStandaloneNotes,
     fetchNote,
     trashNote,

@@ -12,7 +12,7 @@
           ref="inputRef"
           v-model="query"
           type="text"
-          placeholder="Type a command, asset ticker, bill, or task..."
+          :placeholder="t('pal.placeholder')"
           class="w-full bg-transparent text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none"
           @keydown.down.prevent="navigateResults(1)"
           @keydown.up.prevent="navigateResults(-1)"
@@ -28,7 +28,7 @@
       <div class="max-h-80 overflow-y-auto p-2 divide-y divide-zinc-900 text-xs">
         <!-- Empty State -->
         <div v-if="filteredResults.length === 0" class="py-8 text-center text-zinc-500 font-mono text-xs">
-          No matching commands, assets, or tasks found.
+          {{ t('pal.noResults') }}
         </div>
 
         <!-- Categorized Results -->
@@ -78,6 +78,7 @@ import { useRouter } from 'vue-router'
 import { useFinanceStore } from '../../stores/finance'
 import { usePortfolioStore } from '../../stores/portfolio'
 import { useWorkspaceStore } from '../../stores/workspace'
+import { t } from '../../i18n'
 import { useLedgerStore } from '../../stores/ledger'
 import {
   Search,
@@ -120,34 +121,34 @@ interface CommandItem {
   id: string
   title: string
   subtitle?: string
-  category: 'Navigation' | 'Finance' | 'Portfolio' | 'Workspace'
+  category: string
   icon: any
   action: () => void
 }
 
-const defaultCommands: CommandItem[] = [
-  { id: 'nav-overview', title: 'System Overview', category: 'Navigation', icon: LayoutDashboard, action: () => router.push('/') },
-  { id: 'nav-finance', title: 'Financial Radar', subtitle: 'Obligations & Trials', category: 'Navigation', icon: CreditCard, action: () => router.push('/finance') },
-  { id: 'nav-ledger', title: 'Cash Flow Radar', subtitle: 'Multi-Account & Splits', category: 'Navigation', icon: Wallet, action: () => router.push('/ledger') },
-  { id: 'nav-ledger-tx', title: 'Transaction Ledger', subtitle: 'Inflows & Outflows', category: 'Navigation', icon: Receipt, action: () => router.push('/ledger/transactions') },
-  { id: 'nav-ledger-acc', title: 'Accounts & Wallets', subtitle: 'Bank & Credit Lines', category: 'Navigation', icon: Wallet, action: () => router.push('/ledger/accounts') },
-  { id: 'nav-ledger-splits', title: 'Shared Bill Splits', subtitle: 'Friend Receivables', category: 'Navigation', icon: Users, action: () => router.push('/ledger/splits') },
-  { id: 'nav-ledger-budgets', title: 'Category Budgets', subtitle: 'Spending Ceilings', category: 'Navigation', icon: PieChart, action: () => router.push('/ledger/budgets') },
-  { id: 'nav-portfolio', title: 'Portfolio Snapshot', subtitle: 'SET, US & Crypto', category: 'Navigation', icon: TrendingUp, action: () => router.push('/portfolio') },
-  { id: 'nav-workspace', title: 'Projects Hub', subtitle: 'Boards, Calendar & Pages', category: 'Navigation', icon: FolderKanban, action: () => router.push('/workspace') },
-  { id: 'nav-settings', title: 'Settings & Security', subtitle: 'Sessions & Webhooks', category: 'Navigation', icon: Settings, action: () => router.push('/settings') },
-]
+const defaultCommands = computed<CommandItem[]>(() => { return [
+  { id: 'nav-overview', title: t('nav.overview'), category: t('pal.categoryNav'), icon: LayoutDashboard, action: () => router.push('/') },
+  { id: 'nav-finance', title: t('nav.finance'), subtitle: t('pal.financeSub'), category: t('pal.categoryNav'), icon: CreditCard, action: () => router.push('/finance') },
+  { id: 'nav-ledger', title: t('nav.ledger.radar'), subtitle: t('pal.ledgerRadarSub'), category: t('pal.categoryNav'), icon: Wallet, action: () => router.push('/ledger') },
+  { id: 'nav-ledger-tx', title: t('nav.ledger.transactions'), subtitle: t('pal.txSub'), category: t('pal.categoryNav'), icon: Receipt, action: () => router.push('/ledger/transactions') },
+  { id: 'nav-ledger-acc', title: t('nav.ledger.accounts'), subtitle: t('pal.accountsSub'), category: t('pal.categoryNav'), icon: Wallet, action: () => router.push('/ledger/accounts') },
+  { id: 'nav-ledger-splits', title: t('nav.ledger.splits'), subtitle: t('pal.splitsSub'), category: t('pal.categoryNav'), icon: Users, action: () => router.push('/ledger/splits') },
+  { id: 'nav-ledger-budgets', title: t('nav.ledger.budgets'), subtitle: t('pal.budgetsSub'), category: t('pal.categoryNav'), icon: PieChart, action: () => router.push('/ledger/budgets') },
+  { id: 'nav-portfolio', title: t('pal.snapshot'), subtitle: t('pal.portfolioSub'), category: t('pal.categoryNav'), icon: TrendingUp, action: () => router.push('/portfolio') },
+  { id: 'nav-workspace', title: t('nav.workspace.hub'), subtitle: t('pal.workspaceSub'), category: t('pal.categoryNav'), icon: FolderKanban, action: () => router.push('/workspace') },
+  { id: 'nav-settings', title: t('st.title'), subtitle: t('pal.settingsSub'), category: t('pal.categoryNav'), icon: Settings, action: () => router.push('/settings') },
+]})
 
 const filteredResults = computed(() => {
   const q = query.value.trim().toLowerCase()
   if (!q) {
-    return defaultCommands
+    return defaultCommands.value
   }
 
   const results: CommandItem[] = []
 
   // 1. Navigation matching
-  for (const item of defaultCommands) {
+  for (const item of defaultCommands.value) {
     if (item.title.toLowerCase().includes(q) || item.subtitle?.toLowerCase().includes(q)) {
       results.push(item)
     }

@@ -4,7 +4,7 @@
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
       <div>
         <div class="flex items-center gap-2.5">
-          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">Cash Flow & Ledger</h1>
+          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">{{ t('nav.ledger') }}</h1>
         </div>
       </div>
 
@@ -23,7 +23,7 @@
           class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 hover:border-zinc-700 border border-zinc-800 text-xs font-medium text-zinc-300 transition-all active:scale-[0.98] flex items-center gap-1.5"
         >
           <ArrowRightLeft class="w-3.5 h-3.5 text-zinc-400" />
-          <span>Transfer</span>
+          <span>{{ t('opt.doing') }}</span>
         </button>
 
         <button
@@ -38,10 +38,10 @@
 
     <!-- 4 High-Density Executive Financial Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-      <!-- 1. Net Cash Flow -->
+      <!-- 1. {{ t('led.netCashFlow') }} -->
       <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 transition-all duration-200 relative group">
         <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-400">
-          <span>Net Cash Flow</span>
+          <span>{{ t('led.netCashFlow') }}</span>
           <span
             class="text-[10px] px-2 py-0.5 rounded-full font-semibold"
             :class="Number(ledgerStore.summary?.net_cash_flow || 0) >= 0 ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'"
@@ -212,7 +212,7 @@
         <div class="flex items-center gap-2">
           <Receipt class="w-4 h-4 text-zinc-400" />
           <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">
-            Recent Cash Flow Activity
+            {{ t('led.recentActivity') }}
           </h2>
           <span class="text-[11px] font-mono text-zinc-500 ml-1">({{ ledgerStore.transactions.length }} recorded)</span>
         </div>
@@ -356,6 +356,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useLedgerStore } from '../../stores/ledger'
+import { t } from '../../i18n'
 import TransactionModal from '../../components/ledger/TransactionModal.vue'
 import CreateAccountModal from '../../components/ledger/CreateAccountModal.vue'
 import TransferModal from '../../components/ledger/TransferModal.vue'

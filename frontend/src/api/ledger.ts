@@ -16,7 +16,10 @@ export const ledgerApi = {
   // Accounts
   async getAccounts(): Promise<LedgerAccount[]> {
     const res = await apiClient.get<LedgerAccount[]>('/ledger/accounts/')
-    return res.data
+    // DRF-paginated ViewSet response: unwrap results instead of returning
+    // the {count, next, previous, results} dict.
+    const data = res.data as any
+    return Array.isArray(data) ? data : (data?.results || [])
   },
 
   async createAccount(payload: CreateAccountPayload): Promise<LedgerAccount> {

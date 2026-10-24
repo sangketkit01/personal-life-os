@@ -301,7 +301,7 @@
                   <span v-if="note.folder_name" class="px-1.5 py-0.2 rounded bg-zinc-900 text-zinc-400 border border-zinc-800 truncate max-w-[100px]">
                     {{ note.folder_name }}
                   </span>
-                  <span v-if="note.attachments?.length > 0">📎 {{ note.attachments.length }}</span>
+                  <span v-if="note.attachments?.length > 0" class="flex items-center gap-0.5"><Paperclip class="w-3 h-3" />{{ note.attachments.length }}</span>
                 </div>
               </div>
             </div>
@@ -415,7 +415,7 @@
               <div class="mt-auto pt-2.5 border-t border-zinc-800/60 flex items-center justify-between text-[10px] font-mono text-zinc-500 w-full">
                 <span>{{ formatShortDate(note.updated_at) }}</span>
                 <span class="flex items-center gap-1.5">
-                  <span v-if="note.attachments?.length > 0">📎 {{ note.attachments.length }}</span>
+                  <span v-if="note.attachments?.length > 0" class="flex items-center gap-0.5"><Paperclip class="w-3 h-3" />{{ note.attachments.length }}</span>
                   <span v-if="note.folder_name" class="px-1.5 py-0.2 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">{{ note.folder_name }}</span>
                 </span>
               </div>
@@ -461,6 +461,7 @@
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import {
   ArrowLeft,
+  Paperclip,
   Check,
   Columns2,
   Folder,

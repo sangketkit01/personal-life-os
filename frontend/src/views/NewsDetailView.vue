@@ -274,9 +274,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePortfolioStore } from '../stores/portfolio'
+import { locale } from '../i18n'
 import type { StockNewsArticle } from '../types/portfolio'
 import {
   ArrowLeft,
@@ -299,6 +300,23 @@ const article = ref<StockNewsArticle | null>(null)
 const isLoading = ref(true)
 const errorMessage = ref<string | null>(null)
 const activeLang = ref<'en' | 'th'>('en')
+
+// Default article language follows the active app locale (TH only when a
+// Thai translation exists); manual EN/TH toggle still wins afterwards.
+function preferredArticleLang(): 'en' | 'th' {
+  if (locale.value === 'th' && article.value && (article.value.summary_th || article.value.content_th || article.value.title_th)) {
+    return 'th'
+  }
+  return 'en'
+}
+
+watch(locale, () => {
+  activeLang.value = preferredArticleLang()
+})
+
+watch(article, () => {
+  activeLang.value = preferredArticleLang()
+})
 const isLargeFont = ref(false)
 const showOriginalToggle = ref(false)
 const copied = ref(false)

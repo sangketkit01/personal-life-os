@@ -33,7 +33,7 @@
                 class="w-3.5 h-3.5 transition-colors shrink-0"
                 :class="$route.path === '/' ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
               />
-              <span>Executive Overview</span>
+              <span>{{ t('nav.overview') }}</span>
             </div>
           </RouterLink>
 
@@ -55,7 +55,7 @@
                   class="w-3.5 h-3.5 transition-colors shrink-0"
                   :class="$route.path.startsWith('/finance') ? 'text-zinc-100' : 'text-zinc-500 group-hover:text-zinc-300'"
                 />
-                <span class="font-semibold tracking-tight">Financial Radar</span>
+                <span class="font-semibold tracking-tight">{{ t('nav.finance') }}</span>
               </div>
               <div class="flex items-center gap-1.5">
                 <!-- Group Alert Badge if critical trial exists -->
@@ -90,7 +90,7 @@
                     class="w-3 h-3 transition-colors shrink-0"
                     :class="isNavActive(sub.path) ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
                   />
-                  <span class="truncate">{{ sub.label }}</span>
+                  <span class="truncate">{{ t(sub.labelKey) }}</span>
                 </div>
 
                 <!-- Sub-item Badge -->
@@ -123,7 +123,7 @@
                   class="w-3.5 h-3.5 transition-colors shrink-0"
                   :class="$route.path.startsWith('/ledger') ? 'text-zinc-100' : 'text-zinc-500 group-hover:text-zinc-300'"
                 />
-                <span class="font-semibold tracking-tight">Cash Flow & Ledger</span>
+                <span class="font-semibold tracking-tight">{{ t('nav.ledger') }}</span>
               </div>
               <div class="flex items-center gap-1.5">
                 <span
@@ -157,7 +157,7 @@
                     class="w-3 h-3 transition-colors shrink-0"
                     :class="isNavActive(sub.path) ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
                   />
-                  <span class="truncate">{{ sub.label }}</span>
+                  <span class="truncate">{{ t(sub.labelKey) }}</span>
                 </div>
 
                 <span
@@ -189,7 +189,7 @@
                   class="w-3.5 h-3.5 transition-colors shrink-0"
                   :class="$route.path.startsWith('/portfolio') ? 'text-zinc-100' : 'text-zinc-500 group-hover:text-zinc-300'"
                 />
-                <span class="font-semibold tracking-tight">Wealth & Portfolio</span>
+                <span class="font-semibold tracking-tight">{{ t('nav.portfolio') }}</span>
               </div>
               <ChevronDown
                 class="w-3.5 h-3.5 text-zinc-500 transition-transform duration-200"
@@ -216,7 +216,7 @@
                     class="w-3 h-3 transition-colors shrink-0"
                     :class="isNavActive(sub.path) ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
                   />
-                  <span class="truncate">{{ sub.label }}</span>
+                  <span class="truncate">{{ t(sub.labelKey) }}</span>
                 </div>
 
                 <span
@@ -248,7 +248,7 @@
                   class="w-3.5 h-3.5 transition-colors shrink-0"
                   :class="$route.path.startsWith('/workspace') ? 'text-zinc-100' : 'text-zinc-500 group-hover:text-zinc-300'"
                 />
-                <span class="font-semibold tracking-tight">Workspace</span>
+                <span class="font-semibold tracking-tight">{{ t('nav.workspace') }}</span>
               </div>
               <ChevronDown
                 class="w-3.5 h-3.5 text-zinc-500 transition-transform duration-200"
@@ -275,7 +275,7 @@
                     class="w-3 h-3 transition-colors shrink-0"
                     :class="isNavActive(sub.path) ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
                   />
-                  <span class="truncate">{{ sub.label }}</span>
+                  <span class="truncate">{{ t(sub.labelKey) }}</span>
                 </div>
               </RouterLink>
             </div>
@@ -297,7 +297,7 @@
                   class="w-3.5 h-3.5 transition-colors shrink-0"
                   :class="$route.path.startsWith('/notes') ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
                 />
-                <span>Notes</span>
+                <span>{{ t('nav.notes') }}</span>
               </div>
               <span
                 v-if="pinnedNotesCount > 0"
@@ -324,7 +324,7 @@
                   class="w-3.5 h-3.5 transition-colors shrink-0"
                   :class="$route.path === '/settings' || $route.path.startsWith('/settings/') ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
                 />
-                <span>Settings</span>
+                <span>{{ t('nav.settings') }}</span>
               </div>
             </RouterLink>
           </div>
@@ -345,7 +345,7 @@
           </div>
           <button
             @click="handleLogout"
-            title="Sign Out"
+            :title="t('shell.signout')"
             class="text-zinc-500 hover:text-rose-400 p-1 rounded transition-colors"
           >
             <LogOut class="w-3.5 h-3.5" />
@@ -386,7 +386,7 @@
 
             <!-- Finance Sub-list -->
             <div class="pt-2">
-              <div class="text-[10px] font-mono uppercase text-zinc-500 px-3 py-1 font-semibold">Financial Radar</div>
+              <div class="text-[10px] font-mono uppercase text-zinc-500 px-3 py-1 font-semibold">{{ t('nav.finance') }}</div>
               <RouterLink
                 v-for="sub in financeNavItems"
                 :key="sub.path"
@@ -396,13 +396,13 @@
                 :class="{ 'bg-zinc-900 text-white font-medium': isNavActive(sub.path) }"
               >
                 <component :is="sub.icon" class="w-3 h-3" />
-                <span>{{ sub.label }}</span>
+                <span>{{ t(sub.labelKey) }}</span>
               </RouterLink>
             </div>
 
             <!-- Ledger Sub-list -->
             <div class="pt-2">
-              <div class="text-[10px] font-mono uppercase text-zinc-500 px-3 py-1 font-semibold">Cash Flow & Ledger</div>
+              <div class="text-[10px] font-mono uppercase text-zinc-500 px-3 py-1 font-semibold">{{ t('nav.ledger') }}</div>
               <RouterLink
                 v-for="sub in ledgerNavItems"
                 :key="sub.path"
@@ -412,13 +412,13 @@
                 :class="{ 'bg-zinc-900 text-white font-medium': isNavActive(sub.path) }"
               >
                 <component :is="sub.icon" class="w-3 h-3" />
-                <span>{{ sub.label }}</span>
+                <span>{{ t(sub.labelKey) }}</span>
               </RouterLink>
             </div>
 
             <!-- Portfolio Sub-list -->
             <div class="pt-2">
-              <div class="text-[10px] font-mono uppercase text-zinc-500 px-3 py-1 font-semibold">Wealth & Portfolio</div>
+              <div class="text-[10px] font-mono uppercase text-zinc-500 px-3 py-1 font-semibold">{{ t('nav.portfolio') }}</div>
               <RouterLink
                 v-for="sub in portfolioNavItems"
                 :key="sub.path"
@@ -428,7 +428,7 @@
                 :class="{ 'bg-zinc-900 text-white font-medium': isNavActive(sub.path) }"
               >
                 <component :is="sub.icon" class="w-3 h-3" />
-                <span>{{ sub.label }}</span>
+                <span>{{ t(sub.labelKey) }}</span>
               </RouterLink>
             </div>
 
@@ -444,7 +444,7 @@
                 :class="{ 'bg-zinc-900 text-white font-medium': isNavActive(sub.path) }"
               >
                 <component :is="sub.icon" class="w-3 h-3" />
-                <span>{{ sub.label }}</span>
+                <span>{{ t(sub.labelKey) }}</span>
               </RouterLink>
             </div>
 
@@ -456,7 +456,7 @@
                 :class="$route.path.startsWith('/notes') ? 'bg-zinc-900 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'"
               >
                 <StickyNote class="w-3.5 h-3.5" />
-                <span>Notes</span>
+                <span>{{ t('nav.notes') }}</span>
               </RouterLink>
               <RouterLink
                 to="/settings"
@@ -465,7 +465,7 @@
                 :class="$route.path === '/settings' || $route.path.startsWith('/settings/') ? 'bg-zinc-900 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'"
               >
                 <Settings class="w-3.5 h-3.5" />
-                <span>Settings</span>
+                <span>{{ t('nav.settings') }}</span>
               </RouterLink>
             </div>
           </nav>
@@ -474,7 +474,7 @@
         <div class="pt-4 border-t border-zinc-800 flex items-center justify-between">
           <span class="text-xs text-zinc-300 font-mono">{{ authStore.user?.username }}</span>
           <button @click="handleLogout" class="text-xs text-rose-400 hover:underline">
-            Sign Out
+            {{ t('shell.signout') }}
           </button>
         </div>
       </div>
@@ -507,7 +507,7 @@
             class="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-900/60 border border-zinc-800/80 px-3 py-1.5 rounded-md w-44 sm:w-64 hover:border-zinc-700 transition cursor-pointer text-left ml-2"
           >
             <Search class="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-            <span class="text-[11px] text-zinc-400 truncate">Search ({{ shortcutKey }})</span>
+            <span class="text-[11px] text-zinc-400 truncate">{{ t('shell.search') }} ({{ shortcutKey }})</span>
           </button>
         </div>
 
@@ -528,7 +528,7 @@
               :class="authStore.user?.is_telegram_connected ? 'bg-emerald-400' : 'bg-zinc-500'"
             />
             <span class="font-mono text-[11px]">
-              {{ authStore.user?.is_telegram_connected ? 'BOT LINKED' : 'LINK BOT' }}
+              {{ authStore.user?.is_telegram_connected ? t('shell.botLinked') : t('shell.linkBot') }}
             </span>
           </button>
 
@@ -566,8 +566,8 @@
             <Bot class="w-4 h-4" />
           </div>
           <div>
-            <h3 class="font-medium text-white text-sm">Telegram Butler Connection</h3>
-            <p class="text-xs text-zinc-400 mt-0.5">Receive advance reminders with settlement actions</p>
+            <h3 class="font-medium text-white text-sm">{{ t('tg.title') }}</h3>
+            <p class="text-xs text-zinc-400 mt-0.5">{{ t('tg.subtitle') }}</p>
           </div>
         </div>
 
@@ -577,13 +577,13 @@
             <span>Telegram account connected</span>
           </div>
           <div class="text-[11px] text-zinc-500">
-            Chat ID: {{ authStore.user.telegram_chat_id }}
+            {{ t('tg.chatId') }} {{ authStore.user.telegram_chat_id }}
           </div>
         </div>
 
         <div v-else class="space-y-4">
           <p class="text-xs text-zinc-300 leading-relaxed">
-            Click below to open bot in Telegram and click <strong>[ START ]</strong> to link your session.
+            {{ t('tg.openAndStart') }} <strong>[ START ]</strong> {{ t('tg.toLink') }}
           </p>
           <button
             @click="handleConnectTelegram"
@@ -591,7 +591,7 @@
             class="w-full py-2.5 px-4 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 font-semibold text-xs transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
           >
             <Send class="w-3.5 h-3.5" />
-            <span>{{ isGeneratingToken ? 'Generating Link...' : 'Open Telegram & Authorize' }}</span>
+            <span>{{ isGeneratingToken ? t('tg.generating') : t('tg.authorize') }}</span>
           </button>
         </div>
       </div>
@@ -612,6 +612,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { t } from '../i18n'
 import { useFinanceStore } from '../stores/finance'
 import { useLedgerStore } from '../stores/ledger'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -723,7 +724,7 @@ const criticalTrialsCount = computed(() => {
 })
 
 const pinnedNotesCount = computed(() => {
-  return workspaceStore.standaloneNotes.filter(n => n.is_pinned && !n.is_trashed).length
+  return workspaceStore.standalonePinnedCount
 })
 
 const upcoming7DaysCount = computed(() => {
@@ -732,7 +733,7 @@ const upcoming7DaysCount = computed(() => {
 
 interface NavSubItem {
   path: string
-  label: string
+  labelKey: string
   icon: any
   badge?: () => string | undefined
   badgeClass?: string
@@ -742,14 +743,14 @@ interface NavSubItem {
 const financeNavItems: NavSubItem[] = [
   {
     path: '/finance/overview',
-    label: 'Radar Overview',
+    labelKey: 'nav.finance.radar',
     icon: Gauge,
     badge: () => upcoming7DaysCount.value > 0 ? `${upcoming7DaysCount.value} due` : undefined,
     badgeClass: 'bg-zinc-900 text-zinc-400 border-zinc-800'
   },
   {
     path: '/finance/installments',
-    label: 'Installments & Contracts',
+    labelKey: 'nav.finance.installments',
     icon: Layers,
     badge: () => {
       const count = financeStore.obligations.filter(o => o.type === 'INSTALLMENT' && o.subtype !== 'BNPL_ACCOUNT' && !o.parent).length
@@ -758,7 +759,7 @@ const financeNavItems: NavSubItem[] = [
   },
   {
     path: '/finance/bnpl',
-    label: 'Shopping Credit',
+    labelKey: 'nav.finance.bnpl',
     icon: ShoppingBag,
     badge: () => {
       const count = financeStore.obligations.filter(o => o.subtype === 'BNPL_ACCOUNT').length
@@ -767,14 +768,14 @@ const financeNavItems: NavSubItem[] = [
   },
   {
     path: '/finance/subscriptions',
-    label: 'Subscriptions & Trials',
+    labelKey: 'nav.finance.subscriptions',
     icon: Repeat,
     badge: () => criticalTrialsCount.value > 0 ? 'ALERT' : undefined,
     badgeClass: 'bg-zinc-900 text-rose-400 border-zinc-800'
   },
   {
     path: '/finance/debts',
-    label: 'Two-Way Debt Ledger',
+    labelKey: 'nav.finance.debts',
     icon: Scale,
     badge: () => {
       const count = financeStore.obligations.filter(o => o.direction === 'INFLOW' && o.status === 'ACTIVE').length
@@ -788,30 +789,30 @@ const financeNavItems: NavSubItem[] = [
 const ledgerNavItems: NavSubItem[] = [
   {
     path: '/ledger',
-    label: 'Cash Flow Radar',
+    labelKey: 'nav.ledger.radar',
     icon: LayoutDashboard,
   },
   {
     path: '/ledger/transactions',
-    label: 'Transaction Ledger',
+    labelKey: 'nav.ledger.transactions',
     icon: Receipt,
   },
   {
     path: '/ledger/accounts',
-    label: 'Accounts & Wallets',
+    labelKey: 'nav.ledger.accounts',
     icon: Wallet,
     badge: () => ledgerStore.accounts.length > 0 ? `${ledgerStore.accounts.length}` : undefined,
   },
   {
     path: '/ledger/splits',
-    label: 'Shared Bill Splits',
+    labelKey: 'nav.ledger.splits',
     icon: Users,
     badge: () => ledgerStore.pendingSplits.length > 0 ? `${ledgerStore.pendingSplits.length} pending` : undefined,
     badgeClass: 'bg-zinc-900 text-amber-400 border-zinc-800'
   },
   {
     path: '/ledger/budgets',
-    label: 'Category Budgets',
+    labelKey: 'nav.ledger.budgets',
     icon: PieChart,
   }
 ]
@@ -820,27 +821,27 @@ const ledgerNavItems: NavSubItem[] = [
 const portfolioNavItems: NavSubItem[] = [
   {
     path: '/portfolio/overview',
-    label: 'Portfolio Overview',
+    labelKey: 'nav.portfolio.overview',
     icon: PieChart
   },
   {
     path: '/portfolio/accounts',
-    label: 'My Portfolios',
+    labelKey: 'nav.portfolio.accounts',
     icon: Briefcase
   },
   {
     path: '/portfolio/watchlist',
-    label: 'Watchlist',
+    labelKey: 'nav.portfolio.watchlist',
     icon: Eye
   },
   {
     path: '/portfolio/executions',
-    label: 'Executions',
+    labelKey: 'nav.portfolio.executions',
     icon: ArrowLeftRight
   },
   {
     path: '/portfolio/news',
-    label: 'Market News',
+    labelKey: 'nav.portfolio.news',
     icon: Newspaper
   }
 ]
@@ -849,12 +850,12 @@ const portfolioNavItems: NavSubItem[] = [
 const workspaceNavItems: NavSubItem[] = [
   {
     path: '/workspace',
-    label: 'Projects Hub',
+    labelKey: 'nav.workspace.hub',
     icon: FolderKanban
   },
   {
     path: '/workspace/calendar',
-    label: 'Master Calendar',
+    labelKey: 'nav.workspace.calendar',
     icon: Calendar
   }
 ]
@@ -862,43 +863,43 @@ const workspaceNavItems: NavSubItem[] = [
 // Dynamic Breadcrumbs
 const currentDomainLabel = computed(() => {
   const p = route.path
-  if (p.startsWith('/finance')) return 'Financial Radar'
-  if (p.startsWith('/ledger')) return 'Cash Flow & Ledger'
-  if (p.startsWith('/portfolio')) return 'Wealth & Portfolio'
-  if (p.startsWith('/workspace')) return 'Workspace'
-  if (p.startsWith('/notes')) return 'Notes'
-  if (p.startsWith('/settings')) return 'Settings'
-  return 'Console'
+  if (p.startsWith('/finance')) return t('nav.finance')
+  if (p.startsWith('/ledger')) return t('nav.ledger')
+  if (p.startsWith('/portfolio')) return t('nav.portfolio')
+  if (p.startsWith('/workspace')) return t('nav.workspace')
+  if (p.startsWith('/notes')) return t('nav.notes')
+  if (p.startsWith('/settings')) return t('nav.settings')
+  return t('crumb.console')
 })
 
 const currentSubdomainLabel = computed(() => {
   const p = route.path
-  if (p === '/finance/installments/new') return 'New Contract'
-  if (p.startsWith('/finance/installments/')) return 'Contract Dossier'
-  if (p === '/finance/bnpl/new') return 'New Credit Facility'
-  if (p.includes('/new-order')) return 'New Purchase Order'
-  if (p.startsWith('/finance/bnpl/')) return 'Account Dossier'
-  if (p === '/finance/debts/new') return 'New Debt Entry'
-  if (p.startsWith('/finance/debts/')) return 'Debt Dossier'
-  if (p === '/finance/subscriptions/new') return 'New Subscription'
-  if (p.startsWith('/finance/subscriptions/')) return 'Subscription Dossier'
-  if (p === '/ledger/accounts/new') return 'New Account'
-  if (p.startsWith('/ledger/accounts/')) return 'Account Statement'
-  if (p === '/portfolio/accounts/new') return 'New Brokerage Basket'
-  if (p.startsWith('/portfolio/accounts/')) return 'Account Dossier'
-  if (p === '/portfolio/executions/import') return 'Import CSV Statement'
-  if (p === '/portfolio/executions/dividends') return 'Dividend Ledger'
-  if (p.startsWith('/portfolio/news/')) return 'News Briefing'
+  if (p === '/finance/installments/new') return t('crumb.newContract')
+  if (p.startsWith('/finance/installments/')) return t('crumb.contractDossier')
+  if (p === '/finance/bnpl/new') return t('crumb.newCredit')
+  if (p.includes('/new-order')) return t('crumb.newOrder')
+  if (p.startsWith('/finance/bnpl/')) return t('crumb.accountDossier')
+  if (p === '/finance/debts/new') return t('crumb.newDebt')
+  if (p.startsWith('/finance/debts/')) return t('crumb.debtDossier')
+  if (p === '/finance/subscriptions/new') return t('crumb.newSubscription')
+  if (p.startsWith('/finance/subscriptions/')) return t('crumb.subscriptionDossier')
+  if (p === '/ledger/accounts/new') return t('crumb.newAccount')
+  if (p.startsWith('/ledger/accounts/')) return t('crumb.accountStatement')
+  if (p === '/portfolio/accounts/new') return t('crumb.newBasket')
+  if (p.startsWith('/portfolio/accounts/')) return t('crumb.accountDossier')
+  if (p === '/portfolio/executions/import') return t('crumb.importCsv')
+  if (p === '/portfolio/executions/dividends') return t('crumb.dividendLedger')
+  if (p.startsWith('/portfolio/news/')) return t('crumb.newsBriefing')
   const fMatch = financeNavItems.find(i => i.path === p)
-  if (fMatch) return fMatch.label
+  if (fMatch) return t(fMatch.labelKey)
   const lMatch = ledgerNavItems.find(i => i.path === p)
-  if (lMatch) return lMatch.label
+  if (lMatch) return t(lMatch.labelKey)
   const pMatch = portfolioNavItems.find(i => i.path === p)
-  if (pMatch) return pMatch.label
+  if (pMatch) return t(pMatch.labelKey)
   const wMatch = workspaceNavItems.find(i => i.path === p)
-  if (wMatch) return wMatch.label
-  if (p.startsWith('/workspace/projects/')) return 'Project Dossier'
-  if (p.includes('/asset/')) return `Asset: ${route.params.ticker || ''}`
+  if (wMatch) return t(wMatch.labelKey)
+  if (p.startsWith('/workspace/projects/')) return t('crumb.projectDossier')
+  if (p.includes('/asset/')) return `${t('crumb.console')}: ${route.params.ticker || ''}`
   return ''
 })
 
@@ -933,8 +934,9 @@ onMounted(() => {
   // Prefetch ledger accounts & pending splits for badges
   ledgerStore.fetchAccounts().catch(() => {})
   ledgerStore.fetchPendingSplits().catch(() => {})
-  // Prefetch pinned standalone notes for the Notes badge
-  workspaceStore.fetchStandaloneNotes({ is_pinned: 'true' }).catch(() => {})
+  // Prefetch pinned count for the Notes badge (dedicated action - must NOT
+  // overwrite standaloneNotes, which the /notes view fetches in parallel)
+  workspaceStore.fetchStandalonePinnedCount().catch(() => {})
 })
 
 onUnmounted(() => {

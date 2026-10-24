@@ -98,7 +98,8 @@
           <!-- Real-time account balance & low balance warning -->
           <div v-if="selectedAccountInfo" class="mt-1.5 text-[10px] font-mono flex items-center justify-between">
             <span :class="isInsufficientBalance ? 'text-rose-400 font-medium' : 'text-zinc-500'">
-              {{ isInsufficientBalance ? '⚠️ Insufficient balance in this account' : 'Auto-links cash flow transaction' }}
+              <span v-if="isInsufficientBalance" class="flex items-center gap-1 justify-center"><AlertTriangle class="w-3 h-3" /> Insufficient balance in this account</span>
+              <span v-else>Auto-links cash flow transaction</span>
             </span>
             <span class="text-zinc-400">Avail: ฿{{ Number(selectedAccountInfo.current_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
           </div>
@@ -196,12 +197,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import {
+ ref, computed, watch, onMounted } from 'vue'
 import { useFinanceStore } from '../../stores/finance'
 import { useLedgerStore } from '../../stores/ledger'
 import { useStorageStore } from '../../stores/storage'
 import type { FinancialObligation } from '../../types/finance'
-import { X, Upload, Trash2, HardDrive } from 'lucide-vue-next'
+import {
+  AlertTriangle,
+ X, Upload, Trash2, HardDrive } from 'lucide-vue-next'
 
 const props = defineProps<{
   isOpen: boolean

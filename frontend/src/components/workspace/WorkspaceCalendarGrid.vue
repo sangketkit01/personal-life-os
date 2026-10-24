@@ -21,7 +21,7 @@
             class="px-2.5 py-1 rounded text-[11px] font-medium transition-colors"
             :class="viewMode === 'month' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'"
           >
-            <LayoutGrid class="w-3 h-3 inline mr-1" />Grid
+            <LayoutGrid class="w-3 h-3 inline mr-1" />{{ t('cal.grid') }}
           </button>
           <button
             type="button"
@@ -29,7 +29,7 @@
             class="px-2.5 py-1 rounded text-[11px] font-medium transition-colors"
             :class="viewMode === 'agenda' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'"
           >
-            <List class="w-3 h-3 inline mr-1" />Agenda
+            <List class="w-3 h-3 inline mr-1" />{{ t('cal.agenda') }}
           </button>
         </div>
 
@@ -39,7 +39,7 @@
             type="button"
             @click="shiftMonth(-1)"
             class="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
-            title="Previous Month"
+            :title="t('cal.prevMonth')"
           >
             <ChevronLeft class="w-3.5 h-3.5" />
           </button>
@@ -48,13 +48,13 @@
             @click="goToday"
             class="px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-[11px] font-medium transition-colors"
           >
-            Today
+            {{ t('cal.today') }}
           </button>
           <button
             type="button"
             @click="shiftMonth(1)"
             class="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
-            title="Next Month"
+            :title="t('cal.nextMonth')"
           >
             <ChevronRight class="w-3.5 h-3.5" />
           </button>
@@ -97,7 +97,7 @@
             <button
               type="button"
               class="w-4 h-4 rounded bg-zinc-900 border border-zinc-800 text-zinc-500 items-center justify-center hidden group-hover/cell:flex hover:text-zinc-100 hover:border-zinc-600 transition-colors"
-              title="Add task or event on this date"
+              :title="t('cal.addEntry')"
               @click.stop="emit('create-on-date', cell.key)"
             >
               <Plus class="w-2.5 h-2.5" />
@@ -112,7 +112,7 @@
               type="button"
               @click.stop="emit('select-event', event)"
               class="w-full text-left px-1.5 py-0.5 rounded text-[10px] truncate flex items-center gap-1 border bg-violet-500/10 border-violet-500/30 text-violet-300 transition-colors hover:bg-violet-500/20"
-              :title="`${EVENT_TYPE_LABEL[event.event_type] || 'Event'}${event.is_all_day ? ' (All day)' : ''}`"
+              :title="`${EVENT_TYPE_LABEL[event.event_type] || t('cal.event')}${event.is_all_day ? ' (' + t('cal.allDay') + ')' : ''}`"
             >
               <Clock v-if="!event.is_all_day" class="w-2.5 h-2.5 shrink-0" />
               <span class="truncate">{{ event.title }}</span>
@@ -153,7 +153,7 @@
         v-if="agendaCount === 0"
         class="p-10 text-center text-xs font-mono text-zinc-600"
       >
-        Nothing scheduled this month
+        {{ t('cal.nothingScheduled') }}
       </div>
 
       <!-- Event rows -->
@@ -175,7 +175,7 @@
           <div class="text-[10px] font-mono text-zinc-500 flex items-center gap-2">
             <span class="uppercase">{{ EVENT_TYPE_LABEL[item.event.event_type] || 'Event' }}</span>
             <span v-if="!item.event.is_all_day">{{ formatTime(item.event.start_at) }}</span>
-            <span v-else>All day</span>
+            <span v-else>{{ t('cal.allDay') }}</span>
           </div>
         </div>
 
@@ -224,6 +224,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ChevronLeft, ChevronRight, Clock, LayoutGrid, List, Plus } from 'lucide-vue-next'
+import { t } from '../../i18n'
 import type { CalendarEvent, CalendarEventType, TaskDocument, TaskStatus } from '../../types/workspace'
 
 const props = defineProps<{

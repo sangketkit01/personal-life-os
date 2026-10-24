@@ -8,8 +8,8 @@
       <!-- Header Bar -->
       <div class="h-12 px-4 flex items-center justify-between border-b border-zinc-800/80 shrink-0">
         <div class="flex items-center gap-2.5 min-w-0">
-          <span class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] shrink-0">
-            {{ typeIcon }}
+          <span class="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
+            <component :is="typeIcon" class="w-3.5 h-3.5" />
           </span>
           <div class="min-w-0">
             <h3 class="text-xs font-semibold text-zinc-100 truncate">{{ link.title }}</h3>
@@ -69,8 +69,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { X, ExternalLink, MonitorX } from 'lucide-vue-next'
+import { computed, type Component } from 'vue'
+import {
+  FileSpreadsheet,
+  Github,
+  Globe,
+  Link2,
+  Palette,
+  PenTool,
+  X,
+  ExternalLink,
+  MonitorX
+} from 'lucide-vue-next'
 import type { ProjectLink, ProjectLinkType } from '../../types/workspace'
 
 const props = defineProps<{
@@ -82,17 +92,17 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-const TYPE_META: Record<ProjectLinkType, { label: string; icon: string }> = {
-  WEBSITE: { label: 'Website / App', icon: '🌐' },
-  CANVA: { label: 'Canva Presentation', icon: '🎨' },
-  FIGMA: { label: 'Figma Design', icon: '🖌️' },
-  GITHUB: { label: 'GitHub Repository', icon: '💻' },
-  SHEET: { label: 'Spreadsheet / Doc', icon: '📄' },
-  OTHER: { label: 'External Resource', icon: '🔗' }
+const TYPE_META: Record<ProjectLinkType, { label: string; icon: Component }> = {
+  WEBSITE: { label: 'Website / App', icon: Globe },
+  CANVA: { label: 'Canva Presentation', icon: Palette },
+  FIGMA: { label: 'Figma Design', icon: PenTool },
+  GITHUB: { label: 'GitHub Repository', icon: Github },
+  SHEET: { label: 'Spreadsheet / Doc', icon: FileSpreadsheet },
+  OTHER: { label: 'External Resource', icon: Link2 }
 }
 
 const typeLabel = computed(() => (props.link ? TYPE_META[props.link.link_type]?.label || 'Link' : ''))
-const typeIcon = computed(() => (props.link ? TYPE_META[props.link.link_type]?.icon || '🔗' : '🔗'))
+const typeIcon = computed<Component>(() => (props.link ? TYPE_META[props.link.link_type]?.icon || Link2 : Link2))
 
 /**
  * Convert share URLs into embeddable URLs safely.

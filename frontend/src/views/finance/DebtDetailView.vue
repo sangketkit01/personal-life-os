@@ -30,7 +30,7 @@
             </span>
           </div>
           <div class="flex flex-wrap items-center gap-3 text-xs text-zinc-500 font-mono mt-0.5">
-            <span v-if="debt?.metadata?.contact">📞 {{ debt.metadata.contact }}</span>
+            <span v-if="debt?.metadata?.contact" class="flex items-center gap-1"><Phone class="w-3 h-3" /> {{ debt.metadata.contact }}</span>
             <span v-if="debt?.metadata?.promptpay">PromptPay: {{ debt.metadata.promptpay }}</span>
             <span>Due: {{ debt?.due_date ? new Date(debt.due_date).toLocaleDateString('en-GB') : (debt?.metadata?.is_flexible ? 'Flexible' : 'Not set') }}</span>
           </div>
@@ -438,7 +438,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import {
+ ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDebts } from '../../composables/finance/useDebts'
 import { useStorageStore } from '../../stores/storage'
@@ -447,6 +448,8 @@ import PayModal from '../../components/finance/PayModal.vue'
 import EditObligationModal from '../../components/finance/EditObligationModal.vue'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import {
+  Phone,
+
   ArrowLeft,
   Check,
   Edit2,

@@ -63,7 +63,10 @@
         >
           ฿{{ totalBudgetCushion.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[11px] text-zinc-400 block mt-1.5">{{ totalBudgetCushion < 0 ? '⚠️ Over Budget' : 'Remaining Cushion' }}</span>
+        <span class="text-[11px] text-zinc-400 block mt-1.5 flex items-center gap-1">
+          <AlertTriangle v-if="totalBudgetCushion < 0" class="w-3 h-3 text-rose-400" />
+          {{ totalBudgetCushion < 0 ? 'Over Budget' : 'Remaining Cushion' }}
+        </span>
       </div>
     </div>
 
@@ -222,12 +225,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import {
+ ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useLedgerStore } from '../../stores/ledger'
 import { useToastStore } from '../../stores/toast'
 import { ledgerApi } from '../../api/ledger'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
-import { ArrowLeft, Plus, X, Trash2 } from 'lucide-vue-next'
+import {
+  AlertTriangle,
+ ArrowLeft, Plus, X, Trash2 } from 'lucide-vue-next'
 
 const ledgerStore = useLedgerStore()
 const toast = useToastStore()

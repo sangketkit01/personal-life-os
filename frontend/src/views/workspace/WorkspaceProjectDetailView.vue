@@ -348,20 +348,15 @@
             <tbody class="divide-y divide-zinc-800/50">
               <tr v-for="attachment in projectAttachments" :key="attachment.id" class="hover:bg-zinc-900/40 transition-colors group/row">
                 <td class="px-4 py-2.5">
-                  <a
-                    v-if="attachment.drive_view_link"
-                    :href="attachment.drive_view_link"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="text-xs text-zinc-200 hover:text-zinc-100 hover:underline flex items-center gap-2"
+                  <button
+                    type="button"
+                    class="text-xs text-zinc-200 hover:text-zinc-100 hover:underline flex items-center gap-2 text-left"
+                    :title="`Preview ${attachment.file_name}`"
+                    @click="openAttachmentPreview(attachment)"
                   >
                     <FileText class="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                     <span class="truncate max-w-[240px]">{{ attachment.file_name }}</span>
-                  </a>
-                  <span v-else class="text-xs text-zinc-200 flex items-center gap-2">
-                    <FileText class="w-3.5 h-3.5 text-zinc-500" />
-                    {{ attachment.file_name }}
-                  </span>
+                  </button>
                 </td>
                 <td class="px-4 py-2.5 text-[11px] font-mono text-zinc-500 hidden sm:table-cell">{{ formatFileSize(attachment.file_size) }}</td>
                 <td class="px-4 py-2.5 hidden md:table-cell">
@@ -375,6 +370,14 @@
                 </td>
                 <td class="px-4 py-2.5">
                   <div class="flex items-center justify-end gap-1.5">
+                    <button
+                      type="button"
+                      class="p-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors"
+                      title="Preview"
+                      @click="openAttachmentPreview(attachment)"
+                    >
+                      <Eye class="w-3.5 h-3.5" />
+                    </button>
                     <a
                       v-if="attachment.drive_download_link"
                       :href="attachment.drive_download_link"
@@ -540,6 +543,18 @@
       :is-open="!!previewLink"
       :link="previewLink"
       @close="previewLink = null"
+    />
+
+    <!-- In-app Google Drive file preview -->
+    <DriveFilePreviewModal
+      :is-open="attachmentPreview.open"
+      :drive-file-id="attachmentPreview.driveFileId"
+      :file-name="attachmentPreview.fileName"
+      :file-type="attachmentPreview.fileType"
+      :file-size="attachmentPreview.fileSize"
+      :drive-view-link="attachmentPreview.driveViewLink"
+      :drive-download-link="attachmentPreview.driveDownloadLink"
+      @close="attachmentPreview.open = false"
     />
 
     <!-- Add / Edit Link Modal -->
@@ -806,6 +821,7 @@ import WorkspaceKanbanBoard from '../../components/workspace/WorkspaceKanbanBoar
 import WorkspaceCalendarGrid from '../../components/workspace/WorkspaceCalendarGrid.vue'
 import TaskSidePeekDrawer from '../../components/workspace/TaskSidePeekDrawer.vue'
 import EmbedPreviewModal from '../../components/workspace/EmbedPreviewModal.vue'
+import DriveFilePreviewModal from '../../components/common/DriveFilePreviewModal.vue'
 import NotionBlockEditor from '../../components/workspace/NotionBlockEditor.vue'
 import CalendarQuickCreateModal from '../../components/workspace/CalendarQuickCreateModal.vue'
 import CalendarEventModal from '../../components/workspace/CalendarEventModal.vue'
@@ -921,6 +937,7 @@ const isEventModalOpen = ref(false)
 const selectedEvent = ref<CalendarEvent | null>(null)
 
 function openDrawer(task: TaskDocument) {
+  isEventModalOpen.value = false
   selectedTask.value = task
   isDrawerOpen.value = true
 }
@@ -936,6 +953,7 @@ function openQuickCreate(dateStr: string | null, defaultStatus: TaskStatus = 'TO
 }
 
 function openEventModal(event: CalendarEvent) {
+  isDrawerOpen.value = false
   selectedEvent.value = event
   isEventModalOpen.value = true
 }
@@ -1259,6 +1277,27 @@ watch(pageBlocks, () => {
 // ===== Drive Vault =====
 const vaultFileInput = ref<HTMLInputElement | null>(null)
 const attachmentToDelete = ref<ProjectAttachment | null>(null)
+
+const attachmentPreview = reactive({
+  open: false,
+  driveFileId: '',
+  fileName: '',
+  fileType: '',
+  fileSize: 0,
+  driveViewLink: '',
+  driveDownloadLink: ''
+})
+
+function openAttachmentPreview(attachment: ProjectAttachment) {
+  if (!attachment.drive_file_id) return
+  attachmentPreview.driveFileId = attachment.drive_file_id
+  attachmentPreview.fileName = attachment.file_name
+  attachmentPreview.fileType = attachment.file_type
+  attachmentPreview.fileSize = attachment.file_size
+  attachmentPreview.driveViewLink = attachment.drive_view_link
+  attachmentPreview.driveDownloadLink = attachment.drive_download_link
+  attachmentPreview.open = true
+}
 
 async function handleVaultSelected(event: Event) {
   const input = event.target as HTMLInputElement

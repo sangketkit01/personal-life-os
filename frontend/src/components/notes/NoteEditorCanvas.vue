@@ -59,19 +59,6 @@
         <Lock v-else class="w-3.5 h-3.5" />
       </button>
 
-      <!-- Attach file to Google Drive -->
-      <button
-        type="button"
-        class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 transition-colors relative"
-        title="Attach file (stored in Google Drive)"
-        :disabled="isUploading"
-        @click="fileInput?.click()"
-      >
-        <Loader2 v-if="isUploading" class="w-3.5 h-3.5 animate-spin" />
-        <Paperclip v-else class="w-3.5 h-3.5" />
-      </button>
-      <input ref="fileInput" type="file" multiple class="hidden" @change="handleAttachSelected" />
-
       <!-- Copy to Workspace Project -->
       <div class="relative">
         <button
@@ -233,43 +220,6 @@
         <NotionBlockEditor v-model="editorBlocks" :upload-target-id="note.id" />
       </div>
 
-      <!-- Attachments Strip -->
-      <div v-if="note.attachments && note.attachments.length > 0" class="px-5 pb-4 space-y-2">
-        <h4 class="text-[10px] font-mono uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
-          <Paperclip class="w-3 h-3" /> Attached Files ({{ note.attachments.length }})
-        </h4>
-        <div class="flex gap-2 flex-wrap">
-          <div
-            v-for="attachment in note.attachments"
-            :key="attachment.id"
-            class="group/att flex items-center gap-2 p-2 rounded-md bg-zinc-900/60 border border-zinc-800 max-w-[240px]"
-          >
-            <FileText class="w-4 h-4 text-zinc-500 shrink-0" />
-            <a
-              v-if="attachment.drive_view_link"
-              :href="attachment.drive_view_link"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="min-w-0 flex-1"
-            >
-              <span class="text-[11px] text-zinc-300 hover:text-zinc-100 hover:underline truncate block">{{ attachment.file_name }}</span>
-              <span class="text-[9px] font-mono text-zinc-600">{{ formatFileSize(attachment.file_size) }}</span>
-            </a>
-            <span v-else class="min-w-0 flex-1">
-              <span class="text-[11px] text-zinc-300 truncate block">{{ attachment.file_name }}</span>
-            </span>
-            <button
-              type="button"
-              class="p-0.5 rounded text-zinc-600 hover:text-rose-400 opacity-0 group-hover/att:opacity-100 transition-all shrink-0"
-              title="Remove attachment"
-              @click="removeAttachment(attachment.id)"
-            >
-              <Trash2 class="w-3 h-3" />
-            </button>
-          </div>
-        </div>
-      </div>
-
       <!-- Bottom Status Bar -->
       <div class="mt-auto shrink-0 px-5 py-2 border-t border-zinc-800/60 flex items-center justify-between text-[10px] font-mono text-zinc-500 bg-zinc-950/60">
         <div class="flex items-center gap-3">
@@ -343,13 +293,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
-  FileText,
   Folder,
   FolderKanban,
-  Loader2,
   Lock,
   Unlock,
-  Paperclip,
   Pin,
   Tag,
   Trash2,
@@ -357,7 +304,6 @@ import {
 } from 'lucide-vue-next'
 import NotionBlockEditor from '../workspace/NotionBlockEditor.vue'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
 import { stripHtml } from '../../utils/richText'
 import type { Note, NoteBlock, NoteColor } from '../../types/workspace'
@@ -373,7 +319,6 @@ const emit = defineEmits<{
 }>()
 
 const workspaceStore = useWorkspaceStore()
-const storageStore = useStorageStore()
 const toast = useToastStore()
 
 const NOTE_COLORS: Array<{ key: NoteColor; label: string; dot: string }> = [
@@ -415,8 +360,7 @@ const pinForm = reactive({ pin: '', confirm: '' })
 const pinModalInput = ref<HTMLInputElement | null>(null)
 const inlinePin = ref('')
 const inlinePinInput = ref<HTMLInputElement | null>(null)
-const fileInput = ref<HTMLInputElement | null>(null)
-const isUploading = ref(false)
+
 
 const locked = computed(() => props.note.is_locked && !props.isVerified)
 
@@ -532,6 +476,7 @@ watch(
   () => {
     flushAutosave()
     syncFromNote()
+    void migrateLegacyAttachments()
   },
   { immediate: true }
 )
@@ -691,41 +636,36 @@ async function verifyInlinePin() {
   }
 }
 
-// ===== Attachments =====
-async function handleAttachSelected(event: Event) {
-  const input = event.target as HTMLInputElement
-  if (input.files && input.files.length > 0) {
-    isUploading.value = true
-    try {
-      for (const file of Array.from(input.files)) {
-        await storageStore.uploadDirect(file, 'note', props.note.id)
-      }
-      await workspaceStore.fetchNote(props.note.id)
-      toast.success('File attached via Google Drive')
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to upload attachment')
-    } finally {
-      isUploading.value = false
-      input.value = ''
-    }
+// ===== Legacy attachments migration (blocks are the single source of truth) =====
+// Notes saved before inline file blocks may still hold items in note.attachments.
+// Convert any entry not represented by an inline block into a 'file' block.
+async function migrateLegacyAttachments() {
+  const note = props.note
+  if (!note || !note.attachments || note.attachments.length === 0) return
+  const blockDriveIds = new Set((note.blocks || []).map(b => b.drive_file_id).filter(Boolean))
+  const orphans = note.attachments.filter(a => a.drive_file_id && !blockDriveIds.has(a.drive_file_id))
+  if (orphans.length === 0) {
+    await workspaceStore.updateNote(note.id, { attachments: [] })
+    return
   }
-}
-
-async function removeAttachment(attachmentId: string) {
+  const migratedBlocks = orphans.map(a => ({
+    id: crypto.randomUUID(),
+    type: 'file' as const,
+    content: '',
+    drive_file_id: a.drive_file_id,
+    file_url: a.drive_view_link || '',
+    file_name: a.file_name,
+    file_type: a.file_type || '',
+    file_size: a.file_size || 0
+  }))
   try {
-    await workspaceStore.updateNote(props.note.id, {
-      attachments: props.note.attachments.filter(a => a.id !== attachmentId)
+    await workspaceStore.updateNote(note.id, {
+      blocks: [...(note.blocks || []), ...migratedBlocks],
+      attachments: []
     })
-    toast.info('Attachment removed')
+    toast.info('Legacy attachments converted to inline file blocks')
   } catch {
-    toast.error('Failed to remove attachment')
+    toast.error('Failed to migrate legacy attachments')
   }
-}
-
-function formatFileSize(bytes: number): string {
-  if (!bytes) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  const exp = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-  return `${(bytes / Math.pow(1024, exp)).toFixed(exp === 0 ? 0 : 1)} ${units[exp]}`
 }
 </script>

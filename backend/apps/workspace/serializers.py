@@ -54,7 +54,7 @@ def summarize_blocks(blocks) -> str:
         text = strip_html_tags(str(block.get('content') or '')).strip()
         if text:
             pieces.append(text)
-        if block_type in ('image', 'audio'):
+        if block_type in ('image', 'audio', 'file'):
             file_name = str(block.get('file_name') or '').strip()
             if file_name:
                 pieces.append(file_name)
@@ -359,7 +359,7 @@ class NoteSerializer(serializers.ModelSerializer):
 
     MAX_TABLE_ROWS = 50
     MAX_TABLE_COLS = 12
-    ALLOWED_IMAGE_WIDTHS = ('50%', '75%', '100%')
+    ALLOWED_IMAGE_ALIGNS = ('left', 'center', 'right')
     DEFAULT_TABLE_ROWS = [['Column 1', 'Column 2', 'Column 3'], ['', '', '']]
 
     def _clean_table_rows(self, raw_rows):
@@ -401,9 +401,16 @@ class NoteSerializer(serializers.ModelSerializer):
             except (TypeError, ValueError):
                 duration = 0.0
 
-            width = str(block.get('width') or '100%')
-            if width not in self.ALLOWED_IMAGE_WIDTHS:
+            raw_width = str(block.get('width') or '100%')
+            width_match = re.fullmatch(r'(\d{1,3})%', raw_width)
+            if width_match and 25 <= int(width_match.group(1)) <= 100:
+                width = f"{int(width_match.group(1))}%"
+            else:
                 width = '100%'
+
+            align = str(block.get('align') or 'center')
+            if align not in self.ALLOWED_IMAGE_ALIGNS:
+                align = 'center'
 
             rows = self._clean_table_rows(block.get('rows'))
             if str(block.get('type') or '') == 'table' and not rows:
@@ -423,6 +430,7 @@ class NoteSerializer(serializers.ModelSerializer):
                 'file_type': str(block.get('file_type') or '').strip(),
                 'file_size': file_size,
                 'width': width,
+                'align': align,
                 'duration': duration,
                 # Table field (table blocks)
                 'rows': rows
@@ -562,12 +570,16 @@ class CalendarEventSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         start_at = attrs.get('start_at')
-        end_at = attrs.get('end_at')
         if self.instance is not None:
             start_at = start_at if start_at is not None else self.instance.start_at
-            end_at = end_at if end_at is not None else self.instance.end_at
+            if 'start_at' in attrs and 'end_at' not in attrs:
+                # Moving start_at without an explicit end_at: drop the stale end_at
+                # instead of failing with "End time must be after the start time".
+                attrs['end_at'] = None
+        end_at = attrs.get('end_at')
         if start_at and end_at and end_at < start_at:
-            raise serializers.ValidationError('End time must be after the start time.')
+            # An outdated end_at is cleared rather than rejecting the update.
+            attrs['end_at'] = None
         return attrs
 
     def create(self, validated_data):

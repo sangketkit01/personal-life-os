@@ -1,7 +1,7 @@
 <template>
-  <div ref="rootEl" class="relative select-none" @keydown="handleKeydown" @click="handleEditorClick" @paste="handlePaste">
+  <div ref="rootEl" class="relative" @keydown="handleKeydown" @click="handleEditorClick" @paste="handlePaste">
     <!-- Sticky Rich Formatting Toolbar -->
-    <div class="sticky top-0 z-20 -mx-1 px-1 py-2 mb-3 border-b border-zinc-800/60 bg-zinc-950/95 backdrop-blur flex items-center gap-1 flex-wrap">
+    <div class="sticky top-0 z-20 -mx-1 px-1 py-2 mb-3 border-b border-zinc-800/60 bg-zinc-950/95 backdrop-blur flex items-center gap-1 flex-wrap select-none">
       <!-- Inline styles -->
       <div class="flex items-center gap-0.5 pr-1.5 mr-0.5 border-r border-zinc-800/70">
         <button type="button" class="w-6 h-6 rounded text-xs font-bold transition-colors" :class="toolBtnClass" title="Bold (Ctrl+B)" @mousedown.prevent @click="execFormat('bold')">B</button>
@@ -64,7 +64,7 @@
       </div>
 
       <!-- Indent -->
-      <div class="flex items-center gap-0.5">
+      <div class="flex items-center gap-0.5 pr-1.5 mr-0.5 border-r border-zinc-800/70">
         <button type="button" class="w-6 h-6 rounded transition-colors flex items-center justify-center" :class="toolBtnClass" title="Outdent (Shift+Tab)" @mousedown.prevent @click="adjustIndent(-1)">
           <IndentDecrease class="w-3.5 h-3.5" />
         </button>
@@ -73,13 +73,16 @@
         </button>
       </div>
 
-      <!-- Media & Table -->
+      <!-- Media, File & Table -->
       <div class="flex items-center gap-0.5 relative">
         <button type="button" class="w-6 h-6 rounded transition-colors flex items-center justify-center" :class="toolBtnClass" title="Insert Image" @mousedown.prevent @click="toggleImageChooser">
           <ImageIcon class="w-3.5 h-3.5" />
         </button>
         <button type="button" class="w-6 h-6 rounded transition-colors flex items-center justify-center" :class="toolBtnClass" title="Insert Audio / Voice Memo" @mousedown.prevent @click="insertAudioBlock()">
           <Mic class="w-3.5 h-3.5" />
+        </button>
+        <button type="button" class="w-6 h-6 rounded transition-colors flex items-center justify-center" :class="toolBtnClass" title="Attach File / Document" @mousedown.prevent @click="openFilePicker()">
+          <Paperclip class="w-3.5 h-3.5" />
         </button>
         <button type="button" class="w-6 h-6 rounded transition-colors flex items-center justify-center" :class="toolBtnClass" title="Insert Table" @mousedown.prevent @click="insertTableBlock()">
           <Table2 class="w-3.5 h-3.5" />
@@ -256,30 +259,39 @@
         <!-- CODE block -->
         <template v-else-if="block.type === 'code'">
           <div class="flex-1 rounded-md bg-zinc-950 border border-zinc-800 overflow-hidden min-w-0">
-            <div class="px-2.5 py-1 border-b border-zinc-800/80 flex items-center justify-between">
+            <div class="px-2.5 py-1 border-b border-zinc-800/80 flex items-center justify-between gap-2">
               <span class="text-[10px] font-mono uppercase text-zinc-500">{{ block.language || 'code' }}</span>
-              <select
-                v-model="block.language"
-                class="bg-zinc-900 border border-zinc-800 rounded text-[10px] font-mono text-zinc-400 px-1 py-0.5 outline-none"
-                @change="update([...modelValue])"
-              >
-                <option value="">plain</option>
-                <option value="typescript">typescript</option>
-                <option value="javascript">javascript</option>
-                <option value="python">python</option>
-                <option value="bash">bash</option>
-                <option value="json">json</option>
-                <option value="sql">sql</option>
-              </select>
+              <div class="flex items-center gap-1">
+                <select
+                  v-model="block.language"
+                  class="bg-zinc-900 border border-zinc-800 rounded text-[10px] font-mono text-zinc-400 px-1 py-0.5 outline-none"
+                  @change="update([...modelValue])"
+                >
+                  <option value="">plain</option>
+                  <option value="typescript">typescript</option>
+                  <option value="javascript">javascript</option>
+                  <option value="python">python</option>
+                  <option value="bash">bash</option>
+                  <option value="json">json</option>
+                  <option value="sql">sql</option>
+                </select>
+                <button type="button" class="p-1 rounded text-zinc-500 hover:text-zinc-100 hover:bg-zinc-900 transition-colors" title="Copy code" @click="copyCode(block)">
+                  <Check v-if="copiedCodeId === block.id" class="w-3 h-3 text-emerald-400" />
+                  <Copy v-else class="w-3 h-3" />
+                </button>
+                <button type="button" class="p-1 rounded text-zinc-600 hover:text-rose-400 hover:bg-zinc-900 transition-colors" title="Delete code block" @click="removeBlock(index)">
+                  <Trash2 class="w-3 h-3" />
+                </button>
+              </div>
             </div>
             <textarea
               :ref="el => setBlockRef(el, index)"
               v-model="block.content"
               rows="3"
-              placeholder="Code snippet..."
+              placeholder="Code snippet... (Tab indents, Ctrl+Enter exits)"
               spellcheck="false"
-              class="w-full bg-transparent border-none outline-none text-xs font-mono text-emerald-300/90 p-2.5 resize-y"
-              @input="update([...modelValue])"
+              class="w-full bg-transparent border-none outline-none text-xs font-mono text-emerald-300/90 p-2.5 resize-none overflow-hidden"
+              @input="onCodeInput(index)"
               @focus="focusedIndex = index; lastFocusedIndex = index"
               @blur="focusedIndex = -1"
             />
@@ -307,36 +319,74 @@
               </div>
             </div>
 
-            <div v-else class="relative group/img mx-auto" :style="{ width: block.width || '100%' }">
-              <div v-if="!blobUrls.get(block.drive_file_id!)" class="w-full aspect-video rounded-md bg-zinc-900 border border-zinc-800 animate-pulse flex items-center justify-center">
-                <Loader2 class="w-5 h-5 text-zinc-600 animate-spin" />
-              </div>
-              <img
-                v-else
-                :src="blobUrls.get(block.drive_file_id!)!"
-                class="w-full rounded-md border border-zinc-800 cursor-zoom-in"
-                :alt="block.content || block.file_name || 'Note image'"
-                @click="openLightbox(block)"
-              />
-              <div v-if="blobUrls.get(block.drive_file_id!)" class="absolute top-1.5 right-1.5 hidden group-hover/img:flex items-center gap-0.5 p-0.5 rounded-md bg-zinc-950/90 border border-zinc-700/80">
-                <button v-for="w in WIDTH_OPTIONS" :key="w" type="button" class="px-1 py-0.5 rounded text-[9px] font-mono transition-colors" :class="block.width === w ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-100'" :title="`Image width ${w}`" @click="setImageWidth(block, w)">{{ w }}</button>
-                <span class="w-px h-3.5 bg-zinc-700 mx-0.5" />
-                <button type="button" class="p-1 rounded text-zinc-400 hover:text-zinc-100" title="Full screen" @click="openLightbox(block)">
-                  <Maximize2 class="w-3 h-3" />
-                </button>
-                <a v-if="block.file_url" :href="block.file_url" target="_blank" rel="noopener noreferrer" class="p-1 rounded text-zinc-400 hover:text-zinc-100" title="Open in Google Drive">
-                  <ExternalLink class="w-3 h-3" />
-                </a>
-              </div>
-            </div>
+            <div v-else class="w-full">
+              <div class="relative group/img flex" :class="alignClass(block.align)">
+                <div class="relative image-shell" :style="{ width: block.width || '100%' }">
+                  <div v-if="!blobUrls.get(block.drive_file_id!)" class="w-full aspect-video rounded-md bg-zinc-900 border border-zinc-800 animate-pulse flex items-center justify-center">
+                    <Loader2 class="w-5 h-5 text-zinc-600 animate-spin" />
+                  </div>
+                  <img
+                    v-else
+                    :src="blobUrls.get(block.drive_file_id!)!"
+                    class="w-full rounded-md border border-zinc-800 cursor-zoom-in"
+                    :alt="block.content || block.file_name || 'Note image'"
+                    @click="openPreviewFor(block)"
+                  />
 
-            <input
-              v-model="block.content"
-              type="text"
-              placeholder="Write a caption..."
-              class="mt-1.5 w-full bg-transparent border-none outline-none text-[11px] text-zinc-500 placeholder-zinc-700 font-sans"
-              @input="update([...modelValue])"
-            />
+                  <!-- Drag resize handles -->
+                  <div
+                    v-if="blobUrls.get(block.drive_file_id!)"
+                    class="absolute -left-1.5 top-1/2 -translate-y-1/2 w-2 h-12 rounded-full bg-zinc-100/80 cursor-ew-resize opacity-0 group-hover/img:opacity-100 transition-opacity"
+                    title="Drag to resize"
+                    @pointerdown.prevent="startImageResize(block, 'left', $event)"
+                  />
+                  <div
+                    v-if="blobUrls.get(block.drive_file_id!)"
+                    class="absolute -right-1.5 top-1/2 -translate-y-1/2 w-2 h-12 rounded-full bg-zinc-100/80 cursor-ew-resize opacity-0 group-hover/img:opacity-100 transition-opacity"
+                    title="Drag to resize"
+                    @pointerdown.prevent="startImageResize(block, 'right', $event)"
+                  />
+
+                  <!-- Floating image toolbar -->
+                  <div v-if="blobUrls.get(block.drive_file_id!)" class="absolute top-1.5 right-1.5 hidden group-hover/img:flex items-center gap-0.5 p-0.5 rounded-md bg-zinc-950/90 border border-zinc-700/80 select-none">
+                    <button v-for="w in WIDTH_OPTIONS" :key="w" type="button" class="px-1 py-0.5 rounded text-[9px] font-mono transition-colors" :class="block.width === w ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-100'" :title="`Width ${w}`" @mousedown.prevent @click="setImageWidth(block, w)">{{ w }}</button>
+                    <span class="w-px h-3.5 bg-zinc-700 mx-0.5" />
+                    <button type="button" class="p-1 rounded text-zinc-400 hover:text-zinc-100" :class="block.align === 'left' ? 'bg-zinc-800 text-zinc-100' : ''" title="Align left" @mousedown.prevent @click="setImageAlign(block, 'left')">
+                      <AlignLeft class="w-3 h-3" />
+                    </button>
+                    <button type="button" class="p-1 rounded text-zinc-400 hover:text-zinc-100" :class="block.align === 'center' ? 'bg-zinc-800 text-zinc-100' : ''" title="Align center" @mousedown.prevent @click="setImageAlign(block, 'center')">
+                      <AlignCenter class="w-3 h-3" />
+                    </button>
+                    <button type="button" class="p-1 rounded text-zinc-400 hover:text-zinc-100" :class="block.align === 'right' ? 'bg-zinc-800 text-zinc-100' : ''" title="Align right" @mousedown.prevent @click="setImageAlign(block, 'right')">
+                      <AlignRight class="w-3 h-3" />
+                    </button>
+                    <span class="w-px h-3.5 bg-zinc-700 mx-0.5" />
+                    <button type="button" class="p-1 rounded text-zinc-400 hover:text-zinc-100" title="Crop image" @click="openCropFor(block)">
+                      <Crop class="w-3 h-3" />
+                    </button>
+                    <button type="button" class="p-1 rounded text-zinc-400 hover:text-zinc-100" title="Preview (zoom / rotate)" @click="openPreviewFor(block)">
+                      <Maximize2 class="w-3 h-3" />
+                    </button>
+                    <a v-if="block.file_url" :href="block.file_url" target="_blank" rel="noopener noreferrer" class="p-1 rounded text-zinc-400 hover:text-zinc-100" title="Open in Google Drive">
+                      <ExternalLink class="w-3 h-3" />
+                    </a>
+                    <button type="button" class="p-1 rounded text-zinc-500 hover:text-rose-400" title="Delete image (and Drive file)" @click="removeBlock(index)">
+                      <Trash2 class="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <input
+                v-model="block.content"
+                type="text"
+                placeholder="Write a caption... (Enter to continue below)"
+                class="mt-1.5 w-full bg-transparent border-none outline-none text-[11px] text-zinc-500 placeholder-zinc-700 font-sans"
+                @input="update([...modelValue])"
+                @keydown.enter.prevent="escapeToBlockBelow(index)"
+                @keydown.down.prevent="escapeToBlockBelow(index)"
+              />
+            </div>
           </div>
         </template>
 
@@ -380,12 +430,20 @@
                   :placeholder="block.file_name || 'Voice memo'"
                   class="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-zinc-200 placeholder-zinc-500"
                   @input="update([...modelValue])"
+                  @keydown.enter.prevent="escapeToBlockBelow(index)"
+                  @keydown.down.prevent="escapeToBlockBelow(index)"
                 />
                 <span class="text-[9px] font-mono text-zinc-600 shrink-0">{{ formatBytes(block.file_size || 0) }}</span>
                 <span v-if="block.duration" class="text-[9px] font-mono text-zinc-600 shrink-0">{{ Math.round(block.duration) }}s</span>
-                <a v-if="block.file_url" :href="block.file_url" target="_blank" rel="noopener noreferrer" class="p-1 rounded text-zinc-500 hover:text-zinc-200 shrink-0" title="Open in Google Drive">
+                <button type="button" class="p-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors shrink-0" title="Preview" @click="openPreviewFor(block)">
+                  <Maximize2 class="w-3 h-3" />
+                </button>
+                <a v-if="block.file_url" :href="block.file_url" target="_blank" rel="noopener noreferrer" class="p-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors shrink-0" title="Open in Google Drive">
                   <ExternalLink class="w-3 h-3" />
                 </a>
+                <button type="button" class="p-1 rounded text-zinc-500 hover:text-rose-400 transition-colors shrink-0" title="Delete audio (and Drive file)" @click="removeBlock(index)">
+                  <Trash2 class="w-3 h-3" />
+                </button>
               </div>
               <audio v-if="blobUrls.get(block.drive_file_id!)" controls :src="blobUrls.get(block.drive_file_id!)!" class="w-full h-8" />
               <div v-else class="h-8 rounded bg-zinc-950 border border-zinc-800 animate-pulse flex items-center px-2">
@@ -395,10 +453,57 @@
           </div>
         </template>
 
+        <!-- FILE block -->
+        <template v-else-if="block.type === 'file'">
+          <div class="flex-1 min-w-0">
+            <div
+              v-if="!block.drive_file_id"
+              class="rounded-md border border-dashed border-zinc-800 hover:border-zinc-600 bg-zinc-900/20 p-3 transition-colors text-center"
+            >
+              <div v-if="uploadingIds.has(block.id)" class="flex items-center justify-center gap-2 text-[11px] text-zinc-400 font-mono">
+                <Loader2 class="w-3.5 h-3.5 animate-spin" /> Uploading to Google Drive...
+              </div>
+              <button v-else type="button" class="px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] text-zinc-300 transition-colors inline-flex items-center gap-1.5" @click="pickFileFor(block.id)">
+                <Paperclip class="w-3 h-3" /> Choose File
+              </button>
+            </div>
+
+            <div v-else class="rounded-md bg-zinc-900/60 border border-zinc-800 p-2.5 flex items-center gap-2.5 min-w-0">
+              <div class="w-8 h-8 rounded-md bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[10px] font-mono text-zinc-400 uppercase shrink-0">
+                {{ fileExt(block) }}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="text-xs font-medium text-zinc-200 truncate">{{ block.file_name || 'Attachment' }}</div>
+                <input
+                  v-model="block.content"
+                  type="text"
+                  placeholder="Add a caption... (Enter to continue below)"
+                  class="w-full bg-transparent border-none outline-none text-[10px] text-zinc-500 placeholder-zinc-700 p-0"
+                  @input="update([...modelValue])"
+                  @keydown.enter.prevent="escapeToBlockBelow(index)"
+                  @keydown.down.prevent="escapeToBlockBelow(index)"
+                />
+              </div>
+              <span class="text-[9px] font-mono text-zinc-600 shrink-0">{{ formatBytes(block.file_size || 0) }}</span>
+              <div class="flex items-center gap-0.5 shrink-0 select-none">
+                <button type="button" class="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors" title="Preview" @click="openPreviewFor(block)">
+                  <Eye class="w-3.5 h-3.5" />
+                </button>
+                <a v-if="block.file_url" :href="block.file_url" target="_blank" rel="noopener noreferrer" class="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors" title="Open in Google Drive">
+                  <ExternalLink class="w-3.5 h-3.5" />
+                </a>
+                <button type="button" class="p-1.5 rounded text-zinc-500 hover:text-rose-400 hover:bg-zinc-900 transition-colors" title="Delete file (and Drive file)" @click="removeBlock(index)">
+                  <Trash2 class="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+
         <!-- TABLE block -->
         <template v-else-if="block.type === 'table'">
           <div class="flex-1 min-w-0">
-            <TableBlockEditor :block="block" @changed="update([...modelValue])" />
+            <TableBlockEditor :block="block" @changed="update([...modelValue])" @delete="removeBlock(index)" />
           </div>
         </template>
 
@@ -420,7 +525,8 @@
         <!-- Slash Command Palette -->
         <div
           v-if="slashMenu.isOpen && slashMenu.blockIndex === index"
-          class="absolute z-30 left-6 top-full mt-1 w-64 max-h-64 overflow-y-auto rounded-lg bg-zinc-950 border border-zinc-700/80 shadow-2xl p-1"
+          class="absolute z-30 left-6 w-64 max-h-64 overflow-y-auto rounded-lg bg-zinc-950 border border-zinc-700/80 shadow-2xl p-1"
+          :class="slashMenu.flip ? 'bottom-full mb-1' : 'top-full mt-1'"
         >
           <div class="px-2 py-1 text-[10px] font-mono uppercase text-zinc-500 border-b border-zinc-800/80 mb-1">
             Block Types
@@ -451,12 +557,19 @@
       >
         Empty page. Click here or type <span class="font-mono text-zinc-500">'/'</span> to insert blocks...
       </button>
+
+      <!-- Clickable tail zone: always keep typing below the last block -->
+      <div class="min-h-[48px] cursor-text" @click="handleTailClick">
+        <span class="block pt-3 text-[11px] font-mono text-zinc-800 hover:text-zinc-600 transition-colors select-none">
+          Click below to continue writing...
+        </span>
+      </div>
     </div>
 
     <!-- Floating Selection Toolbar (bubble) -->
     <div
       v-if="bubble.visible"
-      class="absolute z-40 flex items-center gap-0.5 p-1 rounded-lg bg-zinc-900 border border-zinc-700/80 shadow-2xl"
+      class="absolute z-40 flex items-center gap-0.5 p-1 rounded-lg bg-zinc-900 border border-zinc-700/80 shadow-2xl select-none"
       :style="{ top: `${bubble.top}px`, left: `${bubble.left}px`, transform: 'translateX(-50%)' }"
     >
       <button type="button" class="w-6 h-6 rounded text-xs font-bold text-zinc-300 hover:bg-zinc-800" title="Bold" @mousedown.prevent @click="execFormat('bold')">B</button>
@@ -496,7 +609,7 @@
         </button>
         <div class="flex items-center gap-1.5">
           <button type="button" class="px-2 py-1 rounded-md bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300 hover:text-zinc-100" @click="linkPopover.open = false">Cancel</button>
-          <button type="button" class="px-2.5 py-1 rounded-md bg-zinc-100 text-zinc-950 text-[11px] font-semibold hover:bg-white" @mousedown.prevent @click="applyLink()">Apply</button>
+          <button type="button" class="px-2 py-1 rounded-md bg-zinc-100 text-zinc-950 text-[11px] font-semibold hover:bg-white" @mousedown.prevent @click="applyLink()">Apply</button>
         </div>
       </div>
     </div>
@@ -521,6 +634,27 @@
       </button>
     </div>
 
+    <!-- Drive file preview (zoom/rotate, PDF, audio/video, text/CSV, Office) -->
+    <DriveFilePreviewModal
+      :is-open="previewState.open"
+      :drive-file-id="previewState.driveFileId"
+      :file-name="previewState.fileName"
+      :file-type="previewState.fileType"
+      :file-size="previewState.fileSize"
+      :drive-view-link="previewState.driveViewLink"
+      :blob-url="previewState.blobUrl"
+      @close="previewState.open = false"
+    />
+
+    <!-- Image cropper -->
+    <ImageCropperModal
+      :is-open="cropState.open"
+      :image-url="cropState.imageUrl"
+      :file-name="cropState.fileName"
+      @close="cropState.open = false"
+      @cropped="onImageCropped"
+    />
+
     <!-- Live Camera Capture Modal -->
     <Teleport to="body">
       <div v-if="cameraState.open" class="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 font-sans">
@@ -544,7 +678,7 @@
             </div>
           </div>
 
-          <div class="flex items-center justify-center gap-4 mt-4 min-h-[48px]">
+          <div class="flex items-center justify-center gap-3 mt-4 min-h-[48px] flex-wrap">
             <template v-if="!cameraState.capturedDataUrl">
               <button type="button" class="p-2 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-zinc-100 transition-colors" title="Flip camera" @click="flipCamera">
                 <SwitchCamera class="w-4 h-4" />
@@ -554,6 +688,9 @@
             </template>
             <template v-else>
               <button type="button" class="px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 hover:text-zinc-100" @click="cameraState.capturedDataUrl = ''">Retake</button>
+              <button type="button" class="px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 hover:text-zinc-100 flex items-center gap-1.5" @click="openCameraCrop">
+                <Crop class="w-3.5 h-3.5" /> Crop before saving
+              </button>
               <button type="button" class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors" @click="usePhoto">Use Photo</button>
             </template>
           </div>
@@ -561,32 +698,29 @@
           <input ref="cameraFallbackInput" type="file" accept="image/*" capture="environment" class="hidden" @change="onCameraFallbackSelected" />
         </div>
       </div>
-
-      <!-- Image Lightbox -->
-      <div v-if="lightbox.open" class="fixed inset-0 z-[60] bg-black/90 flex flex-col items-center justify-center p-6" @click.self="lightbox.open = false">
-        <img :src="lightbox.url" class="max-w-full max-h-[78vh] rounded-md border border-zinc-800" :alt="lightbox.caption" />
-        <div class="flex items-center gap-3 mt-4">
-          <span class="text-xs text-zinc-400">{{ lightbox.caption }}</span>
-          <a v-if="lightbox.driveUrl" :href="lightbox.driveUrl" target="_blank" rel="noopener noreferrer" class="text-xs text-zinc-300 hover:text-zinc-100 underline">Open in Drive</a>
-          <button type="button" class="px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 hover:text-zinc-100" @click="lightbox.open = false">Close</button>
-        </div>
-      </div>
     </Teleport>
 
     <!-- Hidden media file inputs -->
     <input ref="galleryInput" type="file" accept="image/*" class="hidden" @change="onGallerySelected" />
     <input ref="audioInput" type="file" accept="audio/*" class="hidden" @change="onAudioFileSelected" />
+    <input ref="fileInput" type="file" class="hidden" @change="onAnyFileSelected" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   Camera,
   Check,
   ChevronDown,
   ChevronUp,
+  Copy,
+  Crop,
   ExternalLink,
+  Eye,
   Highlighter,
   Image as ImageIcon,
   IndentDecrease,
@@ -597,6 +731,7 @@ import {
   Loader2,
   Maximize2,
   Mic,
+  Paperclip,
   SwitchCamera,
   Table2,
   Trash2,
@@ -604,6 +739,8 @@ import {
   X
 } from 'lucide-vue-next'
 import TableBlockEditor from './TableBlockEditor.vue'
+import DriveFilePreviewModal from '../common/DriveFilePreviewModal.vue'
+import ImageCropperModal from './ImageCropperModal.vue'
 import apiClient from '../../api/client'
 import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
@@ -621,6 +758,8 @@ const emit = defineEmits<{
 
 const storageStore = useStorageStore()
 const toast = useToastStore()
+
+const NON_TEXT_TYPES: NoteBlockType[] = ['image', 'audio', 'file', 'table', 'divider', 'code']
 
 const hoveredIndex = ref(-1)
 const focusedIndex = ref(-1)
@@ -681,6 +820,7 @@ const BLOCK_LIBRARY: Array<{ type: NoteBlockType; label: string; icon: string }>
   { type: 'divider', label: 'Divider', icon: '—' },
   { type: 'image', label: 'Image', icon: '🖼' },
   { type: 'audio', label: 'Audio / Voice Memo', icon: '🎙' },
+  { type: 'file', label: 'File / Document', icon: '📎' },
   { type: 'table', label: 'Table', icon: '▦' }
 ]
 
@@ -720,11 +860,17 @@ const slashMenu = reactive<{
   blockIndex: number
   query: string
   selectedIndex: number
+  triggerStart: number
+  triggerLen: number
+  flip: boolean
 }>({
   isOpen: false,
   blockIndex: -1,
   query: '',
-  selectedIndex: 0
+  selectedIndex: 0,
+  triggerStart: 0,
+  triggerLen: 0,
+  flip: false
 })
 
 const slashOptions = computed(() => {
@@ -737,6 +883,8 @@ const bubble = reactive({ visible: false, top: 0, left: 0 })
 const colorMenu = reactive<{ open: boolean; mode: 'text' | 'highlight' }>({ open: false, mode: 'text' })
 const linkPopover = reactive({ open: false, top: 0, left: 0, text: '', url: '', hadSelection: false })
 const linkMenu = reactive({ open: false, top: 0, left: 0, href: '', anchor: null as HTMLAnchorElement | null })
+const previewState = reactive({ open: false, driveFileId: '', fileName: '', fileType: '', fileSize: 0, driveViewLink: '', blobUrl: '' })
+const cropState = reactive({ open: false, blockId: '', imageUrl: '', fileName: '', target: 'block' as 'block' | 'camera' })
 
 // ===== Refs & DOM sync =====
 
@@ -744,11 +892,20 @@ function isEditable(el: HTMLElement): boolean {
   return el.isContentEditable
 }
 
+function autoResizeTextarea(el: HTMLTextAreaElement) {
+  el.style.height = 'auto'
+  el.style.height = `${Math.max(76, el.scrollHeight)}px`
+}
+
 function setBlockRef(el: any, index: number) {
   if (el) {
     const prev = blockRefs.get(index)
     blockRefs.set(index, el)
     const block = props.modelValue[index]
+    if (el.tagName === 'TEXTAREA') {
+      autoResizeTextarea(el as HTMLTextAreaElement)
+      return
+    }
     if (
       el !== prev &&
       block &&
@@ -764,7 +921,7 @@ function setBlockRef(el: any, index: number) {
 }
 
 const TABLE_DEFAULT_ROWS: string[][] = [['Column 1', 'Column 2', 'Column 3'], ['', '', '']]
-const WIDTH_OPTIONS: Array<'50%' | '75%' | '100%'> = ['50%', '75%', '100%']
+const WIDTH_OPTIONS = ['25%', '50%', '75%', '100%']
 
 function newBlock(type: NoteBlockType = 'paragraph', content = ''): NoteBlock {
   const block: NoteBlock = {
@@ -780,6 +937,7 @@ function newBlock(type: NoteBlockType = 'paragraph', content = ''): NoteBlock {
   }
   if (type === 'image') {
     block.width = '100%'
+    block.align = 'center'
   }
   return block
 }
@@ -819,12 +977,94 @@ function insertBlock(type: NoteBlockType, atIndex: number = props.modelValue.len
   }
 }
 
+/** Insert a non-text block and GUARANTEE a trailing paragraph below it. */
+function insertNonTextBlock(block: NoteBlock, afterIndex?: number): string {
+  const blocks = [...props.modelValue]
+  let insertAt: number
+  if (afterIndex !== undefined && afterIndex >= 0 && afterIndex < blocks.length) {
+    const target = blocks[afterIndex]
+    if (target.type === 'paragraph' && isEmptyHtml(target.content)) {
+      blocks.splice(afterIndex, 1, block)
+      insertAt = afterIndex
+    } else {
+      blocks.splice(afterIndex + 1, 0, block)
+      insertAt = afterIndex + 1
+    }
+  } else {
+    insertAt = blocks.length
+    blocks.push(block)
+  }
+  const nextBlock = blocks[insertAt + 1]
+  if (!nextBlock || NON_TEXT_TYPES.includes(nextBlock.type)) {
+    blocks.splice(insertAt + 1, 0, newBlock('paragraph'))
+  }
+  update(blocks)
+  return block.id
+}
+
+function insertImageBlock(afterIndex?: number): string {
+  return insertNonTextBlock(newBlock('image'), afterIndex ?? currentEditableIndex())
+}
+
+function insertAudioBlock(afterIndex?: number): string {
+  return insertNonTextBlock(newBlock('audio'), afterIndex ?? currentEditableIndex())
+}
+
+function insertTableBlock(afterIndex?: number): string {
+  return insertNonTextBlock(newBlock('table'), afterIndex ?? currentEditableIndex())
+}
+
+function insertFileBlock(afterIndex?: number): string {
+  return insertNonTextBlock(newBlock('file'), afterIndex ?? currentEditableIndex())
+}
+
+/** Focus the block below (create a paragraph if the next block is non-text). */
+function escapeToBlockBelow(index: number) {
+  const next = props.modelValue[index + 1]
+  if (next && !NON_TEXT_TYPES.includes(next.type)) {
+    focusBlock(index + 1, false)
+  } else {
+    const blocks = [...props.modelValue]
+    blocks.splice(index + 1, 0, newBlock('paragraph'))
+    update(blocks)
+    focusBlock(index + 1, false)
+  }
+}
+
+function handleTailClick() {
+  const blocks = props.modelValue
+  const last = blocks[blocks.length - 1]
+  if (last && last.type === 'paragraph' && isEmptyHtml(last.content)) {
+    focusBlock(blocks.length - 1)
+  } else {
+    const newBlocks = [...blocks, newBlock('paragraph')]
+    update(newBlocks)
+    focusBlock(newBlocks.length - 1)
+  }
+}
+
 function removeBlock(index: number) {
+  const block = props.modelValue[index]
+  // Deleting a media/file block also deletes its Google Drive file
+  if (block?.drive_file_id) {
+    deleteBlockDriveFile(block)
+  }
   const blocks = props.modelValue.filter((_, i) => i !== index)
   update(blocks)
   if (blocks.length > 0) {
     focusBlock(Math.min(index, blocks.length - 1))
   }
+}
+
+function deleteBlockDriveFile(block: NoteBlock) {
+  const id = block.drive_file_id
+  if (!id) return
+  const url = blobUrls.get(id)
+  if (url) {
+    URL.revokeObjectURL(url)
+    blobUrls.delete(id)
+  }
+  storageStore.deleteFileByDriveId(id).catch(() => {})
 }
 
 function moveBlock(index: number, direction: -1 | 1) {
@@ -850,26 +1090,67 @@ function currentEditableIndex(): number {
   return Math.max(props.modelValue.length - 1, 0)
 }
 
+/** Block indices [start, end] spanned by the active (or saved) selection. */
+function getSelectionBlockRange(): [number, number] | null {
+  const sel = window.getSelection()
+  const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : savedRange
+  if (!range) return null
+  const startIdx = findIndexForNode(range.startContainer)
+  const endIdx = findIndexForNode(range.endContainer)
+  if (startIdx === -1 || endIdx === -1) return null
+  return startIdx <= endIdx ? [startIdx, endIdx] : [endIdx, startIdx]
+}
+
+function applyBlockType(block: NoteBlock, type: NoteBlockType): NoteBlock {
+  const next: NoteBlock = { ...block, type }
+  if (type === 'todo' && next.checked === undefined) next.checked = false
+  if (type === 'code' && !next.language) next.language = 'typescript'
+  if (type === 'table' && (!next.rows || next.rows.length === 0)) next.rows = TABLE_DEFAULT_ROWS.map(r => [...r])
+  if (type !== 'todo' && type !== 'code') {
+    delete next.checked
+    delete next.language
+  }
+  return next
+}
+
 function changeType(type: NoteBlockType) {
   if (props.modelValue.length === 0) {
     insertBlock(type, 0)
     return
   }
+  const range = getSelectionBlockRange()
+  if (range && range[0] < range[1]) {
+    // Multi-block selection: apply the type to every selected block
+    const blocks = [...props.modelValue]
+    for (let i = range[0]; i <= range[1]; i++) {
+      blocks[i] = applyBlockType(blocks[i], type)
+    }
+    // Keep typing possible: never end the document on a non-text block
+    const last = blocks[blocks.length - 1]
+    if (NON_TEXT_TYPES.includes(last.type)) {
+      blocks.push(newBlock('paragraph'))
+    }
+    update(blocks)
+    focusBlock(range[1])
+    return
+  }
   const index = currentEditableIndex()
   if (index < 0 || index >= props.modelValue.length) return
-  changeBlockType(index, type)
+  const blocks = [...props.modelValue]
+  blocks[index] = applyBlockType(blocks[index], type)
+  if (NON_TEXT_TYPES.includes(type) && index === blocks.length - 1) {
+    blocks.push(newBlock('paragraph'))
+  }
+  update(blocks)
+  focusBlock(index)
 }
 
 function changeBlockType(index: number, type: NoteBlockType) {
   const blocks = [...props.modelValue]
-  const block = { ...blocks[index], type }
-  if (type === 'todo' && block.checked === undefined) block.checked = false
-  if (type === 'code' && !block.language) block.language = 'typescript'
-  if (type !== 'todo' && type !== 'code') {
-    delete block.checked
-    delete block.language
+  blocks[index] = applyBlockType(blocks[index], type)
+  if (NON_TEXT_TYPES.includes(type) && index === blocks.length - 1) {
+    blocks.push(newBlock('paragraph'))
   }
-  blocks[index] = block
   update(blocks)
   focusBlock(index)
 }
@@ -881,14 +1162,19 @@ function toggleTodo(index: number) {
 }
 
 function adjustIndent(delta: -1 | 1) {
-  const index = currentEditableIndex()
-  if (index < 0 || index >= props.modelValue.length) return
+  const range = getSelectionBlockRange()
+  const indices = range && range[0] < range[1]
+    ? Array.from({ length: range[1] - range[0] + 1 }, (_, i) => range[0] + i)
+    : [currentEditableIndex()]
   const blocks = [...props.modelValue]
-  const block = blocks[index]
-  if (block.type === 'divider' || block.type === 'code') return
-  block.indent = Math.max(0, Math.min(4, (block.indent || 0) + delta))
+  for (const index of indices) {
+    if (index < 0 || index >= blocks.length) continue
+    const block = blocks[index]
+    if (block.type === 'divider' || block.type === 'code') continue
+    blocks[index] = { ...block, indent: Math.max(0, Math.min(4, (block.indent || 0) + delta)) }
+  }
   update(blocks)
-  focusBlock(index)
+  focusBlock(indices[indices.length - 1])
 }
 
 function numberFor(index: number): number {
@@ -902,13 +1188,48 @@ function numberFor(index: number): number {
   return count
 }
 
-// ===== Rich text editing =====
+// ===== Rich text editing (multi-block aware) =====
 
 function execFormat(command: string, value?: string) {
   document.execCommand('styleWithCSS', false, 'true')
-  document.execCommand(command, false, value)
-  const index = currentEditableIndex()
-  syncBlockFromDom(index)
+  const range = getSelectionBlockRange()
+  if (!range) {
+    document.execCommand(command, false, value)
+    syncBlockFromDom(currentEditableIndex())
+    return
+  }
+  const [startIdx, endIdx] = range
+  if (startIdx === endIdx) {
+    // Single block: apply and KEEP the selection so the result stays visible
+    document.execCommand(command, false, value)
+    syncBlockFromDom(startIdx)
+    return
+  }
+  // Multi-block selection: apply per block with sub-ranges, then restore selection
+  const sel = window.getSelection()
+  const original = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null
+  for (let i = startIdx; i <= endIdx; i++) {
+    const el = blockRefs.get(i)
+    if (!el || !isEditable(el)) continue
+    const sub = document.createRange()
+    if (i === startIdx && original) {
+      sub.setStart(original.startContainer, original.startOffset)
+      sub.setEnd(el, el.childNodes.length)
+    } else if (i === endIdx && original) {
+      sub.setStart(el, 0)
+      sub.setEnd(original.endContainer, original.endOffset)
+    } else {
+      sub.selectNodeContents(el)
+    }
+    sel?.removeAllRanges()
+    sel?.addRange(sub)
+    document.execCommand(command, false, value)
+    syncBlockFromDom(i)
+  }
+  if (original && sel) {
+    sel.removeAllRanges()
+    sel.addRange(original)
+  }
 }
 
 function execInlineCode() {
@@ -1056,6 +1377,54 @@ function handleSelectionChange() {
 
 // ===== Input / keyboard / paste =====
 
+function caretTextOffset(el: HTMLElement): number {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return -1
+  const range = sel.getRangeAt(0)
+  if (!el.contains(range.startContainer)) return -1
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  let offset = 0
+  let node = walker.nextNode()
+  while (node) {
+    if (node === range.startContainer) return offset + range.startOffset
+    offset += (node.textContent || '').length
+    node = walker.nextNode()
+  }
+  return -1
+}
+
+function setSelectionAtTextOffsets(el: HTMLElement, start: number, end: number): boolean {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  let offset = 0
+  let startNode: Text | null = null
+  let startOff = 0
+  let endNode: Text | null = null
+  let endOff = 0
+  let node = walker.nextNode() as Text | null
+  while (node) {
+    const len = (node.textContent || '').length
+    if (!startNode && offset + len >= start) {
+      startNode = node
+      startOff = start - offset
+    }
+    if (!endNode && offset + len >= end) {
+      endNode = node
+      endOff = end - offset
+      break
+    }
+    offset += len
+    node = walker.nextNode() as Text | null
+  }
+  if (!startNode || !endNode) return false
+  const range = document.createRange()
+  range.setStart(startNode, startOff)
+  range.setEnd(endNode, endOff)
+  const sel = window.getSelection()
+  sel?.removeAllRanges()
+  sel?.addRange(range)
+  return true
+}
+
 function onEditableInput(index: number) {
   const el = blockRefs.get(index)
   const block = props.modelValue[index]
@@ -1063,19 +1432,35 @@ function onEditableInput(index: number) {
   block.content = sanitizeRichHTML(el.innerHTML)
   update([...props.modelValue])
 
-  // Slash command: "/" typed at the start of a block opens the palette
-  const text = stripHtml(block.content)
-  if (text.startsWith('/')) {
-    slashMenu.isOpen = true
-    slashMenu.blockIndex = index
-    slashMenu.query = text.slice(1)
-    slashMenu.selectedIndex = 0
-  } else if (slashMenu.isOpen && slashMenu.blockIndex === index) {
-    slashMenu.isOpen = false
-    slashMenu.blockIndex = -1
-    slashMenu.query = ''
-    slashMenu.selectedIndex = 0
+  // Slash command: trigger at block start OR anywhere after whitespace
+  const caret = caretTextOffset(el)
+  if (caret >= 0) {
+    const fullText = el.textContent || ''
+    const textBefore = fullText.slice(0, caret)
+    const match = /(?:^|\s)\/([a-zA-Z0-9_-]*)$/.exec(textBefore)
+    if (match) {
+      slashMenu.isOpen = true
+      slashMenu.blockIndex = index
+      slashMenu.query = match[1]
+      slashMenu.selectedIndex = 0
+      slashMenu.triggerLen = match[1].length + 1
+      slashMenu.triggerStart = caret - slashMenu.triggerLen
+      const rect = el.getBoundingClientRect()
+      slashMenu.flip = rect.bottom + 280 > window.innerHeight
+    } else if (slashMenu.isOpen && slashMenu.blockIndex === index) {
+      closeSlashMenu()
+    }
   }
+}
+
+function closeSlashMenu() {
+  slashMenu.isOpen = false
+  slashMenu.blockIndex = -1
+  slashMenu.query = ''
+  slashMenu.selectedIndex = 0
+  slashMenu.triggerStart = 0
+  slashMenu.triggerLen = 0
+  slashMenu.flip = false
 }
 
 function handlePaste(event: ClipboardEvent) {
@@ -1087,7 +1472,7 @@ function handlePaste(event: ClipboardEvent) {
   const imageFile = files.find(f => f.type.startsWith('image/'))
   if (imageFile) {
     event.preventDefault()
-    const blockId = insertImageBlock()
+    const blockId = insertImageBlock(currentEditableIndex())
     uploadMediaToBlock(blockId, imageFile)
     return
   }
@@ -1113,34 +1498,56 @@ function showPlaceholder(index: number): boolean {
 
 function applySlashCommand(type: NoteBlockType) {
   const index = slashMenu.blockIndex
-  slashMenu.isOpen = false
-  slashMenu.query = ''
-  slashMenu.blockIndex = -1
-  slashMenu.selectedIndex = 0
+  const triggerStart = slashMenu.triggerStart
+  const triggerLen = slashMenu.triggerLen
+  closeSlashMenu()
   if (index < 0 || index >= props.modelValue.length) return
+
+  const el = blockRefs.get(index)
+  let remainingHTML = ''
+  if (el && isEditable(el)) {
+    // Remove only the "/query" token, keeping any content before it
+    if (triggerLen > 0 && setSelectionAtTextOffsets(el, triggerStart, triggerStart + triggerLen)) {
+      window.getSelection()?.getRangeAt(0).deleteContents()
+      window.getSelection()?.removeAllRanges()
+    }
+    remainingHTML = sanitizeRichHTML(el.innerHTML)
+  }
 
   const blocks = [...props.modelValue]
   const current = blocks[index]
 
   if (type === 'divider') {
-    blocks[index] = { ...newBlock('divider') }
+    blocks[index] = { ...newBlock('divider'), id: current.id }
+    if (index === blocks.length - 1) {
+      blocks.push(newBlock('paragraph'))
+    }
     update(blocks)
-    insertBlock('paragraph', index + 1)
     return
   }
 
-  // Media & table blocks are inserted as fresh blocks (never convert the text block)
-  if (type === 'image' || type === 'audio' || type === 'table') {
+  // Media / file / table blocks are inserted fresh (never convert the text block)
+  if (type === 'image' || type === 'audio' || type === 'file' || type === 'table') {
+    blocks[index] = { id: current.id, type: 'paragraph', content: remainingHTML }
     const fresh = newBlock(type)
-    blocks[index] = { id: current.id, type: 'paragraph', content: '' }
     blocks.splice(index + 1, 0, fresh)
+    const nextAfter = blocks[index + 2]
+    if (!nextAfter || NON_TEXT_TYPES.includes(nextAfter.type)) {
+      blocks.splice(index + 2, 0, newBlock('paragraph'))
+    }
     update(blocks)
-    focusBlock(index)
+    focusBlock(index, false)
+    // Auto-open the matching picker right away
+    if (type === 'image') {
+      pickGalleryFor(fresh.id)
+    } else if (type === 'file') {
+      pickFileFor(fresh.id)
+    }
     return
   }
 
-  // Strip the "/query" text out of the block so the slash itself never lingers
-  const next: NoteBlock = { ...current, type, content: '' }
+  // Text-type conversion keeps the remaining content
+  const next: NoteBlock = { ...current, type, content: remainingHTML }
   if (type === 'todo' && next.checked === undefined) next.checked = false
   if (type === 'code' && !next.language) next.language = 'typescript'
   if (type !== 'todo' && type !== 'code') {
@@ -1148,12 +1555,17 @@ function applySlashCommand(type: NoteBlockType) {
     delete next.language
   }
   blocks[index] = next
-  update(blocks)
-  const el = blockRefs.get(index)
-  if (el && isEditable(el)) {
-    el.innerHTML = ''
+  if (type === 'code' && index === blocks.length - 1) {
+    blocks.push(newBlock('paragraph'))
   }
-  focusBlock(index)
+  update(blocks)
+  if (type !== 'code') {
+    const el2 = blockRefs.get(index)
+    if (el2 && isEditable(el2)) {
+      el2.innerHTML = remainingHTML
+    }
+    focusBlock(index)
+  }
 }
 
 function splitAtCaret(el: HTMLElement): [string, string] {
@@ -1177,14 +1589,94 @@ function splitAtCaret(el: HTMLElement): [string, string] {
   return [sanitizeRichHTML(beforeDiv.innerHTML), sanitizeRichHTML(afterDiv.innerHTML)]
 }
 
+// ===== Code block helpers =====
+
+const copiedCodeId = ref('')
+
+function onCodeInput(index: number) {
+  const el = blockRefs.get(index)
+  if (el && el.tagName === 'TEXTAREA') {
+    autoResizeTextarea(el as HTMLTextAreaElement)
+  }
+  update([...props.modelValue])
+}
+
+async function copyCode(block: NoteBlock) {
+  try {
+    await navigator.clipboard.writeText(block.content || '')
+    copiedCodeId.value = block.id
+    setTimeout(() => {
+      copiedCodeId.value = ''
+    }, 1500)
+  } catch {
+    toast.error('Failed to copy code')
+  }
+}
+
+function handleCodeKeydown(event: KeyboardEvent, index: number, ta: HTMLTextAreaElement) {
+  const block = props.modelValue[index]
+  const content = block.content || ''
+
+  // Tab / Shift+Tab: 2-space indentation
+  if (event.key === 'Tab') {
+    event.preventDefault()
+    const { selectionStart, selectionEnd } = ta
+    if (event.shiftKey) {
+      const lineStart = content.lastIndexOf('\n', selectionStart - 1) + 1
+      const leading = content.slice(lineStart).match(/^ {1,2}/)
+      if (leading) {
+        const removed = leading[0].length
+        const next = content.slice(0, lineStart) + content.slice(lineStart + removed)
+        block.content = next
+        update([...props.modelValue])
+        nextTick(() => {
+          ta.value = next
+          ta.setSelectionRange(Math.max(lineStart, selectionStart - removed), Math.max(lineStart, selectionStart - removed))
+          autoResizeTextarea(ta)
+        })
+      }
+      return
+    }
+    const next = content.slice(0, selectionStart) + '  ' + content.slice(selectionEnd)
+    block.content = next
+    update([...props.modelValue])
+    nextTick(() => {
+      ta.value = next
+      const caret = selectionStart + 2
+      ta.setSelectionRange(caret, caret)
+      autoResizeTextarea(ta)
+    })
+    return
+  }
+
+  // Ctrl/Cmd+Enter: exit the code block to the block below
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    event.preventDefault()
+    escapeToBlockBelow(index)
+    return
+  }
+
+  // ArrowDown on last line / ArrowUp on first line: move between blocks
+  const upToCaret = content.slice(0, ta.selectionStart)
+  const afterCaret = content.slice(ta.selectionStart)
+  if (event.key === 'ArrowDown' && !afterCaret.includes('\n')) {
+    event.preventDefault()
+    escapeToBlockBelow(index)
+    return
+  }
+  if (event.key === 'ArrowUp' && !upToCaret.includes('\n') && index > 0) {
+    event.preventDefault()
+    focusBlock(index - 1)
+    return
+  }
+}
+
 function handleKeydown(event: KeyboardEvent) {
   // Slash palette keyboard navigation takes priority over block editing keys
   if (slashMenu.isOpen) {
     if (event.key === 'Escape') {
       event.preventDefault()
-      slashMenu.isOpen = false
-      slashMenu.blockIndex = -1
-      slashMenu.selectedIndex = 0
+      closeSlashMenu()
       return
     }
     if (event.key === 'ArrowDown') {
@@ -1211,8 +1703,15 @@ function handleKeydown(event: KeyboardEvent) {
   const index = findIndexByRef(target)
   if (index === -1) return
 
-  const isEditableTarget = target.isContentEditable
   const block = props.modelValue[index]
+  const isEditableTarget = target.isContentEditable
+
+  // Code textarea has its own keyboard model
+  if (block.type === 'code' && target.tagName === 'TEXTAREA') {
+    handleCodeKeydown(event, index, target as HTMLTextAreaElement)
+    return
+  }
+  if (block.type === 'code') return
 
   // Ctrl/Meta shortcuts for inline formatting
   if ((event.ctrlKey || event.metaKey) && isEditableTarget) {
@@ -1245,7 +1744,7 @@ function handleKeydown(event: KeyboardEvent) {
   }
 
   // Tab / Shift+Tab indent & outdent
-  if (event.key === 'Tab' && isEditableTarget && block.type !== 'code') {
+  if (event.key === 'Tab' && isEditableTarget) {
     event.preventDefault()
     adjustIndent(event.shiftKey ? -1 : 1)
     return
@@ -1290,24 +1789,22 @@ function handleKeydown(event: KeyboardEvent) {
 
   // Backspace on empty block: remove or convert to paragraph, focus previous
   if (event.key === 'Backspace') {
-    const caret = (target as HTMLElement).isContentEditable
+    const caret = isEditableTarget
       ? isCaretAtStart(target as HTMLElement)
       : (target as HTMLTextAreaElement).selectionStart === 0
     const textEmpty = isEmptyHtml(block.content)
     if (!textEmpty && !caret) return
 
-    if (block.type !== 'paragraph' && block.type !== 'code') {
+    if (block.type !== 'paragraph') {
       event.preventDefault()
       changeBlockType(index, 'paragraph')
       return
     }
     if (props.modelValue.length > 1 && textEmpty) {
       event.preventDefault()
-      const prev = props.modelValue[index - 1]
       const blocks = props.modelValue.filter((_, i) => i !== index)
       update(blocks)
       focusBlock(index - 1)
-      void prev
     }
   }
 }
@@ -1330,34 +1827,16 @@ function findIndexByRef(el: HTMLElement | null): number {
   return -1
 }
 
-// ===== Media blocks (image / audio / table) =====
+// ===== Media blocks (image / audio / file / table) =====
 
 const imageChooserOpen = ref(false)
 const pendingMediaBlockId = ref('')
+const routeFilePick = ref(false)
 const galleryInput = ref<HTMLInputElement | null>(null)
 const audioInput = ref<HTMLInputElement | null>(null)
+const fileInput = ref<HTMLInputElement | null>(null)
 const cameraFallbackInput = ref<HTMLInputElement | null>(null)
 const uploadingIds = reactive(new Set<string>())
-
-function insertImageBlock(): string {
-  const blocks = [...props.modelValue]
-  const block = newBlock('image')
-  blocks.push(block)
-  update(blocks)
-  return block.id
-}
-
-function insertAudioBlock() {
-  const blocks = [...props.modelValue]
-  blocks.push(newBlock('audio'))
-  update(blocks)
-}
-
-function insertTableBlock() {
-  const blocks = [...props.modelValue]
-  blocks.push(newBlock('table'))
-  update(blocks)
-}
 
 function toggleImageChooser() {
   imageChooserOpen.value = !imageChooserOpen.value
@@ -1385,6 +1864,19 @@ function pickAudioFor(blockId: string) {
   audioInput.value?.click()
 }
 
+function pickFileFor(blockId: string) {
+  pendingMediaBlockId.value = blockId
+  routeFilePick.value = false
+  fileInput.value?.click()
+}
+
+/** Paperclip: route the chosen file into an image / audio / file block. */
+function openFilePicker() {
+  routeFilePick.value = true
+  pendingMediaBlockId.value = ''
+  fileInput.value?.click()
+}
+
 async function onGallerySelected(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -1403,6 +1895,34 @@ async function onAudioFileSelected(event: Event) {
   const blockId = pendingMediaBlockId.value
   pendingMediaBlockId.value = ''
   if (file && blockId) {
+    await uploadMediaToBlock(blockId, file)
+  }
+}
+
+async function onAnyFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+
+  if (routeFilePick.value) {
+    // Toolbar paperclip: create the right block type for the picked file
+    routeFilePick.value = false
+    let blockId: string
+    if (file.type.startsWith('image/')) {
+      blockId = insertImageBlock()
+    } else if (file.type.startsWith('audio/')) {
+      blockId = insertAudioBlock()
+    } else {
+      blockId = insertFileBlock()
+    }
+    await uploadMediaToBlock(blockId, file)
+    return
+  }
+
+  const blockId = pendingMediaBlockId.value
+  pendingMediaBlockId.value = ''
+  if (blockId) {
     await uploadMediaToBlock(blockId, file)
   }
 }
@@ -1432,7 +1952,7 @@ async function uploadMediaToBlock(blockId: string, file: File, duration?: number
       update(blocks)
       loadBlob(saved.drive_file_id)
     }
-    toast.success('Media uploaded to Google Drive')
+    toast.success('Uploaded to Google Drive')
   } catch (err: any) {
     toast.error(err?.message || 'Failed to upload media to Google Drive')
   } finally {
@@ -1440,12 +1960,70 @@ async function uploadMediaToBlock(blockId: string, file: File, duration?: number
   }
 }
 
-function setImageWidth(block: NoteBlock, width: '50%' | '75%' | '100%') {
+function setImageWidth(block: NoteBlock, width: string) {
   const blocks = [...props.modelValue]
   const idx = blocks.findIndex(b => b.id === block.id)
   if (idx === -1) return
   blocks[idx] = { ...blocks[idx], width }
   update(blocks)
+}
+
+function setImageAlign(block: NoteBlock, align: 'left' | 'center' | 'right') {
+  const blocks = [...props.modelValue]
+  const idx = blocks.findIndex(b => b.id === block.id)
+  if (idx === -1) return
+  blocks[idx] = { ...blocks[idx], align }
+  update(blocks)
+}
+
+function alignClass(align?: 'left' | 'center' | 'right'): string {
+  switch (align) {
+    case 'left': return 'mr-auto ml-0'
+    case 'right': return 'ml-auto mr-0'
+    default: return 'mx-auto'
+  }
+}
+
+function fileExt(block: NoteBlock): string {
+  const name = block.file_name || ''
+  const dot = name.lastIndexOf('.')
+  return dot === -1 ? 'file' : name.slice(dot + 1).slice(0, 4)
+}
+
+// ===== Interactive image drag resize (25%-100%) =====
+
+const resizing = reactive({ blockId: '', handle: 'right' as 'left' | 'right', startX: 0, startPct: 100, containerW: 1 })
+
+function startImageResize(block: NoteBlock, handle: 'left' | 'right', event: PointerEvent) {
+  const shell = (event.currentTarget as HTMLElement).closest('.image-shell') as HTMLElement | null
+  const containerW = shell?.parentElement?.clientWidth || rootEl.value?.clientWidth || 600
+  resizing.blockId = block.id
+  resizing.handle = handle
+  resizing.startX = event.clientX
+  resizing.startPct = parseInt(block.width || '100', 10)
+  resizing.containerW = containerW
+  window.addEventListener('pointermove', onImageResizeMove)
+  window.addEventListener('pointerup', onImageResizeEnd, { once: true })
+}
+
+function onImageResizeMove(event: PointerEvent) {
+  if (!resizing.blockId) return
+  const dx = resizing.handle === 'right'
+    ? event.clientX - resizing.startX
+    : resizing.startX - event.clientX
+  const pct = Math.max(25, Math.min(100, Math.round(resizing.startPct + (dx / resizing.containerW) * 100)))
+  const width = `${pct}%`
+  const idx = props.modelValue.findIndex(b => b.id === resizing.blockId)
+  if (idx !== -1 && props.modelValue[idx].width !== width) {
+    const blocks = [...props.modelValue]
+    blocks[idx] = { ...blocks[idx], width }
+    update(blocks)
+  }
+}
+
+function onImageResizeEnd() {
+  window.removeEventListener('pointermove', onImageResizeMove)
+  resizing.blockId = ''
 }
 
 function formatBytes(bytes: number): string {
@@ -1460,14 +2038,19 @@ function formatBytes(bytes: number): string {
 const blobUrls = reactive(new Map<string, string>())
 const loadingBlobs = reactive(new Set<string>())
 
-async function loadBlob(driveFileId: string) {
-  if (blobUrls.has(driveFileId) || loadingBlobs.has(driveFileId)) return
+async function loadBlob(driveFileId: string): Promise<string | undefined> {
+  const existing = blobUrls.get(driveFileId)
+  if (existing) return existing
+  if (loadingBlobs.has(driveFileId)) return undefined
   loadingBlobs.add(driveFileId)
   try {
     const res = await apiClient.get(`/storage/files/${driveFileId}/stream/`, { responseType: 'blob' })
-    blobUrls.set(driveFileId, URL.createObjectURL(res.data))
+    const url = URL.createObjectURL(res.data)
+    blobUrls.set(driveFileId, url)
+    return url
   } catch {
     // Left unresolved - the UI keeps showing a loading skeleton
+    return undefined
   } finally {
     loadingBlobs.delete(driveFileId)
   }
@@ -1485,17 +2068,68 @@ watch(
   { immediate: true }
 )
 
-// ===== Lightbox =====
+// ===== Drive file preview =====
 
-const lightbox = reactive({ open: false, url: '', caption: '', driveUrl: '' })
+function openPreviewFor(block: NoteBlock) {
+  if (!block.drive_file_id) return
+  previewState.driveFileId = block.drive_file_id
+  previewState.fileName = block.file_name || ''
+  previewState.fileType = block.file_type || ''
+  previewState.fileSize = block.file_size || 0
+  previewState.driveViewLink = block.file_url || ''
+  previewState.blobUrl = blobUrls.get(block.drive_file_id) || ''
+  previewState.open = true
+}
 
-function openLightbox(block: NoteBlock) {
-  const url = block.drive_file_id ? blobUrls.get(block.drive_file_id) : ''
-  if (!url) return
-  lightbox.url = url
-  lightbox.caption = block.content || block.file_name || ''
-  lightbox.driveUrl = block.file_url || ''
-  lightbox.open = true
+// ===== Image cropping (re-uploads to Drive, deletes the old file) =====
+
+async function openCropFor(block: NoteBlock) {
+  if (!block.drive_file_id) return
+  let url = blobUrls.get(block.drive_file_id)
+  if (!url) {
+    url = await loadBlob(block.drive_file_id)
+  }
+  if (!url) {
+    toast.error('Could not load the image for cropping')
+    return
+  }
+  cropState.target = 'block'
+  cropState.blockId = block.id
+  cropState.imageUrl = url
+  cropState.fileName = block.file_name || 'image'
+  cropState.open = true
+}
+
+async function onImageCropped(croppedFile: File) {
+  cropState.open = false
+
+  if (cropState.target === 'camera') {
+    // Camera flow: replace the preview with the cropped image, then the user confirms
+    const dataUrl = await new Promise<string>((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.readAsDataURL(croppedFile)
+    })
+    cameraState.capturedDataUrl = dataUrl
+    return
+  }
+
+  const blockId = cropState.blockId
+  const oldBlock = props.modelValue.find(b => b.id === blockId)
+  const oldDriveId = oldBlock?.drive_file_id
+  if (!blockId) return
+
+  await uploadMediaToBlock(blockId, croppedFile)
+  const newDriveId = props.modelValue.find(b => b.id === blockId)?.drive_file_id
+  if (oldDriveId && oldDriveId !== newDriveId) {
+    // No orphan files: delete the uncropped original from Google Drive
+    const oldUrl = blobUrls.get(oldDriveId)
+    if (oldUrl) {
+      URL.revokeObjectURL(oldUrl)
+      blobUrls.delete(oldDriveId)
+    }
+    storageStore.deleteFileByDriveId(oldDriveId).catch(() => {})
+  }
 }
 
 // ===== Live camera capture =====
@@ -1563,6 +2197,15 @@ function capturePhoto() {
   canvas.height = video.videoHeight
   canvas.getContext('2d')?.drawImage(video, 0, 0)
   cameraState.capturedDataUrl = canvas.toDataURL('image/jpeg', 0.92)
+}
+
+function openCameraCrop() {
+  if (!cameraState.capturedDataUrl) return
+  cropState.target = 'camera'
+  cropState.blockId = ''
+  cropState.imageUrl = cameraState.capturedDataUrl
+  cropState.fileName = `camera-photo-${mediaTimestamp()}.jpg`
+  cropState.open = true
 }
 
 async function usePhoto() {
@@ -1701,5 +2344,6 @@ onBeforeUnmount(() => {
   if (recorderTimer.value !== null) {
     clearInterval(recorderTimer.value)
   }
+  window.removeEventListener('pointermove', onImageResizeMove)
 })
 </script>

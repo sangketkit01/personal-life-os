@@ -229,6 +229,14 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+/** Build a timezone-aware ISO string from local date + time inputs. */
+function buildLocalIso(dateStr: string, timeStr: string): string {
+  if (!dateStr) return ''
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const [hh, mm] = (timeStr || '00:00').split(':').map(Number)
+  return new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0).toISOString()
+}
+
 async function submit() {
   if (entryType.value === 'TASK') {
     const title = taskForm.title.trim()
@@ -242,7 +250,9 @@ async function submit() {
         status: taskForm.status,
         priority: taskForm.priority,
         project: props.fixedProjectId || taskForm.project,
-        start_date: props.initialDate || null,
+        // A date click schedules the DEADLINE only - never a start_date range,
+        // so rescheduled single-day tasks stay single-day on the calendar.
+        start_date: null,
         deadline: taskForm.deadline ? new Date(taskForm.deadline).toISOString() : null
       })
       toast.success('Task created')
@@ -264,9 +274,7 @@ async function submit() {
       title,
       event_type: eventForm.event_type,
       project: props.fixedProjectId || eventForm.project,
-      start_at: eventForm.is_all_day
-        ? `${date}T00:00:00`
-        : `${date}T${eventForm.time || '09:00'}:00`,
+      start_at: buildLocalIso(date, eventForm.is_all_day ? '12:00' : (eventForm.time || '09:00')),
       end_at: null,
       is_all_day: eventForm.is_all_day,
       notes: eventForm.notes

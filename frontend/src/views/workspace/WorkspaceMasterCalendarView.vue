@@ -143,6 +143,7 @@ const filteredEvents = computed(() => {
 })
 
 function openDrawer(task: TaskDocument) {
+  isEventModalOpen.value = false
   selectedTask.value = task
   isDrawerOpen.value = true
 }
@@ -157,6 +158,7 @@ function openQuickCreate(dateStr: string | null) {
 }
 
 function openEventModal(event: CalendarEvent) {
+  isDrawerOpen.value = false
   selectedEvent.value = event
   isEventModalOpen.value = true
 }

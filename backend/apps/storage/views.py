@@ -251,19 +251,22 @@ class CompleteUploadView(APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                attachment_entry = {
-                    'id': str(uuid_lib.uuid4()),
-                    'file_name': drive_file.file_name,
-                    'file_type': drive_file.file_type or 'application/octet-stream',
-                    'file_size': drive_file.file_size,
-                    'drive_file_id': drive_file.drive_file_id,
-                    'drive_view_link': drive_file.web_view_link,
-                    'uploaded_at': timezone.now().isoformat()
-                }
-                attachments = note.attachments if isinstance(note.attachments, list) else []
-                attachments.append(attachment_entry)
-                note.attachments = attachments
-                note.save(update_fields=['attachments'])
+                # Inline blocks (image/audio/file) are the single source of truth for
+                # note media. Only opt-in legacy callers duplicate into note.attachments.
+                if request.data.get('legacy_attachment') is True:
+                    attachment_entry = {
+                        'id': str(uuid_lib.uuid4()),
+                        'file_name': drive_file.file_name,
+                        'file_type': drive_file.file_type or 'application/octet-stream',
+                        'file_size': drive_file.file_size,
+                        'drive_file_id': drive_file.drive_file_id,
+                        'drive_view_link': drive_file.web_view_link,
+                        'uploaded_at': timezone.now().isoformat()
+                    }
+                    attachments = note.attachments if isinstance(note.attachments, list) else []
+                    attachments.append(attachment_entry)
+                    note.attachments = attachments
+                    note.save(update_fields=['attachments'])
 
             elif domain == 'workspace' and target_id:
                 import uuid as uuid_lib
@@ -329,6 +332,24 @@ class CompleteUploadView(APIView):
                 {'error': f"Failed to register uploaded file: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class DriveFileByDriveIdView(APIView):
+    """
+    Idempotent DELETE of the authenticated user's Drive file by its Google Drive file id.
+    Deletes the remote file from Google Drive and the local metadata record.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, drive_file_id):
+        drive_file = DriveFile.objects.filter(
+            drive_file_id=drive_file_id,
+            user=request.user
+        ).first()
+        if drive_file:
+            services.delete_file_from_drive(request.user, drive_file)
+        # Idempotent: absent (or already deleted) still returns 204.
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class DriveFileStreamView(APIView):

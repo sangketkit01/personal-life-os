@@ -276,6 +276,12 @@ function taskDates(task: TaskDocument): Set<string> {
   const end = task.deadline ? new Date(task.deadline) : null
 
   if (start && end && !isNaN(start.getTime()) && !isNaN(end.getTime())) {
+    // Guard against legacy data with start_date > deadline:
+    // the task must NEVER vanish - pin it to its deadline day instead.
+    if (toDateKey(start) > toDateKey(end)) {
+      dates.add(toDateKey(end))
+      return dates
+    }
     const cursorDate = new Date(start)
     let count = 0
     while (cursorDate <= end && count < MAX_SPAN_DAYS) {

@@ -341,3 +341,98 @@ class StorageGoogleDriveTests(TestCase):
 
         resp = self.client.get('/api/storage/files/deleted_file_1/stream/')
         self.assertEqual(resp.status_code, status.HTTP_502_BAD_GATEWAY)
+
+    def test_delete_file_by_drive_id(self):
+        """DELETE by drive id removes the remote file and the metadata record (idempotent)."""
+        DriveFile.objects.create(
+            user=self.user,
+            drive_file_id='deleteme_file_1',
+            file_name='old.png',
+            file_type='image/png',
+            domain=StorageDomain.NOTE
+        )
+
+        resp = self.client.delete('/api/storage/files/by-drive-id/deleteme_file_1/')
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(DriveFile.objects.filter(drive_file_id='deleteme_file_1').exists())
+
+        # Idempotent: deleting an absent id still returns 204
+        resp_again = self.client.delete('/api/storage/files/by-drive-id/deleteme_file_1/')
+        self.assertEqual(resp_again.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_delete_file_by_drive_id_bola_isolation(self):
+        """User B deleting User A's drive file id must leave User A's record intact."""
+        other = User.objects.create_user(
+            username='owneruser',
+            password='Password123!',
+            email='owner@example.com'
+        )
+        DriveFile.objects.create(
+            user=other,
+            drive_file_id='foreign_owned_1',
+            file_name='theirs.png',
+            file_type='image/png',
+            domain=StorageDomain.NOTE
+        )
+
+        resp = self.client.delete('/api/storage/files/by-drive-id/foreign_owned_1/')
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertTrue(DriveFile.objects.filter(drive_file_id='foreign_owned_1', user=other).exists())
+
+    @patch('requests.get')
+    def test_note_upload_no_longer_duplicates_attachments(self, mock_get):
+        """Inline note uploads do NOT auto-append to note.attachments (blocks are the source of truth)."""
+        from apps.workspace.models import Note
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            'id': 'inline_block_file_1',
+            'name': 'inline.png',
+            'mimeType': 'image/png',
+            'size': 2048,
+            'webViewLink': 'https://drive.google.com/file/d/inline_block_file_1/view',
+            'webContentLink': 'https://drive.google.com/uc?id=inline_block_file_1'
+        }
+        mock_get.return_value = mock_resp
+
+        GoogleDriveConnection.objects.create(
+            user=self.user,
+            google_email='user@gmail.com',
+            access_token='mock_access_token',
+            refresh_token='mock_refresh_token',
+            token_expiry=timezone.now() + timedelta(hours=1),
+            root_folder_id='folder_root_123',
+            subfolder_ids={'note': 'folder_notes'},
+            is_connected=True
+        )
+
+        note = Note.objects.create(user=self.user, title='Inline Note')
+
+
+        resp = self.client.post('/api/storage/complete-upload/', {
+            'drive_file_id': 'inline_block_file_1',
+            'domain': 'note',
+            'target_id': str(note.id),
+            'file_name': 'inline.png',
+            'file_type': 'image/png',
+            'file_size': 2048
+        }, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+        note.refresh_from_db()
+        self.assertEqual(note.attachments, [])
+
+        # Opt-in legacy flag still appends
+        resp2 = self.client.post('/api/storage/complete-upload/', {
+            'drive_file_id': 'legacy_att_file_1',
+            'domain': 'note',
+            'target_id': str(note.id),
+            'file_name': 'legacy.png',
+            'file_type': 'image/png',
+            'file_size': 4096,
+            'legacy_attachment': True
+        }, format='json')
+        self.assertEqual(resp2.status_code, status.HTTP_201_CREATED)
+        note.refresh_from_db()
+        self.assertEqual(len(note.attachments), 1)
+        self.assertEqual(note.attachments[0]['drive_file_id'], 'legacy_att_file_1')

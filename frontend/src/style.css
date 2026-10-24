@@ -31,3 +31,11 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+
+/* Rich text selection - translucent sky highlight so formatting
+   (color, bold, italic, highlight) stays visible while selected */
+.rich-editable::selection,
+.rich-editable *::selection {
+  background-color: rgba(56, 189, 248, 0.28);
+  color: inherit;
+}

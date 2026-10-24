@@ -19,6 +19,7 @@ export type NoteBlockType =
   | 'divider'
   | 'image'
   | 'audio'
+  | 'file'
   | 'table'
 
 export interface NoteBlock {
@@ -28,13 +29,14 @@ export interface NoteBlock {
   checked?: boolean
   indent?: number
   language?: string
-  // Image & audio blocks (files live in Google Drive, never on disk)
+  // Image, audio & file blocks (files live in Google Drive, never on disk)
   drive_file_id?: string
   file_url?: string
   file_name?: string
   file_type?: string
   file_size?: number
-  width?: '50%' | '75%' | '100%'
+  width?: string
+  align?: 'left' | 'center' | 'right'
   duration?: number
   // Table block (row 0 is the header row)
   rows?: string[][]

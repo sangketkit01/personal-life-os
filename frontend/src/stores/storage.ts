@@ -8,6 +8,7 @@ import {
   uploadBytesDirectToGoogle,
   completeResumableUpload,
   disconnectGoogleDrive,
+  deleteFileByDriveId,
   type GoogleDriveStatus,
   type DriveFileItem
 } from '../api/storage'
@@ -149,6 +150,7 @@ export const useStorageStore = defineStore('storage', () => {
     startConnect,
     handleCallback,
     disconnect,
-    uploadDirect
+    uploadDirect,
+    deleteFileByDriveId
   }
 })

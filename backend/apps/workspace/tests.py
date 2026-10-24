@@ -403,13 +403,14 @@ class WorkspaceTestCase(TestCase):
         other_ids = [e['id'] for e in _results(res_other)]
         self.assertNotIn(event_id, other_ids)
 
-        # Invalid range: end before start
+        # End before start: stale end_at is auto-cleared instead of rejecting
         res_bad = self.client.post('/api/workspace/events/', {
             'title': 'Backwards Event',
             'start_at': '2026-10-28T15:00:00',
             'end_at': '2026-10-28T14:00:00'
         }, format='json')
-        self.assertEqual(res_bad.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res_bad.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(res_bad.data['end_at'])
 
         # Delete
         res_del = self.client.delete(f'/api/workspace/events/{event_id}/')
@@ -840,3 +841,50 @@ class WorkspaceTestCase(TestCase):
         self.assertEqual(str(res_folder.data['folder']), str(folder_id))
         self.assertEqual(len(res_folder.data['blocks']), 1)
 
+
+    def test_calendar_event_start_move_clears_stale_end(self):
+        """Moving start_at to a later date without end_at clears the stale end_at (no 400)."""
+        res = self.client.post('/api/workspace/events/', {
+            'title': 'Scheduled Meeting',
+            'start_at': '2026-10-28T09:00:00',
+            'end_at': '2026-10-28T10:00:00'
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        event_id = res.data['id']
+
+        # Move start past the old end without sending end_at -> auto-cleared
+        res_move = self.client.patch(f'/api/workspace/events/{event_id}/', {
+            'start_at': '2026-11-15T09:00:00'
+        }, format='json')
+        self.assertEqual(res_move.status_code, status.HTTP_200_OK)
+        self.assertIsNone(res_move.data['end_at'])
+
+    def test_note_block_width_align_and_file_type(self):
+        """Test arbitrary image widths (25%-100%), align values and the file block type."""
+        res = self.client.post('/api/workspace/notes/', {
+            'title': 'Width And Align',
+            'blocks': [
+                {'type': 'image', 'width': '35%', 'align': 'left', 'drive_file_id': 'img1'},
+                {'type': 'image', 'width': '68%', 'align': 'right', 'drive_file_id': 'img2'},
+                {'type': 'image', 'width': '9999px', 'align': 'diagonal', 'drive_file_id': 'img3'},
+                {'type': 'file', 'file_name': 'report.pdf', 'file_type': 'application/pdf', 'file_size': 1024, 'drive_file_id': 'doc1'},
+                {'type': 'image', 'width': '10%'}
+            ]
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        blocks = res.data['blocks']
+
+        self.assertEqual(blocks[0]['width'], '35%')
+        self.assertEqual(blocks[0]['align'], 'left')
+        self.assertEqual(blocks[1]['width'], '68%')
+        self.assertEqual(blocks[1]['align'], 'right')
+        # Invalid width / align fall back to defaults
+        self.assertEqual(blocks[2]['width'], '100%')
+        self.assertEqual(blocks[2]['align'], 'center')
+        self.assertEqual(blocks[2]['width'], '100%')
+        self.assertEqual(blocks[4]['width'], '100%')
+
+        # file block persists metadata and is indexed in the text summary
+        self.assertEqual(blocks[3]['type'], 'file')
+        self.assertEqual(blocks[3]['file_name'], 'report.pdf')
+        self.assertIn('report.pdf', res.data['content'])

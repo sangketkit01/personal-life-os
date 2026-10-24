@@ -25,9 +25,15 @@
           type="button"
           @click="switchSmartView(view.key)"
           class="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors text-left border shrink-0"
-          :class="!activeFolderId && smartView === view.key
-            ? 'bg-zinc-900 text-zinc-100 border-zinc-700/80 shadow-sm'
-            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40 border-transparent'"
+          :class="[
+            !activeFolderId && smartView === view.key
+              ? 'bg-zinc-900 text-zinc-100 border-zinc-700/80 shadow-sm'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40 border-transparent',
+            dragOverTarget === view.key ? 'ring-1 ring-sky-400 bg-sky-500/10 text-sky-200' : ''
+          ]"
+          @dragover.prevent="view.key === 'all' || view.key === 'trash' ? dragOverTarget = view.key : null"
+          @dragleave="dragOverTarget === view.key ? dragOverTarget = null : null"
+          @drop.prevent="view.key === 'all' ? onDropToAllNotes() : view.key === 'trash' ? onDropToTrash() : null"
         >
           <component :is="view.icon" class="w-3.5 h-3.5 shrink-0" :class="!activeFolderId && smartView === view.key ? 'text-amber-400' : 'text-zinc-500'" />
           <span class="flex-1">{{ view.label }}</span>
@@ -80,10 +86,16 @@
           v-for="folder in workspaceStore.folders"
           :key="folder.id"
           class="group/folder flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs transition-colors cursor-pointer border shrink-0"
-          :class="activeFolderId === folder.id
-            ? 'bg-zinc-900 text-zinc-100 border-zinc-700/80 shadow-sm'
-            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40 border-transparent'"
+          :class="[
+            activeFolderId === folder.id
+              ? 'bg-zinc-900 text-zinc-100 border-zinc-700/80 shadow-sm'
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40 border-transparent',
+            dragOverTarget === folder.id ? 'ring-1 ring-sky-400 bg-sky-500/10 text-sky-200' : ''
+          ]"
           @click="selectFolder(folder.id)"
+          @dragover.prevent="dragOverTarget = folder.id"
+          @dragleave="dragOverTarget === folder.id ? dragOverTarget = null : null"
+          @drop.prevent.stop="onDropToFolder(folder.id, folder.name)"
         >
           <Folder class="w-3.5 h-3.5 shrink-0" :style="{ color: folder.color || '#a1a1aa' }" />
           <template v-if="editingFolderId === folder.id">
@@ -261,14 +273,18 @@
           <div
             v-for="note in filteredNotes"
             :key="note.id"
+            draggable="true"
             class="p-3 rounded-xl border transition-all group/note flex gap-2.5 cursor-pointer"
             :class="[
               activeNoteId === note.id
                 ? 'border-zinc-600 bg-zinc-900 shadow-sm'
                 : 'border-zinc-800/70 hover:border-zinc-700 bg-zinc-950/60 hover:bg-zinc-900/40',
-              colorTintClass(note.color)
+              colorTintClass(note.color),
+              draggingNoteId === note.id ? 'opacity-40' : ''
             ]"
             @click="selectNote(note.id)"
+            @dragstart="onNoteDragStart($event, note)"
+            @dragend="onNoteDragEnd"
           >
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5">
@@ -381,9 +397,12 @@
             <div
               v-for="note in filteredNotes"
               :key="note.id"
+              draggable="true"
               class="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80 hover:border-zinc-600 transition-all flex flex-col gap-2 min-h-[150px] cursor-pointer shadow-sm"
-              :class="colorTintClass(note.color)"
+              :class="[colorTintClass(note.color), draggingNoteId === note.id ? 'opacity-40' : '']"
               @click="openFromGrid(note.id)"
+              @dragstart="onNoteDragStart($event, note)"
+              @dragend="onNoteDragEnd"
             >
               <div class="flex items-center gap-1.5 w-full">
                 <span class="text-xs font-semibold truncate flex-1" :class="note.is_trashed ? 'text-zinc-500 line-through' : 'text-zinc-100'">
@@ -505,6 +524,68 @@ const newFolderName = ref('')
 const folderCreateInput = ref<HTMLInputElement | null>(null)
 
 const activeNoteId = ref<string | null>(null)
+
+// ===== Drag & drop notes into folders / All Notes / Trash =====
+const draggingNoteId = ref<string | null>(null)
+const dragOverTarget = ref<string | null>(null)
+
+function onNoteDragStart(event: DragEvent, note: Note) {
+  draggingNoteId.value = note.id
+  event.dataTransfer?.setData('text/plain', note.id)
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+  }
+}
+
+function onNoteDragEnd() {
+  draggingNoteId.value = null
+  dragOverTarget.value = null
+}
+
+async function onDropToFolder(folderId: string, folderName: string) {
+  const noteId = draggingNoteId.value
+  dragOverTarget.value = null
+  draggingNoteId.value = null
+  if (!noteId) return
+  try {
+    await workspaceStore.updateNote(noteId, { folder: folderId, is_trashed: false })
+    await workspaceStore.fetchFolders()
+    toast.success(`Moved to "${folderName}"`)
+  } catch {
+    toast.error('Failed to move note')
+  }
+}
+
+async function onDropToAllNotes() {
+  const noteId = draggingNoteId.value
+  dragOverTarget.value = null
+  draggingNoteId.value = null
+  if (!noteId) return
+  const note = workspaceStore.standaloneNotes.find(n => n.id === noteId)
+    || workspaceStore.trashedNotes.find(n => n.id === noteId)
+  try {
+    if (note && (note.folder || note.is_trashed)) {
+      await workspaceStore.updateNote(noteId, { folder: null, is_trashed: false })
+      await workspaceStore.fetchFolders()
+      toast.success('Removed from folder (moved to All Notes)')
+    }
+  } catch {
+    toast.error('Failed to move note')
+  }
+}
+
+async function onDropToTrash() {
+  const noteId = draggingNoteId.value
+  dragOverTarget.value = null
+  draggingNoteId.value = null
+  if (!noteId) return
+  try {
+    await workspaceStore.trashNote(noteId)
+    toast.info('Note moved to trash')
+  } catch {
+    toast.error('Failed to move note to trash')
+  }
+}
 
 const activeFolder = computed(() =>
   workspaceStore.folders.find(f => f.id === activeFolderId.value) || null

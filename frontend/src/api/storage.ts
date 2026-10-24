@@ -129,3 +129,8 @@ export async function getDriveFiles(domain?: string, targetId?: string): Promise
 export async function deleteDriveFile(id: string): Promise<void> {
   await apiClient.delete(`/storage/files/${id}/`)
 }
+
+/** Idempotent DELETE of a Drive file by its Google Drive file id. */
+export async function deleteFileByDriveId(driveFileId: string): Promise<void> {
+  await apiClient.delete(`/storage/files/by-drive-id/${driveFileId}/`)
+}

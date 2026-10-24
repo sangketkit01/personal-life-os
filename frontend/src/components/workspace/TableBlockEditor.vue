@@ -83,6 +83,14 @@
       >
         + Column
       </button>
+      <button
+        type="button"
+        class="p-1 rounded bg-zinc-900 border border-zinc-800 text-zinc-500 hover:text-rose-400 hover:border-zinc-600 transition-colors ml-auto"
+        title="Delete table"
+        @click="emit('delete')"
+      >
+        <Trash2 class="w-3 h-3" />
+      </button>
       <span v-if="!isRectangular" class="text-[9px] font-mono text-amber-500/70">irregular grid — edit any cell to normalize</span>
     </div>
   </div>
@@ -90,7 +98,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import { X } from 'lucide-vue-next'
+import { Trash2, X } from 'lucide-vue-next'
 import type { NoteBlock } from '../../types/workspace'
 
 const props = defineProps<{
@@ -99,6 +107,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'changed'): void
+  (e: 'delete'): void
 }>()
 
 const tableRef = ref<HTMLElement | null>(null)

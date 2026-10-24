@@ -1,3 +1,5 @@
+import html as html_lib
+import re
 import uuid
 from rest_framework import serializers
 from .models import (
@@ -6,12 +8,15 @@ from .models import (
     TaskStatus,
     TaskPriority,
     Note,
+    NoteFolder,
+    NoteColor,
     ProjectLink,
     ProjectLinkType,
-    ProjectAttachment
+    ProjectAttachment,
+    CalendarEvent,
+    CalendarEventType
 )
 from .services import calculate_deadline_info, normalize_task_status, transition_task_status
-from .models import CalendarEvent, CalendarEventType
 
 # Accepted status values for API input (modern Kanban + legacy pipeline aliases).
 # Declared as (value, label) tuples so ChoiceField validation accepts legacy
@@ -23,16 +28,48 @@ TASK_STATUS_INPUT_CHOICES = list(TaskStatus.choices) + [
 ]
 
 
+def strip_html_tags(value: str) -> str:
+    """Remove inline HTML tags and unescape entities for clean-text summaries."""
+    if not value:
+        return ''
+    text = re.sub(r'<[^>]*>', ' ', str(value))
+    text = html_lib.unescape(text)
+    return re.sub(r'\s+', ' ', text).strip()
+
+
 def summarize_blocks(blocks) -> str:
-    """Build a plain-text summary from structured note blocks for search and previews."""
+    """Build a plain-text summary from structured note blocks for search and previews.
+
+    Includes image/audio captions and file names plus table cell text so
+    full-text search (?search=...) finds content inside media and tables.
+    """
     if not isinstance(blocks, list):
         return ''
     parts = []
     for block in blocks:
-        if isinstance(block, dict):
-            text = str(block.get('content') or '').strip()
-            if text:
-                parts.append(text)
+        if not isinstance(block, dict):
+            continue
+        block_type = str(block.get('type') or '')
+        pieces = []
+        text = strip_html_tags(str(block.get('content') or '')).strip()
+        if text:
+            pieces.append(text)
+        if block_type in ('image', 'audio'):
+            file_name = str(block.get('file_name') or '').strip()
+            if file_name:
+                pieces.append(file_name)
+        if block_type == 'table':
+            rows = block.get('rows')
+            if isinstance(rows, list):
+                for row in rows:
+                    if isinstance(row, list):
+                        for cell in row:
+                            cell_text = str(cell).strip()
+                            if cell_text:
+                                pieces.append(cell_text)
+        combined = ' '.join(pieces).strip()
+        if combined:
+            parts.append(combined)
     return '\n'.join(parts)
 
 
@@ -105,7 +142,7 @@ class WorkspaceProjectSerializer(serializers.ModelSerializer):
         return self._annotated(obj, 'doing_count', obj.documents.filter(status=TaskStatus.DOING))
 
     def get_notes_count(self, obj):
-        return self._annotated(obj, 'notes_count', obj.notes)
+        return self._annotated(obj, 'notes_count', obj.notes.filter(is_trashed=False))
 
     def get_links_count(self, obj):
         return self._annotated(obj, 'links_count', obj.links)
@@ -237,8 +274,38 @@ class MoveTaskStatusSerializer(serializers.Serializer):
         return normalize_task_status(value)
 
 
+class NoteFolderSerializer(serializers.ModelSerializer):
+    notes_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = NoteFolder
+        fields = (
+            'id',
+            'name',
+            'icon',
+            'color',
+            'position',
+            'notes_count',
+            'created_at',
+            'updated_at'
+        )
+        read_only_fields = ('id', 'created_at', 'updated_at')
+
+    def get_notes_count(self, obj):
+        annotated = getattr(obj, 'notes_count', None)
+        if annotated is not None:
+            return annotated
+        return obj.notes.filter(project__isnull=True, is_trashed=False).count()
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
 class NoteSerializer(serializers.ModelSerializer):
     project_name = serializers.CharField(source='project.name', read_only=True, default=None)
+    folder_name = serializers.CharField(source='folder.name', read_only=True, default=None)
+    has_lock_pin = serializers.SerializerMethodField()
 
     class Meta:
         model = Note
@@ -246,21 +313,66 @@ class NoteSerializer(serializers.ModelSerializer):
             'id',
             'project',
             'project_name',
+            'folder',
+            'folder_name',
             'title',
             'icon',
             'content',
             'blocks',
             'tags',
+            'color',
             'is_pinned',
+            'is_locked',
+            'has_lock_pin',
+            'is_trashed',
+            'trashed_at',
+            'attachments',
             'created_at',
             'updated_at'
         )
         read_only_fields = ('id', 'created_at', 'updated_at')
+        # lock_pin is intentionally excluded - it is only managed via the
+        # set-lock / verify-lock actions and never exposed or writable here.
+
+    def get_has_lock_pin(self, obj):
+        return bool(obj.lock_pin)
 
     def validate_project(self, value):
         if value and value.user != self.context['request'].user:
             raise serializers.ValidationError('You do not have permission to access this project.')
         return value
+
+    def validate_folder(self, value):
+        if value and value.user != self.context['request'].user:
+            raise serializers.ValidationError('You do not have permission to access this folder.')
+        return value
+
+    def validate_color(self, value):
+        if value not in NoteColor.values:
+            raise serializers.ValidationError('Invalid note color.')
+        return value
+
+    MAX_TABLE_ROWS = 50
+    MAX_TABLE_COLS = 12
+    ALLOWED_IMAGE_WIDTHS = ('50%', '75%', '100%')
+    DEFAULT_TABLE_ROWS = [['Column 1', 'Column 2', 'Column 3'], ['', '', '']]
+
+    def _clean_table_rows(self, raw_rows):
+        """Normalize table rows into a rectangular 2D list of strings (max 50x12)."""
+        if not isinstance(raw_rows, list):
+            return []
+        cleaned = []
+        for row in raw_rows[:self.MAX_TABLE_ROWS]:
+            if isinstance(row, list):
+                cells = [str(cell) for cell in row[:self.MAX_TABLE_COLS]]
+            else:
+                cells = [str(row)][:self.MAX_TABLE_COLS]
+            cleaned.append(cells)
+        if cleaned:
+            width = min(max(len(r) for r in cleaned), self.MAX_TABLE_COLS)
+            for row in cleaned:
+                row.extend([''] * (width - len(row)))
+        return cleaned
 
     def validate_blocks(self, value):
         if value in (None, ''):
@@ -271,12 +383,64 @@ class NoteSerializer(serializers.ModelSerializer):
         for block in value:
             if not isinstance(block, dict):
                 continue
+            try:
+                indent = int(block.get('indent') or 0)
+            except (TypeError, ValueError):
+                indent = 0
+            try:
+                file_size = max(0, int(block.get('file_size') or 0))
+            except (TypeError, ValueError):
+                file_size = 0
+            try:
+                duration = max(0.0, float(block.get('duration') or 0))
+            except (TypeError, ValueError):
+                duration = 0.0
+
+            width = str(block.get('width') or '100%')
+            if width not in self.ALLOWED_IMAGE_WIDTHS:
+                width = '100%'
+
+            rows = self._clean_table_rows(block.get('rows'))
+            if str(block.get('type') or '') == 'table' and not rows:
+                rows = [list(r) for r in self.DEFAULT_TABLE_ROWS]
+
             cleaned.append({
                 'id': str(block.get('id') or uuid.uuid4()),
                 'type': str(block.get('type') or 'paragraph'),
                 'content': str(block.get('content') or ''),
                 'checked': bool(block.get('checked', False)),
-                'language': str(block.get('language') or '')
+                'indent': max(0, min(4, indent)),
+                'language': str(block.get('language') or ''),
+                # Multimedia fields (image / audio blocks)
+                'drive_file_id': str(block.get('drive_file_id') or '').strip(),
+                'file_url': str(block.get('file_url') or '').strip(),
+                'file_name': str(block.get('file_name') or '').strip(),
+                'file_type': str(block.get('file_type') or '').strip(),
+                'file_size': file_size,
+                'width': width,
+                'duration': duration,
+                # Table field (table blocks)
+                'rows': rows
+            })
+        return cleaned
+
+    def validate_attachments(self, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError('Attachments must be a list of Drive file metadata.')
+        cleaned = []
+        for item in value:
+            if not isinstance(item, dict) or not str(item.get('drive_file_id', '')).strip():
+                continue
+            cleaned.append({
+                'id': str(item.get('id') or uuid.uuid4()),
+                'file_name': str(item.get('file_name') or 'Untitled'),
+                'file_type': str(item.get('file_type') or ''),
+                'file_size': int(item.get('file_size') or 0),
+                'drive_file_id': str(item.get('drive_file_id')).strip(),
+                'drive_view_link': str(item.get('drive_view_link') or ''),
+                'uploaded_at': str(item.get('uploaded_at') or '')
             })
         return cleaned
 

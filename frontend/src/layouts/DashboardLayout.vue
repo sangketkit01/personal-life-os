@@ -281,7 +281,34 @@
             </div>
           </div>
 
-          <!-- 5. Settings & Config (Standalone) -->
+          <!-- 6. Notes (Standalone) -->
+          <div class="pt-1.5">
+            <RouterLink
+              to="/notes"
+              class="flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors group"
+              :class="[
+                $route.path.startsWith('/notes')
+                  ? 'bg-zinc-900 text-white border border-zinc-800 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
+              ]"
+            >
+              <div class="flex items-center gap-2.5">
+                <StickyNote
+                  class="w-3.5 h-3.5 transition-colors shrink-0"
+                  :class="$route.path.startsWith('/notes') ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
+                />
+                <span>Notes</span>
+              </div>
+              <span
+                v-if="pinnedNotesCount > 0"
+                class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-zinc-900 text-zinc-400 border border-zinc-800"
+              >
+                {{ pinnedNotesCount }}
+              </span>
+            </RouterLink>
+          </div>
+
+          <!-- 7. Settings & Config (Standalone) -->
           <div>
             <RouterLink
               to="/settings"
@@ -422,6 +449,15 @@
             </div>
 
             <div class="pt-2">
+              <RouterLink
+                to="/notes"
+                @click="isMobileMenuOpen = false"
+                class="flex items-center gap-2.5 px-3 py-2 rounded-md text-xs transition-colors"
+                :class="$route.path.startsWith('/notes') ? 'bg-zinc-900 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'"
+              >
+                <StickyNote class="w-3.5 h-3.5" />
+                <span>Notes</span>
+              </RouterLink>
               <RouterLink
                 to="/settings"
                 @click="isMobileMenuOpen = false"
@@ -578,6 +614,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useFinanceStore } from '../stores/finance'
 import { useLedgerStore } from '../stores/ledger'
+import { useWorkspaceStore } from '../stores/workspace'
 import { useToastStore } from '../stores/toast'
 import CommandPalette from '../components/common/CommandPalette.vue'
 import ToastContainer from '../components/common/ToastContainer.vue'
@@ -609,7 +646,8 @@ import {
   Wallet,
   Receipt,
   Users,
-  Calendar
+  Calendar,
+  StickyNote
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -617,6 +655,7 @@ const route = useRoute()
 const authStore = useAuthStore()
 const financeStore = useFinanceStore()
 const ledgerStore = useLedgerStore()
+const workspaceStore = useWorkspaceStore()
 const toast = useToastStore()
 
 const showTelegramModal = ref(false)
@@ -628,11 +667,12 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPod|iPad/.test(na
 const shortcutKey = isMac ? '⌘K' : 'Ctrl+K'
 
 // Accordion Expand/Collapse State
+// Accordion groups start collapsed; auto-expand when the route enters that domain
 const expandedGroups = ref<Record<string, boolean>>({
-  finance: true,
-  ledger: true,
-  portfolio: true,
-  workspace: true
+  finance: false,
+  ledger: false,
+  portfolio: false,
+  workspace: false
 })
 
 function toggleGroup(key: string) {
@@ -680,6 +720,10 @@ function isNavActive(path: string): boolean {
 
 const criticalTrialsCount = computed(() => {
   return financeStore.overview?.critical_trials_count || 0
+})
+
+const pinnedNotesCount = computed(() => {
+  return workspaceStore.standaloneNotes.filter(n => n.is_pinned && !n.is_trashed).length
 })
 
 const upcoming7DaysCount = computed(() => {
@@ -822,6 +866,7 @@ const currentDomainLabel = computed(() => {
   if (p.startsWith('/ledger')) return 'Cash Flow & Ledger'
   if (p.startsWith('/portfolio')) return 'Wealth & Portfolio'
   if (p.startsWith('/workspace')) return 'Workspace'
+  if (p.startsWith('/notes')) return 'Notes'
   if (p.startsWith('/settings')) return 'Settings'
   return 'Console'
 })
@@ -888,6 +933,8 @@ onMounted(() => {
   // Prefetch ledger accounts & pending splits for badges
   ledgerStore.fetchAccounts().catch(() => {})
   ledgerStore.fetchPendingSplits().catch(() => {})
+  // Prefetch pinned standalone notes for the Notes badge
+  workspaceStore.fetchStandaloneNotes({ is_pinned: 'true' }).catch(() => {})
 })
 
 onUnmounted(() => {

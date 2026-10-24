@@ -178,6 +178,12 @@ const router = createRouter({
           name: 'workspace-project-detail',
           component: () => import('../views/workspace/WorkspaceProjectDetailView.vue'),
         },
+        // Standalone Notes App
+        {
+          path: 'notes',
+          name: 'notes',
+          component: () => import('../views/notes/StandaloneNotesView.vue'),
+        },
         // Cash Flow & Ledger Domain Routes
         {
           path: 'ledger',

@@ -130,7 +130,7 @@ def get_workspace_overview(user, project_id: str = None) -> Dict[str, Any]:
         })
 
     # Pinned notes (select_related avoids N+1)
-    pinned_notes = Note.objects.filter(user=user, is_pinned=True).select_related('project').order_by('-updated_at')[:5]
+    pinned_notes = Note.objects.filter(user=user, is_pinned=True, is_trashed=False).select_related('project').order_by('-updated_at')[:5]
     pinned_notes_list = [
         {
             'id': str(n.id),
@@ -152,7 +152,7 @@ def get_workspace_overview(user, project_id: str = None) -> Dict[str, Any]:
             'documents',
             filter=Q(documents__status__in=[TaskStatus.TODO, TaskStatus.DOING])
         ),
-        notes_count=Count('notes', distinct=True),
+        notes_count=Count('notes', filter=Q(notes__is_trashed=False), distinct=True),
         links_count=Count('links', distinct=True),
         attachments_count=Count('attachments', distinct=True)
     )

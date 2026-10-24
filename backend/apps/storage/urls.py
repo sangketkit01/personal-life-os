@@ -7,7 +7,8 @@ from .views import (
     CompleteUploadView,
     DisconnectGoogleDriveView,
     DriveFileListView,
-    DriveFileDetailView
+    DriveFileDetailView,
+    DriveFileStreamView
 )
 
 urlpatterns = [
@@ -19,4 +20,5 @@ urlpatterns = [
     path('disconnect/', DisconnectGoogleDriveView.as_view(), name='storage-disconnect'),
     path('files/', DriveFileListView.as_view(), name='storage-file-list'),
     path('files/<uuid:pk>/', DriveFileDetailView.as_view(), name='storage-file-detail'),
+    path('files/<str:drive_file_id>/stream/', DriveFileStreamView.as_view(), name='storage-file-stream'),
 ]

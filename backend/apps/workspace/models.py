@@ -56,6 +56,15 @@ class CalendarEventType(models.TextChoices):
     OTHER = 'OTHER', 'Other'
 
 
+class NoteColor(models.TextChoices):
+    DEFAULT = 'DEFAULT', 'Default Zinc'
+    AMBER = 'AMBER', 'Amber Gold'
+    EMERALD = 'EMERALD', 'Emerald Green'
+    SKY = 'SKY', 'Sky Blue'
+    VIOLET = 'VIOLET', 'Violet Purple'
+    ROSE = 'ROSE', 'Rose Pink'
+
+
 class WorkspaceProject(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
@@ -165,7 +174,37 @@ class TaskDocument(models.Model):
         return f"{self.title} [{self.get_status_display()}]"
 
 
+class NoteFolder(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='note_folders',
+        verbose_name="User"
+    )
+    name = models.CharField(max_length=100, verbose_name="Folder Name")
+    icon = models.CharField(max_length=50, default='folder', verbose_name="Folder Icon")
+    color = models.CharField(max_length=20, default='#a1a1aa', verbose_name="Folder Color")
+    position = models.PositiveIntegerField(default=0, verbose_name="Sort Position")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'workspace_note_folders'
+        ordering = ['position', 'name']
+        verbose_name = 'Note Folder'
+        verbose_name_plural = 'Note Folders'
+
+    def __str__(self):
+        return f"{self.name} ({self.user.username})"
+
+
 class Note(models.Model):
+    """
+    Unified note model:
+    - project = None  -> Standalone Note (shown in /notes)
+    - project = <UUID> -> Workspace Project Page (shown in project detail)
+    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -181,12 +220,31 @@ class Note(models.Model):
         related_name='notes',
         verbose_name="Project"
     )
+    folder = models.ForeignKey(
+        NoteFolder,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='notes',
+        verbose_name="Folder"
+    )
     title = models.CharField(max_length=255, verbose_name="Note Title")
     icon = models.CharField(max_length=50, default='file-text', verbose_name="Page Icon")
     content = models.TextField(blank=True, default='', verbose_name="Markdown Content")
     blocks = models.JSONField(default=list, blank=True, verbose_name="Structured Content Blocks")
     tags = models.JSONField(default=list, blank=True, verbose_name="Tags")
+    color = models.CharField(
+        max_length=20,
+        choices=NoteColor.choices,
+        default=NoteColor.DEFAULT,
+        verbose_name="Card Color Accent"
+    )
     is_pinned = models.BooleanField(default=False, verbose_name="Is Pinned")
+    is_locked = models.BooleanField(default=False, verbose_name="Is Locked")
+    lock_pin = models.CharField(max_length=128, blank=True, default='', verbose_name="Hashed Lock PIN")
+    is_trashed = models.BooleanField(default=False, db_index=True, verbose_name="In Trash")
+    trashed_at = models.DateTimeField(null=True, blank=True, verbose_name="Trashed At")
+    attachments = models.JSONField(default=list, blank=True, verbose_name="Drive Attachments")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

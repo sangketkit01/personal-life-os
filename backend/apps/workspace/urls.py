@@ -5,6 +5,7 @@ from .views import (
     WorkspaceProjectViewSet,
     TaskDocumentViewSet,
     NoteViewSet,
+    NoteFolderViewSet,
     ProjectLinkViewSet,
     ProjectAttachmentViewSet,
     CalendarEventViewSet
@@ -13,6 +14,7 @@ from .views import (
 router = DefaultRouter()
 router.register('projects', WorkspaceProjectViewSet, basename='project')
 router.register('tasks', TaskDocumentViewSet, basename='task')
+router.register('note-folders', NoteFolderViewSet, basename='note-folder')
 router.register('notes', NoteViewSet, basename='note')
 router.register('links', ProjectLinkViewSet, basename='project-link')
 router.register('attachments', ProjectAttachmentViewSet, basename='project-attachment')

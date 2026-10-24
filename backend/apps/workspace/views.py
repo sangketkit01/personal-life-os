@@ -1,6 +1,9 @@
 import calendar as calendar_lib
+import re
 import uuid
+from copy import deepcopy
 from datetime import date
+from django.contrib.auth.hashers import check_password, make_password
 from django.db.models import Q, Count
 from django.utils import timezone
 from rest_framework import viewsets, views, permissions, status, response, mixins
@@ -11,6 +14,8 @@ from .models import (
     TaskDocument,
     TaskStatus,
     Note,
+    NoteFolder,
+    NoteColor,
     ProjectLink,
     ProjectAttachment,
     CalendarEvent
@@ -20,6 +25,7 @@ from .serializers import (
     TaskDocumentSerializer,
     MoveTaskStatusSerializer,
     NoteSerializer,
+    NoteFolderSerializer,
     ProjectLinkSerializer,
     ProjectAttachmentSerializer,
     CalendarEventSerializer
@@ -87,7 +93,7 @@ class WorkspaceProjectViewSet(viewsets.ModelViewSet):
                 filter=Q(documents__status__in=[TaskStatus.TODO, TaskStatus.DOING]),
                 distinct=True
             ),
-            notes_count=Count('notes', distinct=True),
+            notes_count=Count('notes', filter=Q(notes__is_trashed=False), distinct=True),
             links_count=Count('links', distinct=True),
             attachments_count=Count('attachments', distinct=True)
         )
@@ -157,26 +163,72 @@ class TaskDocumentViewSet(viewsets.ModelViewSet):
         return response.Response(TaskDocumentSerializer(task, context={'request': request}).data)
 
 
+class NoteFolderViewSet(viewsets.ModelViewSet):
+    """CRUD for standalone note folders."""
+    serializer_class = NoteFolderSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return NoteFolder.objects.filter(user=self.request.user).annotate(
+            notes_count=Count(
+                'notes',
+                filter=Q(notes__project__isnull=True, notes__is_trashed=False),
+                distinct=True
+            )
+        ).order_by('position', 'name')
+
+
 class NoteViewSet(viewsets.ModelViewSet):
-    """CRUD for structured Notion-style pages and Markdown notes."""
+    """CRUD for structured Notion-style pages and standalone notes."""
     serializer_class = NoteSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = Note.objects.filter(user=self.request.user).select_related('project')
+        qs = Note.objects.filter(user=self.request.user).select_related('project', 'folder')
 
         raw_project_id = self.request.query_params.get('project_id')
         project_id = _clean_uuid(raw_project_id) if raw_project_id else None
         tag = self.request.query_params.get('tag')
         is_pinned = self.request.query_params.get('is_pinned')
+        is_locked = self.request.query_params.get('is_locked')
+        color = self.request.query_params.get('color')
         search = self.request.query_params.get('search')
+        standalone = self.request.query_params.get('standalone')
+        trashed = self.request.query_params.get('trashed')
+        folder_id = self.request.query_params.get('folder_id')
+
+        # Trash scoping: default to live notes unless explicitly listing trash
+        if trashed is not None:
+            qs = qs.filter(is_trashed=trashed.lower() == 'true')
+        else:
+            qs = qs.filter(is_trashed=False)
+
+        # Standalone notes (no project) vs project pages
+        if standalone is not None and standalone.lower() == 'true':
+            qs = qs.filter(project__isnull=True)
 
         if project_id:
-            qs = qs.filter(project_id=project_id)
+            qs = qs.filter(project_id=project_id, is_trashed=False)
         elif raw_project_id:
             qs = qs.none()
+
+        # Folder scoping ('unfiled' = no folder)
+        if folder_id:
+            if folder_id.lower() == 'unfiled':
+                qs = qs.filter(folder__isnull=True)
+            else:
+                clean_folder = _clean_uuid(folder_id)
+                if clean_folder:
+                    qs = qs.filter(folder_id=clean_folder)
+                else:
+                    qs = qs.none()
+
         if is_pinned is not None:
             qs = qs.filter(is_pinned=is_pinned.lower() == 'true')
+        if is_locked is not None:
+            qs = qs.filter(is_locked=is_locked.lower() == 'true')
+        if color:
+            qs = qs.filter(color=color.upper())
         if tag:
             qs = qs.filter(tags__contains=[tag])
         if search:
@@ -191,6 +243,127 @@ class NoteViewSet(viewsets.ModelViewSet):
         note.is_pinned = not note.is_pinned
         note.save(update_fields=['is_pinned', 'updated_at'])
         return response.Response(NoteSerializer(note, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
+    def trash(self, request, pk=None):
+        """Move a note to trash (soft delete)."""
+        note = self.get_object()
+        note.is_trashed = True
+        note.trashed_at = timezone.now()
+        note.is_pinned = False
+        note.save(update_fields=['is_trashed', 'trashed_at', 'is_pinned', 'updated_at'])
+        log_activity(request.user, 'WORKSPACE', 'TRASH_NOTE', f'Moved note "{note.title}" to trash', request=request)
+        return response.Response(NoteSerializer(note, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
+    def restore(self, request, pk=None):
+        """Restore a note from trash (bypasses the default live-notes queryset)."""
+        note_id = _clean_uuid(pk)
+        note = Note.objects.filter(id=note_id, user=request.user).first() if note_id else None
+        if not note:
+            return response.Response({'error': 'Note not found.'}, status=status.HTTP_404_NOT_FOUND)
+        note.is_trashed = False
+        note.trashed_at = None
+        note.save(update_fields=['is_trashed', 'trashed_at', 'updated_at'])
+        return response.Response(NoteSerializer(note, context={'request': request}).data)
+
+    @action(detail=False, methods=['post'], url_path='empty-trash')
+    def empty_trash(self, request):
+        """Permanently delete every trashed note of the current user."""
+        deleted, _ = Note.objects.filter(user=request.user, is_trashed=True).delete()
+        return response.Response({'deleted': deleted})
+
+    @action(detail=True, methods=['post'], url_path='set-lock')
+    def set_lock(self, request, pk=None):
+        """Lock or unlock a note with an optional 4-6 digit PIN."""
+        note = self.get_object()
+        is_locked = bool(request.data.get('is_locked'))
+        pin = str(request.data.get('pin') or '').strip()
+
+        if is_locked:
+            if pin:
+                if not re.fullmatch(r'\d{4,6}', pin):
+                    return response.Response(
+                        {'error': 'PIN must be 4 to 6 digits.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                note.lock_pin = make_password(pin)
+            elif not note.lock_pin:
+                return response.Response(
+                    {'error': 'A 4 to 6 digit PIN is required to lock this note.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            # Empty pin with an existing hash keeps the current PIN
+        else:
+            if note.lock_pin:
+                if not pin or not check_password(pin, note.lock_pin):
+                    return response.Response(
+                        {'error': 'Incorrect PIN. Could not remove the lock.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            note.lock_pin = ''
+
+        note.is_locked = is_locked
+        note.save(update_fields=['is_locked', 'lock_pin', 'updated_at'])
+        return response.Response(NoteSerializer(note, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='verify-lock')
+    def verify_lock(self, request, pk=None):
+        """Verify a note's lock PIN for this session."""
+        note = self.get_object()
+        if not note.is_locked or not note.lock_pin:
+            return response.Response({'verified': True})
+        pin = str(request.data.get('pin') or '')
+        verified = bool(pin) and check_password(pin, note.lock_pin)
+        return response.Response({'verified': verified})
+
+    @action(detail=True, methods=['post'], url_path='copy-to-project')
+    def copy_to_project(self, request, pk=None):
+        """Duplicate a standalone note into a Workspace Project as a Project Page."""
+        note = self.get_object()
+        raw_project_id = request.data.get('project_id')
+        project_id = _clean_uuid(raw_project_id) if raw_project_id else None
+        if not project_id:
+            return response.Response(
+                {'error': 'A valid project_id is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        project = WorkspaceProject.objects.filter(id=project_id, user=request.user).first()
+        if not project:
+            return response.Response(
+                {'error': 'Project not found or does not belong to user.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        duplicate = Note.objects.create(
+            user=request.user,
+            project=project,
+            folder=None,
+            title=note.title,
+            icon=note.icon,
+            content=note.content,
+            blocks=deepcopy(note.blocks),
+            tags=list(note.tags or []),
+            color=note.color,
+            is_pinned=False,
+            is_locked=False,
+            lock_pin='',
+            is_trashed=False,
+            trashed_at=None,
+            attachments=deepcopy(note.attachments)
+        )
+        log_activity(
+            request.user,
+            'WORKSPACE',
+            'COPY_NOTE_TO_PROJECT',
+            f'Copied note "{note.title}" into project "{project.name}"',
+            request=request
+        )
+        return response.Response(
+            NoteSerializer(duplicate, context={'request': request}).data,
+            status=status.HTTP_201_CREATED
+        )
 
 
 class ProjectLinkViewSet(viewsets.ModelViewSet):

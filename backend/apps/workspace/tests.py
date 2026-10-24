@@ -10,6 +10,7 @@ from apps.workspace.models import (
     TaskStatus,
     TaskPriority,
     Note,
+    NoteFolder,
     ProjectLink,
     ProjectAttachment,
     CalendarEvent
@@ -456,3 +457,356 @@ class WorkspaceTestCase(TestCase):
         )
         self.assertIsNone(attachment.project)
         self.assertEqual(attachment.task_id, task.id)
+
+    def test_note_folder_crud_and_count(self):
+        """Test NoteFolder CRUD with annotated non-trashed standalone notes count."""
+        res = self.client.post('/api/workspace/note-folders/', {
+            'name': 'Journal',
+            'icon': 'book',
+            'color': '#8B5CF6',
+            'position': 1
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        folder_id = res.data['id']
+        self.assertEqual(res.data['notes_count'], 0)
+
+        # Put a standalone note in the folder
+        self.client.post('/api/workspace/notes/', {
+            'title': 'Daily Reflection',
+            'folder': folder_id
+        }, format='json')
+
+        res_list = self.client.get('/api/workspace/note-folders/')
+        folders = _results(res_list)
+        target = next(f for f in folders if f['id'] == folder_id)
+        self.assertEqual(target['notes_count'], 1)
+
+        # Rename
+        res_patch = self.client.patch(f'/api/workspace/note-folders/{folder_id}/', {'name': 'Journal 2026'}, format='json')
+        self.assertEqual(res_patch.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_patch.data['name'], 'Journal 2026')
+
+        # Delete folder -> notes keep existing with folder=None (SET_NULL)
+        res_del = self.client.delete(f'/api/workspace/note-folders/{folder_id}/')
+        self.assertEqual(res_del.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertTrue(Note.objects.filter(title='Daily Reflection', folder__isnull=True).exists())
+
+        # BOLA: User B cannot see or delete User A's folders
+        self.client.cookies['access_token'] = generate_access_token(self.friend)
+        res_list_b = self.client.get('/api/workspace/note-folders/')
+        self.assertEqual(len(_results(res_list_b)), 0)
+        res_del_b = self.client.delete(f'/api/workspace/note-folders/{folder_id}/')
+        self.assertEqual(res_del_b.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_standalone_vs_project_note_separation(self):
+        """Test standalone=true returns only notes without a project."""
+        self.client.post('/api/workspace/notes/', {'title': 'Standalone Note A'}, format='json')
+        self.client.post('/api/workspace/notes/', {
+            'title': 'Project Page B',
+            'project': str(self.project.id)
+        }, format='json')
+
+        res = self.client.get('/api/workspace/notes/?standalone=true')
+        titles = [n['title'] for n in _results(res)]
+        self.assertIn('Standalone Note A', titles)
+        self.assertNotIn('Project Page B', titles)
+
+        # Unfiled filter
+        res_unfiled = self.client.get('/api/workspace/notes/?standalone=true&folder_id=unfiled')
+        self.assertGreaterEqual(len(_results(res_unfiled)), 1)
+
+    def test_note_trash_restore_and_empty_trash(self):
+        """Test soft-delete lifecycle: trash -> restore -> empty trash."""
+        res = self.client.post('/api/workspace/notes/', {'title': 'Disposable Note'}, format='json')
+        note_id = res.data['id']
+
+        # Live list excludes trashed by default; trash it
+        res_trash = self.client.post(f'/api/workspace/notes/{note_id}/trash/')
+        self.assertEqual(res_trash.status_code, status.HTTP_200_OK)
+        self.assertTrue(res_trash.data['is_trashed'])
+        self.assertIsNotNone(res_trash.data['trashed_at'])
+        self.assertFalse(res_trash.data['is_pinned'])
+
+        res_live = self.client.get('/api/workspace/notes/?standalone=true')
+        self.assertNotIn(note_id, [n['id'] for n in _results(res_live)])
+
+        res_trash_list = self.client.get('/api/workspace/notes/?trashed=true')
+        self.assertIn(note_id, [n['id'] for n in _results(res_trash_list)])
+
+        # Restore
+        res_restore = self.client.post(f'/api/workspace/notes/{note_id}/restore/')
+        self.assertEqual(res_restore.status_code, status.HTTP_200_OK)
+        self.assertFalse(res_restore.data['is_trashed'])
+
+        # Trash again then empty trash permanently deletes it
+        self.client.post(f'/api/workspace/notes/{note_id}/trash/')
+        res_empty = self.client.post('/api/workspace/notes/empty-trash/')
+        self.assertEqual(res_empty.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(res_empty.data['deleted'], 1)
+        self.assertFalse(Note.objects.filter(id=note_id).exists())
+
+    def test_note_lock_set_verify_unlock(self):
+        """Test PIN locking: set-lock, verify-lock, wrong PIN, unlock."""
+        res = self.client.post('/api/workspace/notes/', {'title': 'Secret Note'}, format='json')
+        note_id = res.data['id']
+
+        # Lock without PIN is rejected
+        res_no_pin = self.client.post(f'/api/workspace/notes/{note_id}/set-lock/', {'is_locked': True}, format='json')
+        self.assertEqual(res_no_pin.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Lock with PIN
+        res_lock = self.client.post(f'/api/workspace/notes/{note_id}/set-lock/', {
+            'is_locked': True, 'pin': '4321'
+        }, format='json')
+        self.assertEqual(res_lock.status_code, status.HTTP_200_OK)
+        self.assertTrue(res_lock.data['is_locked'])
+        self.assertTrue(res_lock.data['has_lock_pin'])
+        self.assertNotIn('lock_pin', res_lock.data)  # hash never exposed
+
+        # Wrong PIN fails verification
+        res_wrong = self.client.post(f'/api/workspace/notes/{note_id}/verify-lock/', {'pin': '0000'}, format='json')
+        self.assertEqual(res_wrong.data['verified'], False)
+
+        # Correct PIN verifies
+        res_ok = self.client.post(f'/api/workspace/notes/{note_id}/verify-lock/', {'pin': '4321'}, format='json')
+        self.assertEqual(res_ok.data['verified'], True)
+
+        # Unlock with wrong PIN rejected
+        res_bad_unlock = self.client.post(f'/api/workspace/notes/{note_id}/set-lock/', {
+            'is_locked': False, 'pin': '9999'
+        }, format='json')
+        self.assertEqual(res_bad_unlock.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Unlock with correct PIN clears the lock
+        res_unlock = self.client.post(f'/api/workspace/notes/{note_id}/set-lock/', {
+            'is_locked': False, 'pin': '4321'
+        }, format='json')
+        self.assertEqual(res_unlock.status_code, status.HTTP_200_OK)
+        self.assertFalse(res_unlock.data['is_locked'])
+        self.assertFalse(res_unlock.data['has_lock_pin'])
+
+    def test_note_copy_to_project(self):
+        """Test copying a standalone note into a project as a Project Page."""
+        res = self.client.post('/api/workspace/notes/', {
+            'title': 'Research Summary',
+            'blocks': [
+                {'type': 'numbered', 'content': 'First point', 'indent': 0},
+                {'type': 'numbered', 'content': 'Second point', 'indent': 1}
+            ],
+            'tags': ['research'],
+            'color': 'SKY'
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        note_id = res.data['id']
+        self.assertEqual(res.data['blocks'][1]['indent'], 1)
+
+        res_copy = self.client.post(f'/api/workspace/notes/{note_id}/copy-to-project/', {
+            'project_id': str(self.project.id)
+        }, format='json')
+        self.assertEqual(res_copy.status_code, status.HTTP_201_CREATED)
+        copy_data = res_copy.data
+        self.assertEqual(str(copy_data['project']), str(self.project.id))
+        self.assertEqual(copy_data['title'], 'Research Summary')
+        self.assertEqual(len(copy_data['blocks']), 2)
+        self.assertFalse(copy_data['is_locked'])
+
+        # Original stays standalone
+        original = Note.objects.get(id=note_id)
+        self.assertIsNone(original.project)
+        self.assertEqual(Note.objects.filter(project=self.project, title='Research Summary').count(), 1)
+
+        # BOLA: cannot copy into User B's project... (reverse) User B cannot read the copy
+        self.client.cookies['access_token'] = generate_access_token(self.friend)
+        res_forbidden = self.client.post(f'/api/workspace/notes/{note_id}/copy-to-project/', {
+            'project_id': str(self.project.id)
+        }, format='json')
+        self.assertEqual(res_forbidden.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_note_blocks_with_numbered_and_indent_clamping(self):
+        """Test blocks serializer preserves numbered type and clamps indent to 0..4."""
+        res = self.client.post('/api/workspace/notes/', {
+            'title': 'Indent Test',
+            'blocks': [
+                {'type': 'numbered', 'content': 'Level 0', 'indent': 0},
+                {'type': 'bullet', 'content': 'Too deep', 'indent': 9},
+                {'type': 'todo', 'content': 'Negative', 'indent': -3}
+            ]
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        blocks = res.data['blocks']
+        self.assertEqual(blocks[0]['type'], 'numbered')
+        self.assertEqual(blocks[1]['indent'], 4)
+        self.assertEqual(blocks[2]['indent'], 0)
+
+        # Plain-text content summary must not contain raw HTML tags
+        res_html = self.client.post('/api/workspace/notes/', {
+            'title': 'HTML Summary Test',
+            'blocks': [
+                {'type': 'paragraph', 'content': '<strong>Bold</strong> and <a href="https://x.co">link</a>'}
+            ]
+        }, format='json')
+        self.assertIn('Bold', res_html.data['content'])
+        self.assertIn('link', res_html.data['content'])
+        self.assertNotIn('<strong>', res_html.data['content'])
+
+    def test_trashed_notes_excluded_from_counts(self):
+        """Audit P2: trashed notes must not count toward project notes_count or pinned notes."""
+        res = self.client.post('/api/workspace/notes/', {
+            'title': 'Counted Note',
+            'project': str(self.project.id),
+            'is_pinned': True
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        note_id = res.data['id']
+
+        # Before trashing: notes_count = 1 and note appears in pinned list
+        res_project = self.client.get('/api/workspace/projects/')
+        project_data = next(p for p in _results(res_project) if str(p['id']) == str(self.project.id))
+        self.assertEqual(project_data['notes_count'], 1)
+
+        overview = get_workspace_overview(self.user)
+        pinned_ids = [n['id'] for n in overview['pinned_notes']]
+        self.assertIn(note_id, pinned_ids)
+
+        # Trash the note -> counters drop to zero everywhere
+        self.client.post(f'/api/workspace/notes/{note_id}/trash/')
+
+        res_project = self.client.get('/api/workspace/projects/')
+        project_data = next(p for p in _results(res_project) if str(p['id']) == str(self.project.id))
+        self.assertEqual(project_data['notes_count'], 0)
+
+        overview = get_workspace_overview(self.user)
+        pinned_ids = [n['id'] for n in overview['pinned_notes']]
+        self.assertNotIn(note_id, pinned_ids)
+
+        # Project pages tab list also excludes trashed notes
+        res_pages = self.client.get(f'/api/workspace/notes/?project_id={self.project.id}')
+        self.assertNotIn(note_id, [n['id'] for n in _results(res_pages)])
+
+    def test_storage_note_domain_choice_accepted(self):
+        """Audit P2: the DriveFile model accepts the new 'note' domain choice."""
+        from apps.storage.models import DriveFile, StorageDomain
+
+        self.assertIn('note', StorageDomain.values)
+        drive_file = DriveFile.objects.create(
+            user=self.user,
+            drive_file_id='note-domain-file',
+            file_name='attached.pdf',
+            file_type='application/pdf',
+            file_size=2048,
+            domain=StorageDomain.NOTE
+        )
+        self.assertEqual(drive_file.domain, 'note')
+        self.assertTrue(
+            DriveFile.objects.filter(user=self.user, domain=StorageDomain.NOTE).exists()
+        )
+
+    def test_note_blocks_with_image_audio_table(self):
+        """Test image/audio/table blocks persist multimedia and table fields."""
+        res = self.client.post('/api/workspace/notes/', {
+            'title': 'Multimedia Note',
+            'blocks': [
+                {
+                    'type': 'image',
+                    'content': 'Site survey photo',
+                    'drive_file_id': 'gdrive_img_001',
+                    'file_url': 'https://drive.google.com/file/d/gdrive_img_001/view',
+                    'file_name': 'site-survey.png',
+                    'file_type': 'image/png',
+                    'file_size': 204800,
+                    'width': '75%'
+                },
+                {
+                    'type': 'audio',
+                    'content': 'Voice memo about requirements',
+                    'drive_file_id': 'gdrive_aud_001',
+                    'file_name': 'voice-note-20261024.webm',
+                    'file_type': 'audio/webm',
+                    'file_size': 48000,
+                    'duration': 14.5
+                },
+                {
+                    'type': 'table',
+                    'rows': [
+                        ['Task', 'Owner', 'Status'],
+                        ['Survey', 'Anon', 'Done']
+                    ]
+                }
+            ]
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        blocks = res.data['blocks']
+
+        image = blocks[0]
+        self.assertEqual(image['type'], 'image')
+        self.assertEqual(image['drive_file_id'], 'gdrive_img_001')
+        self.assertEqual(image['width'], '75%')
+        self.assertEqual(image['file_name'], 'site-survey.png')
+
+        audio = blocks[1]
+        self.assertEqual(audio['type'], 'audio')
+        self.assertAlmostEqual(audio['duration'], 14.5)
+        self.assertEqual(audio['file_type'], 'audio/webm')
+
+        table = blocks[2]
+        self.assertEqual(table['type'], 'table')
+        self.assertEqual(table['rows'], [['Task', 'Owner', 'Status'], ['Survey', 'Anon', 'Done']])
+
+        # Plain-text summary indexes captions, file names and table cells for search
+        content = res.data['content']
+        self.assertIn('Site survey photo', content)
+        self.assertIn('site-survey.png', content)
+        self.assertIn('voice-note-20261024.webm', content)
+        self.assertIn('Survey', content)
+        self.assertIn('Owner', content)
+
+        # Search finds text inside a table cell and a caption
+        res_search = self.client.get('/api/workspace/notes/?search=Anon')
+        self.assertIn(res.data['id'], [n['id'] for n in _results(res_search)])
+        res_search2 = self.client.get('/api/workspace/notes/?search=voice-note')
+        self.assertIn(res.data['id'], [n['id'] for n in _results(res_search2)])
+
+    def test_table_block_validation_and_defaults(self):
+        """Test table rows are clamped, rectangularized, and defaulted correctly."""
+        res = self.client.post('/api/workspace/notes/', {
+            'title': 'Table Bounds',
+            'blocks': [
+                {'type': 'table'},  # empty -> default 2x3
+                {'type': 'table', 'rows': [['A', 'B'], ['one', 'two', 'three']]}  # ragged -> padded
+            ]
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        blocks = res.data['blocks']
+
+        self.assertEqual(blocks[0]['rows'], [['Column 1', 'Column 2', 'Column 3'], ['', '', '']])
+
+        padded = blocks[1]['rows']
+        self.assertEqual(padded, [['A', 'B', ''], ['one', 'two', 'three']])
+
+        # Invalid rows shape falls back to empty (then default for table type)
+        res_bad = self.client.post('/api/workspace/notes/', {
+            'title': 'Bad Table',
+            'blocks': [{'type': 'table', 'rows': 'not-a-list'}]
+        }, format='json')
+        self.assertEqual(res_bad.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_bad.data['blocks'][0]['rows'], [['Column 1', 'Column 2', 'Column 3'], ['', '', '']])
+
+        # Invalid width and negative size/duration get sanitized
+        res_media = self.client.post('/api/workspace/notes/', {
+            'title': 'Media Sanitize',
+            'blocks': [
+                {
+                    'type': 'image',
+                    'width': '9999px',
+                    'file_size': -5,
+                    'drive_file_id': 'x'
+                },
+                {
+                    'type': 'audio',
+                    'duration': -3
+                }
+            ]
+        }, format='json')
+        self.assertEqual(res_media.data['blocks'][0]['width'], '100%')
+        self.assertEqual(res_media.data['blocks'][0]['file_size'], 0)
+        self.assertEqual(res_media.data['blocks'][1]['duration'], 0.0)

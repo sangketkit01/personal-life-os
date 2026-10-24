@@ -163,7 +163,8 @@ def ensure_folder_structure(connection: GoogleDriveConnection) -> dict:
         StorageDomain.LEDGER: "Ledger",
         StorageDomain.FINANCE: "Finance",
         StorageDomain.PORTFOLIO: "Portfolio",
-        StorageDomain.WORKSPACE: "Workspace"
+        StorageDomain.WORKSPACE: "Workspace",
+        StorageDomain.NOTE: "Notes"
     }
     for domain_key, folder_name in domain_folder_names.items():
         sub_id = _find_or_create_folder(access_token, folder_name, parent_id=root_id)
@@ -195,10 +196,9 @@ def initiate_resumable_upload(
 
     access_token = refresh_access_token_if_needed(connection)
 
-    # Determine parent folder
-    folder_id = connection.subfolder_ids.get(domain) or connection.root_folder_id
+    # Determine parent folder (re-ensure hierarchy when the domain subfolder is new)
+    folder_id = connection.subfolder_ids.get(domain)
     if not folder_id:
-        # Re-ensure folder hierarchy if missing
         folder_info = ensure_folder_structure(connection)
         folder_id = folder_info['subfolders'].get(domain, folder_info['root_folder_id'])
 
@@ -293,6 +293,39 @@ def complete_resumable_upload(
         target_id=target_id or ''
     )
     return drive_file
+
+
+def stream_file_from_drive(user, drive_file: DriveFile):
+    """
+    Opens a streaming iterator to the raw bytes of a file in Google Drive (alt=media).
+    Returns (chunk_iterator, content_type) or None when the file cannot be streamed.
+    Zero bytes are written to local disk - chunks are proxied straight to the client.
+    """
+    connection = getattr(user, 'google_drive_connection', None)
+    if not connection or not connection.is_connected:
+        return None
+    try:
+        token = refresh_access_token_if_needed(connection)
+        media_url = f"{GOOGLE_DRIVE_FILES_URL}/{drive_file.drive_file_id}?alt=media"
+        resp = requests.get(
+            media_url,
+            headers={'Authorization': f'Bearer {token}'},
+            stream=True,
+            timeout=30
+        )
+        if resp.status_code != 200:
+            resp.close()
+            logger.warning(
+                "Could not stream file %s from Google Drive (HTTP %s)",
+                drive_file.drive_file_id,
+                resp.status_code
+            )
+            return None
+        content_type = resp.headers.get('Content-Type') or drive_file.file_type or 'application/octet-stream'
+        return resp.iter_content(chunk_size=64 * 1024), content_type
+    except Exception as e:
+        logger.warning("Error streaming file %s from Google Drive: %s", drive_file.drive_file_id, e)
+        return None
 
 
 def delete_file_from_drive(user, drive_file: DriveFile) -> bool:

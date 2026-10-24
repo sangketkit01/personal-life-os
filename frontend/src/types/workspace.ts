@@ -3,6 +3,7 @@ export type TaskStatus = 'TODO' | 'DOING' | 'DONE' | 'ARCHIVED' | 'DRAFTING' | '
 export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
 export type ProjectLinkType = 'WEBSITE' | 'CANVA' | 'FIGMA' | 'GITHUB' | 'SHEET' | 'OTHER'
 export type CalendarEventType = 'APPOINTMENT' | 'MEETING' | 'REMINDER' | 'MILESTONE' | 'PERSONAL' | 'OTHER'
+export type NoteColor = 'DEFAULT' | 'AMBER' | 'EMERALD' | 'SKY' | 'VIOLET' | 'ROSE'
 
 export type NoteBlockType =
   | 'h1'
@@ -16,13 +17,27 @@ export type NoteBlockType =
   | 'code'
   | 'quote'
   | 'divider'
+  | 'image'
+  | 'audio'
+  | 'table'
 
 export interface NoteBlock {
   id: string
   type: NoteBlockType
   content: string
   checked?: boolean
+  indent?: number
   language?: string
+  // Image & audio blocks (files live in Google Drive, never on disk)
+  drive_file_id?: string
+  file_url?: string
+  file_name?: string
+  file_type?: string
+  file_size?: number
+  width?: '50%' | '75%' | '100%'
+  duration?: number
+  // Table block (row 0 is the header row)
+  rows?: string[][]
 }
 
 export interface ChecklistItem {
@@ -91,16 +106,45 @@ export interface TaskDocument {
   updated_at: string
 }
 
+export interface NoteAttachment {
+  id: string
+  file_name: string
+  file_type: string
+  file_size: number
+  drive_file_id: string
+  drive_view_link: string
+  uploaded_at: string
+}
+
+export interface NoteFolder {
+  id: string
+  name: string
+  icon: string
+  color: string
+  position: number
+  notes_count: number
+  created_at: string
+  updated_at: string
+}
+
 export interface Note {
   id: string
   project: string | null
   project_name: string | null
+  folder: string | null
+  folder_name: string | null
   title: string
   icon: string
   content: string
   blocks: NoteBlock[]
   tags: string[]
+  color: NoteColor
   is_pinned: boolean
+  is_locked: boolean
+  has_lock_pin: boolean
+  is_trashed: boolean
+  trashed_at: string | null
+  attachments: NoteAttachment[]
   created_at: string
   updated_at: string
 }

@@ -91,10 +91,13 @@ export const useStorageStore = defineStore('storage', () => {
    */
   async function uploadDirect(
     file: File,
-    domain: 'ledger' | 'finance' | 'portfolio' | 'workspace' | 'general' = 'general',
+    domain: 'ledger' | 'finance' | 'portfolio' | 'workspace' | 'note' | 'general' = 'general',
     targetId?: string,
     onProgress?: (pct: number) => void
   ): Promise<DriveFileItem> {
+    if (!status.value) {
+      await fetchStatus()
+    }
     if (!isConnected.value) {
       throw new Error('Google Drive connection is required before storing attachments.')
     }

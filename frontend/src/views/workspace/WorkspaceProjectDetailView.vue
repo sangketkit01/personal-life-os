@@ -276,7 +276,7 @@
 
           <!-- Block editor -->
           <div class="p-4">
-            <NotionBlockEditor v-model="pageBlocks" />
+            <NotionBlockEditor v-model="pageBlocks" :upload-target-id="selectedPageId || undefined" />
             <div class="flex items-center justify-end mt-3">
               <span class="text-[10px] font-mono" :class="pageSaveStateClass">{{ pageSaveStateText }}</span>
             </div>

@@ -10,6 +10,7 @@ class StorageDomain(models.TextChoices):
     FINANCE = 'finance', 'Finance'
     PORTFOLIO = 'portfolio', 'Portfolio'
     WORKSPACE = 'workspace', 'Workspace'
+    NOTE = 'note', 'Notes'
     GENERAL = 'general', 'General'
 
 

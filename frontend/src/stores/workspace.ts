@@ -5,6 +5,7 @@ import type {
   WorkspaceProject,
   TaskDocument,
   Note,
+  NoteFolder,
   WorkspaceOverview,
   TaskStatus,
   ProjectLink,
@@ -20,6 +21,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const links = ref<ProjectLink[]>([])
   const attachments = ref<ProjectAttachment[]>([])
   const events = ref<CalendarEvent[]>([])
+  const standaloneNotes = ref<Note[]>([])
+  const trashedNotes = ref<Note[]>([])
+  const folders = ref<NoteFolder[]>([])
   const isLoading = ref<boolean>(false)
   const selectedProjectId = ref<string | null>(null)
 
@@ -125,6 +129,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function createNote(data: Record<string, any>) {
     const res = await apiClient.post<Note>('/workspace/notes/', data)
     notes.value.unshift(res.data)
+    // Standalone notes also join the /notes list immediately
+    if (!res.data.project) {
+      standaloneNotes.value.unshift(res.data)
+    }
     return res.data
   }
 
@@ -133,6 +141,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const idx = notes.value.findIndex(n => n.id === id)
     if (idx !== -1) {
       notes.value[idx] = res.data
+    }
+    const sIdx = standaloneNotes.value.findIndex(n => n.id === id)
+    if (sIdx !== -1) {
+      standaloneNotes.value[sIdx] = res.data
+    }
+    const tIdx = trashedNotes.value.findIndex(n => n.id === id)
+    if (tIdx !== -1) {
+      trashedNotes.value[tIdx] = res.data
     }
     return res.data
   }
@@ -144,12 +160,19 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       notes.value[idx] = res.data
     }
     notes.value.sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0))
+    const sIdx = standaloneNotes.value.findIndex(n => n.id === id)
+    if (sIdx !== -1) {
+      standaloneNotes.value[sIdx] = res.data
+    }
+    standaloneNotes.value.sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0))
     return res.data
   }
 
   async function deleteNote(id: string) {
     await apiClient.delete(`/workspace/notes/${id}/`)
     notes.value = notes.value.filter(n => n.id !== id)
+    standaloneNotes.value = standaloneNotes.value.filter(n => n.id !== id)
+    trashedNotes.value = trashedNotes.value.filter(n => n.id !== id)
   }
 
   async function fetchLinks(projectId?: string) {
@@ -234,6 +257,101 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     events.value = events.value.filter(e => e.id !== id)
   }
 
+  // ===== Standalone notes (/notes) =====
+
+  async function fetchStandaloneNotes(filters: Record<string, string> = {}) {
+    // Fetch live and trashed lists in parallel so Smart View badge counts
+    // stay accurate no matter which view is currently open.
+    const liveParams = { standalone: 'true', ...filters }
+    const trashedParams = { standalone: 'true', trashed: 'true', ...filters }
+    const [liveRes, trashedRes] = await Promise.all([
+      apiClient.get<Note[]>('/workspace/notes/', { params: liveParams }),
+      apiClient.get<Note[]>('/workspace/notes/', { params: trashedParams })
+    ])
+    standaloneNotes.value = extractList<Note>(liveRes.data)
+    trashedNotes.value = extractList<Note>(trashedRes.data)
+    return standaloneNotes.value
+  }
+
+  async function fetchNote(id: string) {
+    const res = await apiClient.get<Note>(`/workspace/notes/${id}/`)
+    const idx = standaloneNotes.value.findIndex(n => n.id === id)
+    if (idx !== -1) {
+      standaloneNotes.value[idx] = res.data
+    }
+    return res.data
+  }
+
+  async function trashNote(id: string) {
+    const res = await apiClient.post<Note>(`/workspace/notes/${id}/trash/`)
+    standaloneNotes.value = standaloneNotes.value.filter(n => n.id !== id)
+    trashedNotes.value.unshift(res.data)
+    return res.data
+  }
+
+  async function restoreNote(id: string) {
+    const res = await apiClient.post<Note>(`/workspace/notes/${id}/restore/`)
+    trashedNotes.value = trashedNotes.value.filter(n => n.id !== id)
+    standaloneNotes.value.unshift(res.data)
+    standaloneNotes.value.sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0))
+    return res.data
+  }
+
+  async function emptyTrash() {
+    const res = await apiClient.post<{ deleted: number }>('/workspace/notes/empty-trash/')
+    trashedNotes.value = []
+    standaloneNotes.value = standaloneNotes.value.filter(n => !n.is_trashed)
+    return res.data
+  }
+
+  async function setNoteLock(id: string, payload: { is_locked: boolean; pin?: string }) {
+    const res = await apiClient.post<Note>(`/workspace/notes/${id}/set-lock/`, payload)
+    const idx = standaloneNotes.value.findIndex(n => n.id === id)
+    if (idx !== -1) {
+      standaloneNotes.value[idx] = res.data
+    }
+    return res.data
+  }
+
+  async function verifyNoteLock(id: string, pin: string) {
+    const res = await apiClient.post<{ verified: boolean }>(`/workspace/notes/${id}/verify-lock/`, { pin })
+    return res.data.verified
+  }
+
+  async function copyNoteToProject(id: string, projectId: string) {
+    const res = await apiClient.post<Note>(`/workspace/notes/${id}/copy-to-project/`, { project_id: projectId })
+    return res.data
+  }
+
+  // ===== Note folders =====
+
+  async function fetchFolders() {
+    const res = await apiClient.get<NoteFolder[]>('/workspace/note-folders/')
+    folders.value = extractList<NoteFolder>(res.data)
+    return folders.value
+  }
+
+  async function createFolder(payload: Record<string, any>) {
+    const res = await apiClient.post<NoteFolder>('/workspace/note-folders/', payload)
+    folders.value.push(res.data)
+    folders.value.sort((a, b) => a.position - b.position || a.name.localeCompare(b.name))
+    return res.data
+  }
+
+  async function updateFolder(id: string, payload: Record<string, any>) {
+    const res = await apiClient.patch<NoteFolder>(`/workspace/note-folders/${id}/`, payload)
+    const idx = folders.value.findIndex(f => f.id === id)
+    if (idx !== -1) {
+      folders.value[idx] = res.data
+    }
+    return res.data
+  }
+
+  async function deleteFolder(id: string) {
+    await apiClient.delete(`/workspace/note-folders/${id}/`)
+    folders.value = folders.value.filter(f => f.id !== id)
+  }
+
   return {
     overview,
     projects,
@@ -271,6 +389,21 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     createEvent,
     updateEvent,
     deleteEvent,
+    standaloneNotes,
+    trashedNotes,
+    fetchStandaloneNotes,
+    fetchNote,
+    trashNote,
+    restoreNote,
+    emptyTrash,
+    setNoteLock,
+    verifyNoteLock,
+    copyNoteToProject,
+    folders,
+    fetchFolders,
+    createFolder,
+    updateFolder,
+    deleteFolder,
   }
 })
 

@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.utils import timezone
 from django.core import signing
 from rest_framework import permissions, status
+from django.http import StreamingHttpResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
@@ -231,6 +232,39 @@ class CompleteUploadView(APIView):
                     drive_download_link=drive_file.web_content_link
                 )
 
+            elif domain == 'note' and target_id:
+                import uuid as uuid_lib
+                from apps.workspace.models import Note
+
+                try:
+                    note_uuid = uuid_lib.UUID(str(target_id))
+                except (ValueError, AttributeError, TypeError):
+                    return Response(
+                        {'error': f"Invalid note target id '{target_id}'."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                note = Note.objects.filter(id=note_uuid, user=request.user).first()
+                if not note:
+                    return Response(
+                        {'error': f"Note '{target_id}' not found or does not belong to user."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                attachment_entry = {
+                    'id': str(uuid_lib.uuid4()),
+                    'file_name': drive_file.file_name,
+                    'file_type': drive_file.file_type or 'application/octet-stream',
+                    'file_size': drive_file.file_size,
+                    'drive_file_id': drive_file.drive_file_id,
+                    'drive_view_link': drive_file.web_view_link,
+                    'uploaded_at': timezone.now().isoformat()
+                }
+                attachments = note.attachments if isinstance(note.attachments, list) else []
+                attachments.append(attachment_entry)
+                note.attachments = attachments
+                note.save(update_fields=['attachments'])
+
             elif domain == 'workspace' and target_id:
                 import uuid as uuid_lib
                 from apps.workspace.models import ProjectAttachment, TaskDocument, WorkspaceProject
@@ -295,6 +329,36 @@ class CompleteUploadView(APIView):
                 {'error': f"Failed to register uploaded file: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class DriveFileStreamView(APIView):
+    """
+    Authenticated proxy that streams raw file bytes from Google Drive (alt=media).
+    Required for inline <img> / <audio> rendering because Drive web_view_link
+    returns an HTML preview page instead of the binary content.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, drive_file_id):
+        drive_file = DriveFile.objects.filter(
+            drive_file_id=drive_file_id,
+            user=request.user
+        ).first()
+        if not drive_file:
+            return Response({'error': 'File not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        stream = services.stream_file_from_drive(request.user, drive_file)
+        if stream is None:
+            return Response(
+                {'error': 'Could not stream file from Google Drive.'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+
+        iterator, content_type = stream
+        response = StreamingHttpResponse(iterator, content_type=content_type)
+        safe_name = drive_file.file_name.replace('"', '')
+        response['Content-Disposition'] = f'inline; filename="{safe_name}"'
+        return response
 
 
 class DisconnectGoogleDriveView(APIView):

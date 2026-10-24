@@ -254,3 +254,90 @@ class StorageGoogleDriveTests(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
         task.refresh_from_db()
         self.assertEqual(task.file_url, 'https://drive.google.com/file/d/gdrive_workspace_doc_1/view')
+
+    @patch('apps.storage.services.requests.get')
+    def test_file_stream_endpoint(self, mock_get):
+        """
+        The stream endpoint proxies raw bytes from Google Drive (alt=media) with the
+        proper Content-Type so inline <img>/<audio> can render (Zero-Disk proxy).
+        """
+        GoogleDriveConnection.objects.create(
+            user=self.user,
+            google_email='user@gmail.com',
+            access_token='mock_access_token',
+            refresh_token='mock_refresh_token',
+            token_expiry=timezone.now() + timedelta(hours=1),
+            root_folder_id='folder_root_123',
+            subfolder_ids={'note': 'folder_notes'},
+            is_connected=True
+        )
+        DriveFile.objects.create(
+            user=self.user,
+            drive_file_id='gdrive_image_123',
+            file_name='photo.png',
+            file_type='image/png',
+            file_size=11,
+            domain=StorageDomain.NOTE
+        )
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {'Content-Type': 'image/png'}
+        mock_resp.iter_content.return_value = iter([b'binary-part'])
+        mock_get.return_value = mock_resp
+
+        resp = self.client.get('/api/storage/files/gdrive_image_123/stream/')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp['Content-Type'], 'image/png')
+        self.assertIn('inline', resp['Content-Disposition'])
+        body = b''.join(chunk for chunk in resp.streaming_content)
+        self.assertEqual(body, b'binary-part')
+
+        # Google Drive was called with alt=media
+        called_url = mock_get.call_args.args[0]
+        self.assertIn('alt=media', called_url)
+        self.assertIn('gdrive_image_123', called_url)
+
+    def test_file_stream_requires_ownership(self):
+        """A user cannot stream a Drive file owned by another user."""
+        other = User.objects.create_user(
+            username='otheruser',
+            password='Password123!',
+            email='other@example.com'
+        )
+        DriveFile.objects.create(
+            user=other,
+            drive_file_id='foreign_file_1',
+            file_name='secret.png',
+            file_type='image/png',
+            domain=StorageDomain.NOTE
+        )
+        resp = self.client.get('/api/storage/files/foreign_file_1/stream/')
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+    @patch('apps.storage.services.requests.get')
+    def test_file_stream_missing_from_drive(self, mock_get):
+        """If Google Drive no longer has the file, the endpoint returns 502."""
+        GoogleDriveConnection.objects.create(
+            user=self.user,
+            google_email='user@gmail.com',
+            access_token='mock_access_token',
+            refresh_token='mock_refresh_token',
+            token_expiry=timezone.now() + timedelta(hours=1),
+            root_folder_id='folder_root_123',
+            is_connected=True
+        )
+        DriveFile.objects.create(
+            user=self.user,
+            drive_file_id='deleted_file_1',
+            file_name='gone.png',
+            file_type='image/png',
+            domain=StorageDomain.NOTE
+        )
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        mock_get.return_value = mock_resp
+
+        resp = self.client.get('/api/storage/files/deleted_file_1/stream/')
+        self.assertEqual(resp.status_code, status.HTTP_502_BAD_GATEWAY)

@@ -1,97 +1,147 @@
 <template>
-  <div class="flex h-[calc(100vh-6.5rem)] md:h-[calc(100vh-8.5rem)] min-h-[480px] gap-4 font-sans">
+  <div class="flex flex-col lg:flex-row h-[calc(100vh-6.5rem)] md:h-[calc(100vh-7.5rem)] min-h-[520px] gap-4 font-sans">
     <!-- ============ 1. Left Pane: Folders & Smart Views ============ -->
-    <aside class="hidden lg:flex w-56 shrink-0 flex-col gap-1 overflow-y-auto pr-1">
-      <button
-        type="button"
-        @click="createNote"
-        class="w-full px-3 py-2 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 mb-2"
-      >
-        <Plus class="w-3.5 h-3.5" />
-        <span>New Note</span>
-      </button>
-
-      <!-- Smart Views -->
-      <button
-        v-for="view in SMART_VIEWS"
-        :key="view.key"
-        type="button"
-        @click="switchSmartView(view.key)"
-        class="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors text-left border"
-        :class="smartView === view.key ? 'bg-zinc-900 text-zinc-100 border-zinc-800' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40 border-transparent'"
-      >
-        <component :is="view.icon" class="w-3.5 h-3.5 shrink-0" :class="smartView === view.key ? 'text-zinc-300' : 'text-zinc-500'" />
-        <span class="flex-1">{{ view.label }}</span>
-        <span v-if="smartViewCount(view.key) > 0" class="text-[10px] font-mono text-zinc-500">{{ smartViewCount(view.key) }}</span>
-      </button>
-
-      <!-- Folders -->
-      <div class="flex items-center justify-between px-2.5 pt-3 pb-1">
-        <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-500 font-semibold">Folders</span>
-        <button type="button" @click="startFolderCreate" class="p-0.5 rounded text-zinc-500 hover:text-zinc-200" title="New folder">
-          <FolderPlus class="w-3.5 h-3.5" />
+    <aside class="w-full lg:w-60 shrink-0 flex flex-col gap-1 bg-zinc-950/60 border border-zinc-800/80 rounded-xl p-3 lg:overflow-y-auto">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <div class="flex items-center gap-2">
+          <StickyNote class="w-4 h-4 text-amber-400" />
+          <span class="text-xs font-semibold tracking-tight text-zinc-100">Notes</span>
+        </div>
+        <button
+          type="button"
+          @click="createNote()"
+          class="px-2.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+        >
+          <Plus class="w-3.5 h-3.5" />
+          <span>New Note</span>
         </button>
       </div>
 
-      <div
-        v-for="folder in workspaceStore.folders"
-        :key="folder.id"
-        class="group/folder flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs transition-colors cursor-pointer border"
-        :class="activeFolderId === folder.id ? 'bg-zinc-900 text-zinc-100 border-zinc-800' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40 border-transparent'"
-        @click="selectFolder(folder.id)"
-      >
-        <span class="w-2 h-2 rounded-full shrink-0" :style="{ backgroundColor: folder.color }" />
-        <template v-if="editingFolderId === folder.id">
-          <input
-            v-model="folderEditName"
-            class="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-1.5 py-0.5 text-xs text-zinc-100 outline-none"
-            @keydown.enter.prevent="submitFolderRename(folder.id)"
-            @keydown.esc="editingFolderId = null"
-            @click.stop
-          />
-        </template>
-        <template v-else>
-          <span class="flex-1 truncate">{{ folder.name }}</span>
-          <span class="text-[10px] font-mono text-zinc-600">{{ folder.notes_count }}</span>
-        </template>
-        <span class="hidden group-hover/folder:flex items-center gap-0.5">
-          <button type="button" class="p-0.5 text-zinc-500 hover:text-zinc-200" title="Rename" @click.stop="startFolderRename(folder)">
-            <Pencil class="w-3 h-3" />
-          </button>
-          <button type="button" class="p-0.5 text-zinc-600 hover:text-rose-400" title="Delete folder" @click.stop="folderToDelete = folder">
-            <Trash2 class="w-3 h-3" />
-          </button>
-        </span>
+      <!-- Smart Views -->
+      <div class=" flex lg:flex-col gap-1 overflow-x-auto pb-1 lg:pb-0">
+        <button
+          v-for="view in SMART_VIEWS"
+          :key="view.key"
+          type="button"
+          @click="switchSmartView(view.key)"
+          class="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors text-left border shrink-0"
+          :class="!activeFolderId && smartView === view.key
+            ? 'bg-zinc-900 text-zinc-100 border-zinc-700/80 shadow-sm'
+            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40 border-transparent'"
+        >
+          <component :is="view.icon" class="w-3.5 h-3.5 shrink-0" :class="!activeFolderId && smartView === view.key ? 'text-amber-400' : 'text-zinc-500'" />
+          <span class="flex-1">{{ view.label }}</span>
+          <span class="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-900/80 text-zinc-400">{{ smartViewCount(view.key) }}</span>
+        </button>
+      </div>
+
+      <!-- Folders Header -->
+      <div class="flex items-center justify-between px-2 pt-3 pb-1 border-t border-zinc-800/60 mt-1">
+        <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-500 font-semibold">Folders</span>
+        <button
+          type="button"
+          @click="startFolderCreate"
+          class="px-1.5 py-0.5 rounded text-[10px] font-mono text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition-colors flex items-center gap-1"
+          title="New folder"
+        >
+          <FolderPlus class="w-3 h-3" />
+          <span>New</span>
+        </button>
       </div>
 
       <!-- Inline folder creator -->
-      <div v-if="isCreatingFolder" class="flex items-center gap-1.5 px-1 py-1">
+      <div v-if="isCreatingFolder" class="flex items-center gap-1.5 px-1 py-1 bg-zinc-900/60 rounded-md border border-zinc-800 mb-1">
         <input
           ref="folderCreateInput"
           v-model="newFolderName"
           placeholder="Folder name..."
-          class="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-100 placeholder-zinc-600 outline-none"
+          class="flex-1 min-w-0 bg-transparent px-2 py-1 text-xs text-zinc-100 placeholder-zinc-500 outline-none"
           @keydown.enter.prevent="submitFolderCreate"
           @keydown.esc="isCreatingFolder = false"
         />
-        <button type="button" @click="submitFolderCreate" class="p-1 rounded text-zinc-400 hover:text-zinc-100">
+        <button type="button" @click="submitFolderCreate" class="p-1 rounded bg-zinc-100 text-zinc-950 hover:bg-white" title="Save folder">
           <Check class="w-3 h-3" />
         </button>
+        <button type="button" @click="isCreatingFolder = false" class="p-1 rounded text-zinc-500 hover:text-zinc-300" title="Cancel">
+          <X class="w-3 h-3" />
+        </button>
+      </div>
+
+      <!-- Folder List -->
+      <div class="flex lg:flex-col gap-1 overflow-x-auto">
+        <div
+          v-if="workspaceStore.folders.length === 0 && !isCreatingFolder"
+          class="px-2.5 py-2 text-[11px] text-zinc-600 font-mono"
+        >
+          No folders yet
+        </div>
+
+        <div
+          v-for="folder in workspaceStore.folders"
+          :key="folder.id"
+          class="group/folder flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs transition-colors cursor-pointer border shrink-0"
+          :class="activeFolderId === folder.id
+            ? 'bg-zinc-900 text-zinc-100 border-zinc-700/80 shadow-sm'
+            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40 border-transparent'"
+          @click="selectFolder(folder.id)"
+        >
+          <Folder class="w-3.5 h-3.5 shrink-0" :style="{ color: folder.color || '#a1a1aa' }" />
+          <template v-if="editingFolderId === folder.id">
+            <input
+              v-model="folderEditName"
+              class="flex-1 min-w-0 bg-zinc-950 border border-zinc-700 rounded px-1.5 py-0.5 text-xs text-zinc-100 outline-none"
+              @keydown.enter.prevent="submitFolderRename(folder.id)"
+              @keydown.esc="editingFolderId = null"
+              @click.stop
+            />
+          </template>
+          <template v-else>
+            <span class="flex-1 truncate font-medium">{{ folder.name }}</span>
+            <span class="text-[10px] font-mono text-zinc-500 group-hover/folder:hidden">{{ folderNoteCount(folder.id) }}</span>
+          </template>
+
+          <span class="hidden group-hover/folder:flex items-center gap-0.5 shrink-0">
+            <button
+              type="button"
+              class="p-0.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
+              title="New note in this folder"
+              @click.stop="createNote(folder.id)"
+            >
+              <Plus class="w-3 h-3" />
+            </button>
+            <button
+              type="button"
+              class="p-0.5 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800"
+              title="Rename folder"
+              @click.stop="startFolderRename(folder)"
+            >
+              <Pencil class="w-3 h-3" />
+            </button>
+            <button
+              type="button"
+              class="p-0.5 rounded text-zinc-600 hover:text-rose-400 hover:bg-zinc-800"
+              title="Delete folder"
+              @click.stop="folderToDelete = folder"
+            >
+              <Trash2 class="w-3 h-3" />
+            </button>
+          </span>
+        </div>
       </div>
 
       <!-- Tags -->
       <template v-if="allTags.length > 0">
-        <div class="pt-3 pb-1 px-2.5">
+        <div class="pt-3 pb-1 px-2 border-t border-zinc-800/60 mt-1 hidden lg:block">
           <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-500 font-semibold">Tags</span>
         </div>
-        <div class="flex flex-wrap gap-1 px-2 pb-2">
+        <div class="hidden lg:flex flex-wrap gap-1 px-1.5 pb-1">
           <button
             v-for="tag in allTags"
             :key="tag"
             type="button"
             @click="toggleTagFilter(tag)"
             class="text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors"
-            :class="activeTag === tag ? 'bg-zinc-800 text-zinc-100 border-zinc-700' : 'bg-zinc-900/40 text-zinc-500 border-zinc-800 hover:text-zinc-300'"
+            :class="activeTag === tag ? 'bg-zinc-800 text-zinc-100 border-zinc-600' : 'bg-zinc-900/40 text-zinc-500 border-zinc-800 hover:text-zinc-300'"
           >
             #{{ tag }}
           </button>
@@ -100,105 +150,150 @@
     </aside>
 
     <!-- ============ 2. Middle / Main Area ============ -->
-    <section class="flex-1 min-w-0 flex flex-col">
-      <!-- Search, color filter, sort & view toggle -->
-      <div class="flex items-center gap-2 pb-3 flex-wrap">
-        <div class="relative flex-1 min-w-[140px] max-w-xs">
-          <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
-          <input
-            v-model="searchText"
-            type="text"
-            placeholder="Search notes, #tags..."
-            class="w-full bg-zinc-900/60 border border-zinc-800/80 rounded-md pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-600"
-          />
+    <section class="flex-1 min-w-0 min-h-0 flex flex-col">
+      <!-- Top Context & Filter Bar -->
+      <div class="flex items-center justify-between gap-2 pb-3 flex-wrap">
+        <!-- Active Folder / View Title -->
+        <div class="flex items-center gap-2 mr-2">
+          <h2 class="text-sm font-semibold text-zinc-100 tracking-tight flex items-center gap-1.5">
+            <Folder v-if="activeFolder" class="w-4 h-4 text-amber-400" />
+            <span>{{ currentScopeTitle }}</span>
+          </h2>
+          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
+            {{ filteredNotes.length }}
+          </span>
+          <button
+            v-if="smartView !== 'trash'"
+            type="button"
+            @click="createNote(activeFolderId)"
+            class="px-2 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-medium text-zinc-200 transition-colors flex items-center gap-1"
+            :title="activeFolder ? `Add note in ${activeFolder.name}` : 'Add new note'"
+          >
+            <Plus class="w-3 h-3" />
+            <span>Add Note{{ activeFolder ? ` in ${activeFolder.name}` : '' }}</span>
+          </button>
         </div>
 
-        <div class="flex items-center gap-1">
-          <button
-            v-for="c in NOTE_COLORS"
-            :key="c.key"
-            type="button"
-            @click="colorFilter = colorFilter === c.key ? null : c.key"
-            class="w-4 h-4 rounded-full border transition-transform"
-            :class="colorFilter === c.key ? 'scale-110 border-zinc-100' : 'border-zinc-700'"
-            :style="{ backgroundColor: c.dot }"
-            :title="c.label"
-          />
-        </div>
+        <div class="flex items-center gap-2 flex-wrap ml-auto">
+          <!-- Search -->
+          <div class="relative w-44 sm:w-56">
+            <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500" />
+            <input
+              v-model="searchText"
+              type="text"
+              placeholder="Search notes, #tags..."
+              class="w-full bg-zinc-900/60 border border-zinc-800/80 rounded-md pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-600"
+            />
+          </div>
 
-        <select
-          v-model="sortBy"
-          class="bg-zinc-900/60 border border-zinc-800/80 rounded-md px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-zinc-600"
-        >
-          <option value="updated">Last Edited</option>
-          <option value="title">Title A-Z</option>
-          <option value="created">Oldest First</option>
-        </select>
+          <!-- Color dots -->
+          <div class="hidden sm:flex items-center gap-1 bg-zinc-900/50 border border-zinc-800/80 px-2 py-1 rounded-md">
+            <button
+              v-for="c in NOTE_COLORS"
+              :key="c.key"
+              type="button"
+              @click="colorFilter = colorFilter === c.key ? null : c.key"
+              class="w-3.5 h-3.5 rounded-full border transition-transform"
+              :class="colorFilter === c.key ? 'scale-125 border-zinc-100' : 'border-zinc-700 opacity-75 hover:opacity-100'"
+              :style="{ backgroundColor: c.dot }"
+              :title="`Filter by ${c.label}`"
+            />
+          </div>
 
-        <div class="flex items-center gap-0.5 bg-zinc-900 border border-zinc-800 p-0.5 rounded-md ml-auto">
-          <button
-            type="button"
-            @click="viewMode = 'split'"
-            class="px-2.5 py-1 rounded text-[11px] font-medium transition-colors flex items-center gap-1.5"
-            :class="viewMode === 'split' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'"
-            title="Split View"
+          <!-- Sort -->
+          <select
+            v-model="sortBy"
+            class="bg-zinc-900/60 border border-zinc-800/80 rounded-md px-2 py-1.5 text-xs text-zinc-300 outline-none focus:border-zinc-600"
           >
-            <Columns2 class="w-3 h-3" />Split
-          </button>
-          <button
-            type="button"
-            @click="viewMode = 'grid'"
-            class="px-2.5 py-1 rounded text-[11px] font-medium transition-colors flex items-center gap-1.5"
-            :class="viewMode === 'grid' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'"
-            title="Card Grid View"
-          >
-            <LayoutGrid class="w-3 h-3" />Grid
-          </button>
+            <option value="updated">Last Edited</option>
+            <option value="title">Title A-Z</option>
+            <option value="created">Oldest First</option>
+          </select>
+
+          <!-- View Mode -->
+          <div class="flex items-center gap-0.5 bg-zinc-900 border border-zinc-800 p-0.5 rounded-md">
+            <button
+              type="button"
+              @click="viewMode = 'split'"
+              class="px-2 py-1 rounded text-[11px] font-medium transition-colors flex items-center gap-1"
+              :class="viewMode === 'split' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'"
+              title="Apple Notes Split View"
+            >
+              <Columns2 class="w-3 h-3" />Split
+            </button>
+            <button
+              type="button"
+              @click="viewMode = 'grid'"
+              class="px-2 py-1 rounded text-[11px] font-medium transition-colors flex items-center gap-1"
+              :class="viewMode === 'grid' ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'"
+              title="Samsung Notes Card Grid"
+            >
+              <LayoutGrid class="w-3 h-3" />Cards
+            </button>
+          </div>
         </div>
       </div>
 
       <!-- SPLIT VIEW: list + editor -->
-      <div v-if="viewMode === 'split'" class="flex flex-1 min-h-0 gap-4">
-        <!-- Note list -->
-        <div class="w-72 lg:w-80 shrink-0 overflow-y-auto space-y-1.5 pr-1">
+      <div v-if="viewMode === 'split'" class="flex flex-1 min-h-0 gap-3">
+        <!-- Note list column -->
+        <div
+          class="w-full md:w-72 shrink-0 overflow-y-auto space-y-1.5 pr-0.5"
+          :class="{ 'hidden md:block': !!activeNote }"
+        >
           <div
             v-if="filteredNotes.length === 0"
-            class="p-8 text-center text-xs font-mono text-zinc-600 border border-dashed border-zinc-800 rounded-lg"
+            class="p-8 text-center space-y-3 border border-dashed border-zinc-800/80 rounded-xl bg-zinc-950/40"
           >
-            {{ emptyStateText }}
+            <StickyNote class="w-7 h-7 text-zinc-700 mx-auto" />
+            <p class="text-xs font-mono text-zinc-500">{{ emptyStateText }}</p>
+            <button
+              v-if="smartView !== 'trash'"
+              type="button"
+              @click="createNote(activeFolderId)"
+              class="px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors inline-flex items-center gap-1.5"
+            >
+              <Plus class="w-3.5 h-3.5" />
+              <span>Create First Note</span>
+            </button>
           </div>
 
           <div
             v-for="note in filteredNotes"
             :key="note.id"
-            class="p-3 rounded-lg border transition-colors group/note flex gap-2.5 cursor-pointer"
+            class="p-3 rounded-xl border transition-all group/note flex gap-2.5 cursor-pointer"
             :class="[
-              activeNoteId === note.id ? 'border-zinc-600 bg-zinc-900' : 'border-zinc-800/70 hover:border-zinc-700 bg-zinc-900/30',
+              activeNoteId === note.id
+                ? 'border-zinc-600 bg-zinc-900 shadow-sm'
+                : 'border-zinc-800/70 hover:border-zinc-700 bg-zinc-950/60 hover:bg-zinc-900/40',
               colorTintClass(note.color)
             ]"
             @click="selectNote(note.id)"
           >
-            <span class="text-sm shrink-0 mt-0.5">{{ iconEmoji(note.icon) }}</span>
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5">
-                <span class="text-xs font-medium truncate flex-1" :class="note.is_trashed ? 'text-zinc-500 line-through' : 'text-zinc-100'">
-                  {{ note.title || 'Untitled' }}
+                <span class="text-xs font-semibold truncate flex-1" :class="note.is_trashed ? 'text-zinc-500 line-through' : 'text-zinc-100'">
+                  {{ displayTitle(note) }}
                 </span>
-                <Lock v-if="note.is_locked" class="w-3 h-3 text-zinc-500 shrink-0" />
-                <Pin v-if="note.is_pinned" class="w-3 h-3 text-zinc-400 fill-zinc-400 shrink-0" />
+                <Lock v-if="note.is_locked" class="w-3 h-3 text-amber-400/80 shrink-0" />
+                <Pin v-if="note.is_pinned" class="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
               </div>
-              <p class="text-[10px] font-mono text-zinc-500 mt-0.5 truncate">{{ previewText(note) }}</p>
-              <div class="flex items-center gap-1.5 mt-1 flex-wrap">
-                <span v-if="note.folder_name" class="text-[9px] font-mono px-1 py-0.2 rounded bg-zinc-900 text-zinc-500 border border-zinc-800">{{ note.folder_name }}</span>
-                <span v-for="tag in note.tags.slice(0, 2)" :key="tag" class="text-[9px] font-mono text-zinc-600">#{{ tag }}</span>
-                <span v-if="note.attachments.length > 0" class="text-[9px] font-mono text-zinc-600">📎 {{ note.attachments.length }}</span>
+              <p class="text-[11px] text-zinc-400 mt-1 line-clamp-2 leading-relaxed">{{ previewText(note) }}</p>
+              <div class="flex items-center justify-between gap-1.5 mt-2 text-[10px] font-mono text-zinc-500">
+                <span>{{ formatShortDate(note.updated_at) }}</span>
+                <div class="flex items-center gap-1.5 truncate">
+                  <span v-if="note.folder_name" class="px-1.5 py-0.2 rounded bg-zinc-900 text-zinc-400 border border-zinc-800 truncate max-w-[100px]">
+                    {{ note.folder_name }}
+                  </span>
+                  <span v-if="note.attachments?.length > 0">📎 {{ note.attachments.length }}</span>
+                </div>
               </div>
             </div>
             <button
               v-if="smartView === 'trash'"
               type="button"
-              class="p-1 rounded text-zinc-500 hover:text-emerald-400 self-center shrink-0"
-              title="Restore"
+              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-emerald-400 self-center shrink-0"
+              title="Restore note"
               @click.stop="restoreNote(note.id)"
             >
               <RotateCcw class="w-3.5 h-3.5" />
@@ -207,7 +302,15 @@
         </div>
 
         <!-- Editor canvas -->
-        <div class="flex-1 min-w-0 overflow-y-auto rounded-lg bg-zinc-900/30 border border-zinc-800/80">
+        <div
+          class="flex-1 min-w-0 min-h-0 flex flex-col rounded-xl bg-zinc-950/70 border border-zinc-800/80 overflow-hidden"
+          :class="{ 'hidden md:flex': !activeNote }"
+        >
+          <div v-if="activeNote" class="md:hidden px-3 py-2 border-b border-zinc-800/80 bg-zinc-950">
+            <button type="button" @click="activeNoteId = null" class="text-xs font-mono text-zinc-400 hover:text-zinc-100 flex items-center gap-1.5">
+              <ArrowLeft class="w-3.5 h-3.5" /> Back to notes
+            </button>
+          </div>
           <NoteEditorCanvas
             v-if="activeNote"
             :key="activeNote.id"
@@ -217,21 +320,35 @@
             @trashed="handleTrashed"
           />
           <div v-else class="h-full flex flex-col items-center justify-center gap-3 p-12 text-center">
-            <StickyNote class="w-8 h-8 text-zinc-700" />
-            <p class="text-xs font-mono text-zinc-500">Select a note or create a new one.</p>
+            <div class="w-12 h-12 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-center">
+              <StickyNote class="w-5 h-5 text-zinc-500" />
+            </div>
+            <div>
+              <p class="text-xs font-medium text-zinc-300">No note selected</p>
+              <p class="text-[11px] text-zinc-500 mt-0.5">Pick a note from the list or start a fresh one.</p>
+            </div>
+            <button
+              v-if="smartView !== 'trash'"
+              type="button"
+              @click="createNote(activeFolderId)"
+              class="mt-1 px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors inline-flex items-center gap-1.5"
+            >
+              <Plus class="w-3.5 h-3.5" />
+              <span>New Note{{ activeFolder ? ` in ${activeFolder.name}` : '' }}</span>
+            </button>
           </div>
         </div>
       </div>
 
-      <!-- GRID VIEW: card grid (click opens full editor) -->
+      <!-- GRID VIEW: Samsung Notes style card grid -->
       <template v-else>
-        <div v-if="activeNote && showGridEditor" class="flex-1 min-h-0 flex flex-col rounded-lg bg-zinc-900/30 border border-zinc-800/80 overflow-hidden">
-          <div class="px-4 py-2 border-b border-zinc-800/60 shrink-0">
-            <button type="button" @click="showGridEditor = false" class="text-[11px] font-mono text-zinc-400 hover:text-zinc-100 transition-colors flex items-center gap-1.5">
-              <ArrowLeft class="w-3 h-3" /> Back to grid
+        <div v-if="activeNote && showGridEditor" class="flex-1 min-h-0 flex flex-col rounded-xl bg-zinc-950/70 border border-zinc-800/80 overflow-hidden">
+          <div class="px-4 py-2.5 border-b border-zinc-800/80 bg-zinc-950 shrink-0">
+            <button type="button" @click="showGridEditor = false" class="text-xs font-mono text-zinc-400 hover:text-zinc-100 transition-colors flex items-center gap-1.5">
+              <ArrowLeft class="w-3.5 h-3.5" /> Back to all cards
             </button>
           </div>
-          <div class="flex-1 min-h-0 overflow-y-auto">
+          <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
             <NoteEditorCanvas
               :key="activeNote.id"
               :note="activeNote"
@@ -245,33 +362,42 @@
         <div v-else class="flex-1 min-h-0 overflow-y-auto">
           <div
             v-if="filteredNotes.length === 0"
-            class="p-12 text-center text-xs font-mono text-zinc-600 border border-dashed border-zinc-800 rounded-lg"
+            class="p-12 text-center space-y-3 border border-dashed border-zinc-800 rounded-xl bg-zinc-950/40"
           >
-            {{ emptyStateText }}
+            <StickyNote class="w-8 h-8 text-zinc-700 mx-auto" />
+            <p class="text-xs font-mono text-zinc-500">{{ emptyStateText }}</p>
+            <button
+              v-if="smartView !== 'trash'"
+              type="button"
+              @click="createNote(activeFolderId)"
+              class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors inline-flex items-center gap-1.5"
+            >
+              <Plus class="w-3.5 h-3.5" />
+              <span>Create First Note</span>
+            </button>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
             <div
               v-for="note in filteredNotes"
               :key="note.id"
-              class="p-4 rounded-lg bg-zinc-900/40 border border-zinc-800/80 hover:border-zinc-600 transition-all flex flex-col gap-2 min-h-[140px] cursor-pointer"
+              class="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80 hover:border-zinc-600 transition-all flex flex-col gap-2 min-h-[150px] cursor-pointer shadow-sm"
               :class="colorTintClass(note.color)"
               @click="openFromGrid(note.id)"
             >
               <div class="flex items-center gap-1.5 w-full">
-                <span class="text-sm">{{ iconEmoji(note.icon) }}</span>
                 <span class="text-xs font-semibold truncate flex-1" :class="note.is_trashed ? 'text-zinc-500 line-through' : 'text-zinc-100'">
-                  {{ note.title || 'Untitled' }}
+                  {{ displayTitle(note) }}
                 </span>
-                <Lock v-if="note.is_locked" class="w-3 h-3 text-zinc-500 shrink-0" />
-                <Pin v-if="note.is_pinned" class="w-3 h-3 text-zinc-400 fill-zinc-400 shrink-0" />
+                <Lock v-if="note.is_locked" class="w-3 h-3 text-amber-400/80 shrink-0" />
+                <Pin v-if="note.is_pinned" class="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
               </div>
-              <p class="text-[11px] text-zinc-400 line-clamp-4 leading-relaxed">{{ previewText(note) }}</p>
-              <div class="mt-auto pt-2 border-t border-zinc-800/50 flex items-center justify-between text-[9px] font-mono text-zinc-600 w-full">
-                <span>{{ new Date(note.updated_at).toLocaleDateString('en-GB') }}</span>
+              <p class="text-xs text-zinc-400 line-clamp-4 leading-relaxed">{{ previewText(note) }}</p>
+              <div class="mt-auto pt-2.5 border-t border-zinc-800/60 flex items-center justify-between text-[10px] font-mono text-zinc-500 w-full">
+                <span>{{ formatShortDate(note.updated_at) }}</span>
                 <span class="flex items-center gap-1.5">
-                  <span v-if="note.attachments.length > 0">📎 {{ note.attachments.length }}</span>
-                  <span v-if="note.folder_name">{{ note.folder_name }}</span>
+                  <span v-if="note.attachments?.length > 0">📎 {{ note.attachments.length }}</span>
+                  <span v-if="note.folder_name" class="px-1.5 py-0.2 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">{{ note.folder_name }}</span>
                 </span>
               </div>
             </div>
@@ -317,9 +443,11 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import {
   ArrowLeft,
   Check,
+  Columns2,
+  Folder,
   FolderPlus,
-  Lock,
   LayoutGrid,
+  Lock,
   Pencil,
   Pin,
   Plus,
@@ -327,7 +455,7 @@ import {
   Search,
   StickyNote,
   Trash2,
-  Columns2
+  X
 } from 'lucide-vue-next'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import NoteEditorCanvas from '../../components/notes/NoteEditorCanvas.vue'
@@ -339,7 +467,7 @@ import type { Note, NoteColor, NoteFolder } from '../../types/workspace'
 const SMART_VIEWS = [
   { key: 'all', label: 'All Notes', icon: StickyNote },
   { key: 'pinned', label: 'Pinned', icon: Pin },
-  { key: 'locked', label: 'Locked Notes', icon: Lock },
+  { key: 'locked', label: 'Locked', icon: Lock },
   { key: 'trash', label: 'Trash', icon: Trash2 }
 ] as const
 
@@ -378,9 +506,22 @@ const folderCreateInput = ref<HTMLInputElement | null>(null)
 
 const activeNoteId = ref<string | null>(null)
 
-const activeNote = computed(() =>
-  workspaceStore.standaloneNotes.find(n => n.id === activeNoteId.value) || null
+const activeFolder = computed(() =>
+  workspaceStore.folders.find(f => f.id === activeFolderId.value) || null
 )
+
+const currentScopeTitle = computed(() => {
+  if (activeFolder.value) return activeFolder.value.name
+  const found = SMART_VIEWS.find(v => v.key === smartView.value)
+  return found ? found.label : 'All Notes'
+})
+
+const activeNote = computed(() => {
+  const list = smartView.value === 'trash'
+    ? workspaceStore.trashedNotes
+    : workspaceStore.standaloneNotes
+  return list.find(n => n.id === activeNoteId.value) || null
+})
 
 // ===== Data loading =====
 onMounted(async () => {
@@ -389,11 +530,12 @@ onMounted(async () => {
     workspaceStore.fetchFolders(),
     workspaceStore.fetchProjects()
   ])
+  if (filteredNotes.value.length > 0 && !activeNoteId.value) {
+    activeNoteId.value = filteredNotes.value[0].id
+  }
 })
 
 async function refreshNotes() {
-  // One fetch populates both the live list and the separate trashed list,
-  // keeping Smart View counts accurate from every view.
   await workspaceStore.fetchStandaloneNotes()
 }
 
@@ -403,14 +545,22 @@ function switchSmartView(key: SmartViewKey) {
   showGridEditor.value = false
   if (key === 'trash') {
     activeNoteId.value = null
+  } else if (filteredNotes.value.length > 0) {
+    activeNoteId.value = filteredNotes.value[0].id
   }
-  refreshNotes()
 }
 
 function selectFolder(folderId: string) {
-  activeFolderId.value = activeFolderId.value === folderId ? null : folderId
-  if (smartView.value === 'trash') smartView.value = 'all'
-  refreshNotes()
+  activeFolderId.value = folderId
+  smartView.value = 'all'
+  showGridEditor.value = false
+  nextTick(() => {
+    activeNoteId.value = filteredNotes.value[0]?.id || null
+  })
+}
+
+function folderNoteCount(folderId: string): number {
+  return workspaceStore.standaloneNotes.filter(n => !n.is_trashed && n.folder === folderId).length
 }
 
 // ===== Derived lists =====
@@ -432,7 +582,6 @@ const allTags = computed(() => {
 })
 
 const filteredNotes = computed(() => {
-  // Trash view reads the dedicated trashed list; every other view reads live notes
   let notes = [...(smartView.value === 'trash'
     ? workspaceStore.trashedNotes
     : workspaceStore.standaloneNotes)]
@@ -475,49 +624,51 @@ const filteredNotes = computed(() => {
 
 const emptyStateText = computed(() => {
   if (smartView.value === 'trash') return 'Trash is empty'
+  if (activeFolder.value) return `No notes in "${activeFolder.value.name}" yet`
   if (smartView.value === 'locked') return 'No locked notes'
   if (smartView.value === 'pinned') return 'No pinned notes yet'
   return 'No notes yet. Create your first one!'
 })
 
+function displayTitle(note: Note): string {
+  if (note.title && note.title !== 'Untitled') return note.title
+  const firstLine = (note.blocks || [])
+    .map(b => stripHtml(b.content).trim())
+    .find(Boolean)
+  return firstLine ? firstLine.slice(0, 48) : 'New Note'
+}
+
 function previewText(note: Note): string {
-  if (note.is_locked && !isVerified(note.id)) return 'This note is locked'
+  if (note.is_locked && !isVerified(note.id)) return 'Locked note — Enter PIN to view'
   const blockText = (note.blocks || []).map(b => stripHtml(b.content)).filter(Boolean).join(' ')
-  return (blockText || note.content || 'Empty note').slice(0, 90)
+  return (blockText || stripHtml(note.content) || 'No additional text').slice(0, 100)
+}
+
+function formatShortDate(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const now = new Date()
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  }
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
 }
 
 function colorTintClass(color: NoteColor): string {
   switch (color) {
     case 'AMBER':
-      return 'border-l-2 border-l-amber-400/70'
+      return 'border-l-4 border-l-amber-400/80'
     case 'EMERALD':
-      return 'border-l-2 border-l-emerald-400/70'
+      return 'border-l-4 border-l-emerald-400/80'
     case 'SKY':
-      return 'border-l-2 border-l-sky-400/70'
+      return 'border-l-4 border-l-sky-400/80'
     case 'VIOLET':
-      return 'border-l-2 border-l-violet-400/70'
+      return 'border-l-4 border-l-violet-400/80'
     case 'ROSE':
-      return 'border-l-2 border-l-rose-400/70'
+      return 'border-l-4 border-l-rose-400/80'
     default:
-      return 'border-l-2 border-l-zinc-700'
+      return ''
   }
-}
-
-function iconEmoji(icon: string): string {
-  const map: Record<string, string> = {
-    'file-text': '📄',
-    clipboard: '📋',
-    folder: '📁',
-    rocket: '🚀',
-    target: '🎯',
-    book: '📚',
-    wrench: '🔧',
-    home: '🏠',
-    chart: '📈',
-    palette: '🎨',
-    briefcase: '💼'
-  }
-  return map[icon] || '📄'
 }
 
 function isVerified(noteId: string): boolean {
@@ -535,24 +686,38 @@ function openFromGrid(noteId: string) {
 }
 
 function handleTrashed() {
-  activeNoteId.value = null
+  activeNoteId.value = filteredNotes.value[0]?.id || null
   showGridEditor.value = false
 }
 
 // ===== Note actions (list-level) =====
-async function createNote() {
+async function createNote(targetFolderId?: string | null) {
+  const folderId = targetFolderId !== undefined ? targetFolderId : activeFolderId.value
+  if (folderId) {
+    activeFolderId.value = folderId
+  }
+  if (smartView.value === 'trash') {
+    smartView.value = 'all'
+  }
   try {
     const created = await workspaceStore.createNote({
-      title: '',
+      title: 'Untitled',
       project: null,
-      folder: activeFolderId.value
+      folder: folderId || null,
+      blocks: [
+        {
+          id: crypto.randomUUID(),
+          type: 'paragraph',
+          content: '',
+          indent: 0
+        }
+      ]
     })
-    await Promise.allSettled([refreshNotes(), workspaceStore.fetchFolders()])
     selectNote(created.id)
     showGridEditor.value = true
-    toast.success('Note created')
-  } catch {
-    toast.error('Failed to create note')
+    workspaceStore.fetchFolders()
+  } catch (err: any) {
+    toast.error(err?.response?.data?.error || 'Failed to create note')
   }
 }
 
@@ -586,10 +751,12 @@ async function submitFolderCreate() {
   const name = newFolderName.value.trim()
   if (!name) return
   try {
-    await workspaceStore.createFolder({ name })
+    const folder = await workspaceStore.createFolder({ name })
     isCreatingFolder.value = false
     newFolderName.value = ''
-    toast.success('Folder created')
+    activeFolderId.value = folder.id
+    smartView.value = 'all'
+    toast.success(`Folder "${folder.name}" created`)
   } catch {
     toast.error('Failed to create folder')
   }
@@ -606,6 +773,7 @@ async function submitFolderRename(folderId: string) {
   if (!name) return
   try {
     await workspaceStore.updateFolder(folderId, { name })
+    await refreshNotes()
   } catch {
     toast.error('Failed to rename folder')
   }
@@ -618,6 +786,7 @@ async function deleteFolder() {
   try {
     await workspaceStore.deleteFolder(folder.id)
     if (activeFolderId.value === folder.id) activeFolderId.value = null
+    await refreshNotes()
     toast.info('Folder deleted')
   } catch {
     toast.error('Failed to delete folder')

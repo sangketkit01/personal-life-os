@@ -306,6 +306,7 @@ class NoteSerializer(serializers.ModelSerializer):
     project_name = serializers.CharField(source='project.name', read_only=True, default=None)
     folder_name = serializers.CharField(source='folder.name', read_only=True, default=None)
     has_lock_pin = serializers.SerializerMethodField()
+    title = serializers.CharField(max_length=255, required=False, allow_blank=True, default='Untitled')
 
     class Meta:
         model = Note
@@ -336,6 +337,10 @@ class NoteSerializer(serializers.ModelSerializer):
 
     def get_has_lock_pin(self, obj):
         return bool(obj.lock_pin)
+
+    def validate_title(self, value):
+        cleaned = (value or '').strip()
+        return cleaned if cleaned else 'Untitled'
 
     def validate_project(self, value):
         if value and value.user != self.context['request'].user:
@@ -452,6 +457,25 @@ class NoteSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
+        if not validated_data.get('title'):
+            validated_data['title'] = 'Untitled'
+        if not validated_data.get('blocks'):
+            validated_data['blocks'] = [{
+                'id': str(uuid.uuid4()),
+                'type': 'paragraph',
+                'content': '',
+                'checked': False,
+                'indent': 0,
+                'language': '',
+                'drive_file_id': '',
+                'file_url': '',
+                'file_name': '',
+                'file_type': '',
+                'file_size': 0,
+                'width': '100%',
+                'duration': 0.0,
+                'rows': []
+            }]
         validated_data = self._sync_content(validated_data)
         return super().create(validated_data)
 

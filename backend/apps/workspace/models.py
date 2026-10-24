@@ -228,7 +228,7 @@ class Note(models.Model):
         related_name='notes',
         verbose_name="Folder"
     )
-    title = models.CharField(max_length=255, verbose_name="Note Title")
+    title = models.CharField(max_length=255, blank=True, default='Untitled', verbose_name="Note Title")
     icon = models.CharField(max_length=50, default='file-text', verbose_name="Page Icon")
     content = models.TextField(blank=True, default='', verbose_name="Markdown Content")
     blocks = models.JSONField(default=list, blank=True, verbose_name="Structured Content Blocks")

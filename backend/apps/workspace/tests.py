@@ -810,3 +810,33 @@ class WorkspaceTestCase(TestCase):
         self.assertEqual(res_media.data['blocks'][0]['width'], '100%')
         self.assertEqual(res_media.data['blocks'][0]['file_size'], 0)
         self.assertEqual(res_media.data['blocks'][1]['duration'], 0.0)
+
+    def test_create_note_with_blank_title_and_folder(self):
+        """Regression test: creating a note with blank title (standalone or inside a folder) succeeds with 201."""
+        res_blank = self.client.post('/api/workspace/notes/', {
+            'title': '',
+            'project': None,
+            'folder': None,
+        }, format='json')
+        self.assertEqual(res_blank.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_blank.data['title'], 'Untitled')
+        self.assertEqual(len(res_blank.data['blocks']), 1)
+        self.assertEqual(res_blank.data['blocks'][0]['type'], 'paragraph')
+
+        folder_res = self.client.post('/api/workspace/note-folders/', {
+            'name': 'Quick Ideas',
+            'color': '#38bdf8'
+        }, format='json')
+        self.assertEqual(folder_res.status_code, status.HTTP_201_CREATED)
+        folder_id = folder_res.data['id']
+
+        res_folder = self.client.post('/api/workspace/notes/', {
+            'title': '',
+            'project': None,
+            'folder': folder_id,
+        }, format='json')
+        self.assertEqual(res_folder.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res_folder.data['title'], 'Untitled')
+        self.assertEqual(str(res_folder.data['folder']), str(folder_id))
+        self.assertEqual(len(res_folder.data['blocks']), 1)
+

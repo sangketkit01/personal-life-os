@@ -1,43 +1,50 @@
 <template>
-  <div class="flex flex-col min-h-full">
-    <!-- ===== Top Metadata Bar ===== -->
-    <div class="px-4 py-2.5 border-b border-zinc-800/80 flex items-center gap-2 flex-wrap sticky top-0 bg-zinc-950/95 backdrop-blur z-10">
+  <div class="flex flex-col h-full overflow-hidden">
+    <!-- ===== Top Metadata Bar (Non-overlapping shrink-0 header) ===== -->
+    <div class="shrink-0 px-4 py-2 border-b border-zinc-800/80 flex items-center gap-2 flex-wrap bg-zinc-950/95">
       <!-- Folder selector -->
-      <select
-        :value="note.folder || ''"
-        class="bg-zinc-900/60 border border-zinc-800 rounded-md px-2 py-1.5 text-[11px] text-zinc-300 outline-none focus:border-zinc-600 max-w-[130px]"
-        title="Move to folder..."
-        @change="setNoteFolder(($event.target as HTMLSelectElement).value || null)"
-      >
-        <option value="">No folder</option>
-        <option v-for="folder in workspaceStore.folders" :key="folder.id" :value="folder.id">{{ folder.name }}</option>
-      </select>
+      <div class="flex items-center gap-1.5 bg-zinc-900/70 border border-zinc-800 hover:border-zinc-700 rounded-md px-2 py-1 transition-colors">
+        <Folder class="w-3 h-3 text-zinc-400 shrink-0" />
+        <select
+          :value="note.folder || ''"
+          class="bg-transparent text-[11px] text-zinc-200 outline-none cursor-pointer max-w-[140px]"
+          title="Move note to folder"
+          @change="setNoteFolder(($event.target as HTMLSelectElement).value || null)"
+        >
+          <option value="" class="bg-zinc-950 text-zinc-300">No Folder (All Notes)</option>
+          <option v-for="folder in workspaceStore.folders" :key="folder.id" :value="folder.id" class="bg-zinc-950 text-zinc-200">
+            {{ folder.name }}
+          </option>
+        </select>
+      </div>
+
+      <span class="w-px h-4 bg-zinc-800/80" />
 
       <!-- Color accent picker -->
-      <div class="flex items-center gap-1">
+      <div class="flex items-center gap-1" title="Note card accent color">
         <button
           v-for="c in NOTE_COLORS"
           :key="c.key"
           type="button"
-          class="w-4 h-4 rounded-full border-2 transition-transform"
-          :class="note.color === c.key ? 'scale-110 border-zinc-100' : 'border-transparent'"
+          class="w-3.5 h-3.5 rounded-full border-2 transition-transform"
+          :class="note.color === c.key ? 'scale-110 border-zinc-100' : 'border-transparent opacity-75 hover:opacity-100'"
           :style="{ backgroundColor: c.dot }"
           :title="c.label"
           @click="setNoteColor(c.key)"
         />
       </div>
 
-      <span class="w-px h-5 bg-zinc-800" />
+      <span class="w-px h-4 bg-zinc-800/80" />
 
       <!-- Pin -->
       <button
         type="button"
         class="p-1.5 rounded-md transition-colors"
-        :class="note.is_pinned ? 'text-zinc-100 bg-zinc-800' : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60'"
-        :title="note.is_pinned ? 'Unpin' : 'Pin to top'"
+        :class="note.is_pinned ? 'text-amber-400 bg-amber-500/10' : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60'"
+        :title="note.is_pinned ? 'Unpin note' : 'Pin to top'"
         @click="togglePin"
       >
-        <Pin class="w-3.5 h-3.5" :class="{ 'fill-zinc-100': note.is_pinned }" />
+        <Pin class="w-3.5 h-3.5" :class="{ 'fill-amber-400': note.is_pinned }" />
       </button>
 
       <!-- Lock / Unlock -->
@@ -45,18 +52,18 @@
         type="button"
         class="p-1.5 rounded-md transition-colors"
         :class="note.is_locked ? 'text-amber-400/90 bg-amber-500/10' : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60'"
-        :title="note.is_locked ? 'Remove lock' : 'Lock note with PIN'"
+        :title="note.is_locked ? 'Remove PIN lock' : 'Lock note with PIN'"
         @click="note.is_locked ? openLockModal('unlock') : openLockModal('set')"
       >
         <Unlock v-if="note.is_locked" class="w-3.5 h-3.5" />
         <Lock v-else class="w-3.5 h-3.5" />
       </button>
 
-      <!-- Attach from Drive -->
+      <!-- Attach file to Google Drive -->
       <button
         type="button"
         class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 transition-colors relative"
-        title="Attach file from Google Drive"
+        title="Attach file (stored in Google Drive)"
         :disabled="isUploading"
         @click="fileInput?.click()"
       >
@@ -65,19 +72,22 @@
       </button>
       <input ref="fileInput" type="file" multiple class="hidden" @change="handleAttachSelected" />
 
-      <!-- Copy to project -->
+      <!-- Copy to Workspace Project -->
       <div class="relative">
         <button
           type="button"
           class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800/60 transition-colors"
-          title="Copy to Workspace Project"
+          title="Send copy to a Workspace Project"
           @click="showCopyPopover = !showCopyPopover"
         >
           <FolderKanban class="w-3.5 h-3.5" />
         </button>
 
-        <div v-if="showCopyPopover" class="absolute z-30 top-full mt-1 left-0 w-56 rounded-lg bg-zinc-950 border border-zinc-700/80 shadow-2xl p-1 max-h-56 overflow-y-auto">
-          <div class="px-2 py-1 text-[9px] font-mono uppercase text-zinc-500">Copy to project</div>
+        <div
+          v-if="showCopyPopover"
+          class="absolute z-30 top-full mt-1 left-0 w-56 rounded-lg bg-zinc-950 border border-zinc-700/80 shadow-2xl p-1 max-h-56 overflow-y-auto"
+        >
+          <div class="px-2 py-1 text-[9px] font-mono uppercase text-zinc-500">Copy to Workspace Project</div>
           <button
             v-for="project in workspaceStore.projects"
             :key="project.id"
@@ -89,7 +99,7 @@
             <span class="truncate">{{ project.name }}</span>
           </button>
           <div v-if="workspaceStore.projects.length === 0" class="px-2 py-2 text-[11px] text-zinc-500 font-mono">
-            No projects yet
+            No workspace projects yet
           </div>
         </div>
       </div>
@@ -97,15 +107,25 @@
       <!-- Move to trash -->
       <button
         type="button"
-        class="p-1.5 rounded-md text-zinc-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-        title="Move to trash"
+        class="p-1.5 rounded-md text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+        title="Move note to trash"
         @click="moveToTrash"
       >
         <Trash2 class="w-3.5 h-3.5" />
       </button>
 
-      <!-- Save status -->
-      <span class="ml-auto text-[10px] font-mono" :class="saveStateClass">{{ saveStateText }}</span>
+      <!-- Save status & instant save button -->
+      <div class="ml-auto flex items-center gap-2">
+        <button
+          v-if="saveState === 'dirty'"
+          type="button"
+          class="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-zinc-200 transition-colors"
+          @click="flushAutosave"
+        >
+          Save now
+        </button>
+        <span class="text-[10px] font-mono" :class="saveStateClass">{{ saveStateText }}</span>
+      </div>
     </div>
 
     <!-- ===== Locked Guard Screen ===== -->
@@ -115,7 +135,7 @@
       </div>
       <div>
         <p class="text-sm font-medium text-zinc-200">This note is locked</p>
-        <p class="text-[11px] text-zinc-500 mt-1">Enter PIN to view its contents</p>
+        <p class="text-[11px] text-zinc-500 mt-1">Enter your 4–6 digit PIN to view or edit</p>
       </div>
       <form class="flex items-center gap-2" @submit.prevent="verifyInlinePin">
         <input
@@ -133,59 +153,90 @@
       </form>
     </div>
 
-    <!-- ===== Editor Body ===== -->
-    <template v-else>
-      <!-- Title + Icon + Tags -->
-      <div class="px-4 py-3 space-y-2.5">
-        <div class="flex items-center gap-2 flex-wrap">
-          <div class="flex items-center gap-1">
+    <!-- ===== Scrollable Editor Canvas ===== -->
+    <div v-else class="flex-1 overflow-y-auto flex flex-col min-h-0">
+      <!-- Clean Note Header: Icon Popover + Large Title + Tag Pills -->
+      <div class="px-5 pt-4 pb-2 space-y-2">
+        <div class="flex items-center gap-2.5">
+          <!-- Compact Icon Picker Popover -->
+          <div class="relative shrink-0">
             <button
-              v-for="emoji in ICON_PRESETS"
-              :key="emoji.key"
               type="button"
-              class="w-6 h-6 rounded-md flex items-center justify-center text-xs transition-colors border"
-              :class="editorIcon === emoji.key ? 'bg-zinc-800 border-zinc-600' : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700'"
-              @click="editorIcon = emoji.key; markDirty()"
+              class="w-8 h-8 rounded-lg bg-zinc-900/70 hover:bg-zinc-800 border border-zinc-800/90 flex items-center justify-center text-base transition-colors"
+              title="Change note icon"
+              @click="showIconPicker = !showIconPicker"
             >
-              {{ emoji.emoji }}
+              {{ currentEmoji }}
             </button>
+            <div
+              v-if="showIconPicker"
+              class="absolute z-30 top-full mt-1.5 left-0 p-1.5 rounded-lg bg-zinc-950 border border-zinc-700/80 shadow-2xl grid grid-cols-4 gap-1 w-36"
+            >
+              <button
+                v-for="emoji in ICON_PRESETS"
+                :key="emoji.key"
+                type="button"
+                class="w-7 h-7 rounded-md flex items-center justify-center text-sm transition-colors"
+                :class="editorIcon === emoji.key ? 'bg-zinc-800 ring-1 ring-zinc-500' : 'hover:bg-zinc-900'"
+                @click="selectIcon(emoji.key)"
+              >
+                {{ emoji.emoji }}
+              </button>
+            </div>
           </div>
-          <span class="mx-1 w-px h-5 bg-zinc-800 hidden sm:block" />
+
+          <!-- Large Title Input -->
           <input
-            v-model="editorTagsInput"
+            ref="titleInput"
+            v-model="editorTitle"
             type="text"
-            placeholder="tags, comma, separated"
-            class="flex-1 min-w-[140px] bg-zinc-900/60 border border-zinc-800 rounded-md px-2.5 py-1.5 text-[11px] text-zinc-300 placeholder-zinc-600 outline-none focus:border-zinc-600"
+            placeholder="Note title..."
+            class="flex-1 bg-transparent border-none outline-none text-xl font-semibold text-zinc-100 placeholder-zinc-600 min-w-0"
           />
         </div>
 
-        <input
-          v-model="editorTitle"
-          type="text"
-          placeholder="Untitled note..."
-          class="w-full bg-transparent border-none outline-none text-xl font-semibold text-zinc-100 placeholder-zinc-700"
-        />
-
-        <div v-if="editorTags.length > 0" class="flex items-center gap-1.5 flex-wrap">
+        <!-- Inline Tag Chips + Quick Tag Adder -->
+        <div class="flex items-center gap-1.5 flex-wrap pl-0.5">
           <span
             v-for="tag in editorTags"
             :key="tag"
-            class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-zinc-900 text-zinc-400 border border-zinc-800"
+            class="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-300 border border-zinc-800"
           >
             #{{ tag }}
+            <button
+              type="button"
+              class="text-zinc-500 hover:text-zinc-200 transition-colors"
+              title="Remove tag"
+              @click="removeTag(tag)"
+            >
+              <X class="w-2.5 h-2.5" />
+            </button>
           </span>
+
+          <div class="inline-flex items-center gap-1">
+            <Tag class="w-3 h-3 text-zinc-600" />
+            <input
+              v-model="newTagDraft"
+              type="text"
+              placeholder="Add tag + Enter..."
+              class="bg-transparent text-[11px] font-mono text-zinc-300 placeholder-zinc-600 outline-none w-28 focus:w-36 transition-all"
+              @keydown.enter.prevent="commitTagDraft"
+              @keydown.,.prevent="commitTagDraft"
+              @blur="commitTagDraft"
+            />
+          </div>
         </div>
       </div>
 
-      <!-- Rich Block Editor -->
-      <div class="px-4 pb-3">
+      <!-- Rich Block Editor (Toolbar + Content) -->
+      <div class="px-5 pb-6 flex-1">
         <NotionBlockEditor v-model="editorBlocks" :upload-target-id="note.id" />
       </div>
 
       <!-- Attachments Strip -->
-      <div v-if="note.attachments.length > 0" class="px-4 pb-3 space-y-2">
+      <div v-if="note.attachments && note.attachments.length > 0" class="px-5 pb-4 space-y-2">
         <h4 class="text-[10px] font-mono uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
-          <Paperclip class="w-3 h-3" /> Attachments
+          <Paperclip class="w-3 h-3" /> Attached Files ({{ note.attachments.length }})
         </h4>
         <div class="flex gap-2 flex-wrap">
           <div
@@ -220,15 +271,15 @@
       </div>
 
       <!-- Bottom Status Bar -->
-      <div class="mt-auto px-4 py-2 border-t border-zinc-800/60 flex items-center justify-between text-[10px] font-mono text-zinc-600">
+      <div class="mt-auto shrink-0 px-5 py-2 border-t border-zinc-800/60 flex items-center justify-between text-[10px] font-mono text-zinc-500 bg-zinc-950/60">
         <div class="flex items-center gap-3">
           <span>{{ stats.words }} words</span>
           <span>{{ stats.chars }} chars</span>
           <span>{{ stats.blocks }} blocks</span>
         </div>
-        <span>Last edited {{ lastEdited }}</span>
+        <span>Updated {{ lastEdited }}</span>
       </div>
-    </template>
+    </div>
 
     <!-- ===== Lock / Unlock PIN Modal ===== -->
     <div
@@ -293,12 +344,14 @@
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   FileText,
+  Folder,
   FolderKanban,
   Loader2,
   Lock,
   Unlock,
   Paperclip,
   Pin,
+  Tag,
   Trash2,
   X
 } from 'lucide-vue-next'
@@ -346,12 +399,15 @@ const ICON_PRESETS = [
 // ===== Editor state (synced from the active note) =====
 const editorTitle = ref('')
 const editorIcon = ref('file-text')
-const editorTagsInput = ref('')
+const editorTags = ref<string[]>([])
+const newTagDraft = ref('')
 const editorBlocks = ref<NoteBlock[]>([])
 const saveState = ref<'saved' | 'dirty' | 'saving'>('saved')
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let suppressSyncWatch = false
 
+const titleInput = ref<HTMLInputElement | null>(null)
+const showIconPicker = ref(false)
 const showCopyPopover = ref(false)
 const lockModalMode = ref<'set' | 'unlock'>('set')
 const showLockModal = ref(false)
@@ -364,6 +420,10 @@ const isUploading = ref(false)
 
 const locked = computed(() => props.note.is_locked && !props.isVerified)
 
+const currentEmoji = computed(() => {
+  return ICON_PRESETS.find(item => item.key === editorIcon.value)?.emoji || '📄'
+})
+
 watch(locked, (isLockedNow) => {
   if (isLockedNow) {
     inlinePin.value = ''
@@ -371,9 +431,29 @@ watch(locked, (isLockedNow) => {
   }
 })
 
-const editorTags = computed(() =>
-  editorTagsInput.value.split(',').map(t => t.trim()).filter(Boolean)
-)
+function selectIcon(key: string) {
+  editorIcon.value = key
+  showIconPicker.value = false
+  markDirty()
+}
+
+function commitTagDraft() {
+  const raw = newTagDraft.value.replace(/,/g, '').trim()
+  if (!raw) {
+    newTagDraft.value = ''
+    return
+  }
+  if (!editorTags.value.includes(raw)) {
+    editorTags.value = [...editorTags.value, raw]
+    markDirty()
+  }
+  newTagDraft.value = ''
+}
+
+function removeTag(tag: string) {
+  editorTags.value = editorTags.value.filter(t => t !== tag)
+  markDirty()
+}
 
 const stats = computed(() => {
   const text = editorBlocks.value
@@ -399,18 +479,18 @@ const lastEdited = computed(() => {
 const saveStateText = computed(() => {
   switch (saveState.value) {
     case 'dirty':
-      return 'Unsaved changes'
+      return 'Unsaved'
     case 'saving':
       return 'Saving...'
     default:
-      return 'Saved just now'
+      return 'Saved'
   }
 })
 
 const saveStateClass = computed(() => {
   switch (saveState.value) {
     case 'dirty':
-      return 'text-amber-400/80'
+      return 'text-amber-400/90'
     case 'saving':
       return 'text-zinc-400'
     default:
@@ -418,14 +498,31 @@ const saveStateClass = computed(() => {
   }
 })
 
+function createDefaultParagraphBlock(): NoteBlock {
+  return {
+    id: crypto.randomUUID(),
+    type: 'paragraph',
+    content: '',
+    indent: 0
+  }
+}
+
 function syncFromNote() {
-  editorTitle.value = props.note.title
-  editorIcon.value = props.note.icon || 'file-text'
-  editorTagsInput.value = (props.note.tags || []).join(', ')
   suppressSyncWatch = true
-  editorBlocks.value = (props.note.blocks || []).map(b => ({ ...b }))
+  const rawTitle = props.note.title || ''
+  editorTitle.value = rawTitle === 'Untitled' ? '' : rawTitle
+  editorIcon.value = props.note.icon || 'file-text'
+  editorTags.value = [...(props.note.tags || [])]
+  newTagDraft.value = ''
+
+  const incomingBlocks = (props.note.blocks || []).map(b => ({ ...b }))
+  editorBlocks.value = incomingBlocks.length > 0 ? incomingBlocks : [createDefaultParagraphBlock()]
+
   nextTick(() => {
     suppressSyncWatch = false
+    if (rawTitle === 'Untitled' && !locked.value) {
+      titleInput.value?.focus()
+    }
   })
   saveState.value = 'saved'
 }
@@ -449,34 +546,27 @@ function markDirty() {
   saveTimer = setTimeout(() => {
     saveTimer = null
     saveNow()
-  }, 2500)
+  }, 1500)
 }
 
 function flushAutosave() {
   if (saveTimer) {
     clearTimeout(saveTimer)
     saveTimer = null
-    if (saveState.value === 'dirty') {
-      saveNow()
-    }
+  }
+  if (saveState.value === 'dirty') {
+    saveNow()
   }
 }
 
 async function saveNow() {
   saveState.value = 'saving'
   try {
-    const saved = await workspaceStore.updateNote(props.note.id, {
+    await workspaceStore.updateNote(props.note.id, {
       title: editorTitle.value.trim() || 'Untitled',
       icon: editorIcon.value,
       tags: editorTags.value,
       blocks: editorBlocks.value
-    })
-    // Update only text fields to avoid clobbering metadata changed elsewhere
-    editorTitle.value = saved.title
-    suppressSyncWatch = true
-    editorBlocks.value = (saved.blocks || []).map(b => ({ ...b }))
-    nextTick(() => {
-      suppressSyncWatch = false
     })
     saveState.value = 'saved'
   } catch {
@@ -485,7 +575,7 @@ async function saveNow() {
   }
 }
 
-watch([editorTitle, editorTagsInput], () => {
+watch(editorTitle, () => {
   if (!suppressSyncWatch) markDirty()
 })
 
@@ -515,6 +605,7 @@ async function setNoteFolder(folderId: string | null) {
   try {
     await workspaceStore.updateNote(props.note.id, { folder: folderId })
     await workspaceStore.fetchFolders()
+    toast.success(folderId ? 'Moved to folder' : 'Moved to All Notes')
   } catch {
     toast.error('Failed to move note')
   }
@@ -533,7 +624,7 @@ async function moveToTrash() {
 async function copyToProject(projectId: string) {
   try {
     await workspaceStore.copyNoteToProject(props.note.id, projectId)
-    toast.success(`Copied "${props.note.title || 'Untitled'}" to project pages`)
+    toast.success(`Copied "${editorTitle.value.trim() || 'Untitled'}" to project pages`)
     showCopyPopover.value = false
   } catch {
     toast.error('Failed to copy note')
@@ -610,7 +701,7 @@ async function handleAttachSelected(event: Event) {
         await storageStore.uploadDirect(file, 'note', props.note.id)
       }
       await workspaceStore.fetchNote(props.note.id)
-      toast.success('File attached from Google Drive')
+      toast.success('File attached via Google Drive')
     } catch (err: any) {
       toast.error(err?.message || 'Failed to upload attachment')
     } finally {

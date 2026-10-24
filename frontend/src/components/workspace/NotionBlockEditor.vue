@@ -851,6 +851,10 @@ function currentEditableIndex(): number {
 }
 
 function changeType(type: NoteBlockType) {
+  if (props.modelValue.length === 0) {
+    insertBlock(type, 0)
+    return
+  }
   const index = currentEditableIndex()
   if (index < 0 || index >= props.modelValue.length) return
   changeBlockType(index, type)

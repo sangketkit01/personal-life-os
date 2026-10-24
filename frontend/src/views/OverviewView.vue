@@ -361,30 +361,30 @@
           <div class="p-2.5 rounded bg-zinc-900/60 border border-zinc-800/60 flex items-center justify-between">
             <span class="text-zinc-400 flex items-center gap-2">
               <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-              Drafting Deliverables
+              To Do Tasks
             </span>
             <span class="font-mono text-zinc-200 font-medium">
-              {{ workspaceStore.overview?.pipeline_counts?.drafting || 0 }} tasks
+              {{ workspaceStore.overview?.pipeline_counts?.todo || 0 }} tasks
             </span>
           </div>
 
           <div class="p-2.5 rounded bg-zinc-900/60 border border-zinc-800/60 flex items-center justify-between">
             <span class="text-zinc-400 flex items-center gap-2">
-              <span class="w-1.5 h-1.5 rounded-full bg-zinc-400"></span>
-              Waiting / Client Review
+              <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+              Doing / In Progress
             </span>
             <span class="font-mono text-zinc-200 font-medium">
-              {{ workspaceStore.overview?.pipeline_counts?.waiting || 0 }} tasks
+              {{ workspaceStore.overview?.pipeline_counts?.doing || 0 }} tasks
             </span>
           </div>
 
           <div class="p-2.5 rounded bg-zinc-900/60 border border-zinc-800/60 flex items-center justify-between">
             <span class="text-zinc-400 flex items-center gap-2">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              Completed Documents
+              Completed Tasks
             </span>
             <span class="font-mono text-zinc-200 font-medium">
-              {{ workspaceStore.overview?.pipeline_counts?.completed || 0 }} tasks
+              {{ workspaceStore.overview?.pipeline_counts?.done || 0 }} tasks
             </span>
           </div>
 

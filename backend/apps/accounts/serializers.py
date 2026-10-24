@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from django.db import transaction
+from django.db import models, transaction
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password as django_validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -24,16 +24,6 @@ class RegisterSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, min_length=6)
     invite_code = serializers.CharField(max_length=50, write_only=True)
 
-    def validate_username(self, value):
-        if User.objects.filter(username__iexact=value).exists():
-            raise serializers.ValidationError('This username is already taken.')
-        return value
-
-    def validate_email(self, value):
-        if User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError('This email is already registered.')
-        return value
-
     def validate_password(self, value):
         try:
             django_validate_password(value)
@@ -43,7 +33,7 @@ class RegisterSerializer(serializers.Serializer):
 
     def validate_invite_code(self, value):
         try:
-            invite = InviteCode.objects.get(code=value)
+            invite = InviteCode.objects.get(code=value.strip())
         except InviteCode.DoesNotExist:
             raise serializers.ValidationError('Invalid invitation code.')
 
@@ -51,6 +41,17 @@ class RegisterSerializer(serializers.Serializer):
             raise serializers.ValidationError('Invitation code is expired or maximum uses reached.')
 
         return invite
+
+    def validate(self, attrs):
+        # Only check username/email uniqueness after invite_code is verified to prevent enumeration
+        errors = {}
+        if User.objects.filter(username__iexact=attrs['username']).exists():
+            errors['username'] = ['This username is already taken.']
+        if User.objects.filter(email__iexact=attrs['email']).exists():
+            errors['email'] = ['This email is already registered.']
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
 
     @transaction.atomic
     def create(self, validated_data):
@@ -81,27 +82,48 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        username = attrs.get('username')
-        password = attrs.get('password')
+        username = attrs.get('username', '').strip()
+        password = attrs.get('password', '')
 
-        # Supports login by username or email
-        user = authenticate(username=username, password=password)
-        if not user:
-            try:
-                user_obj = User.objects.filter(email__iexact=username).first()
-                if user_obj:
-                    user = authenticate(username=user_obj.username, password=password)
-            except Exception:
-                pass
+        # Constant-time lookup: resolve username or email first, then execute PBKDF2 exactly once
+        user_obj = User.objects.filter(
+            models.Q(username__iexact=username) | models.Q(email__iexact=username)
+        ).first()
+
+        if user_obj:
+            if not user_obj.is_active:
+                if user_obj.check_password(password):
+                    raise serializers.ValidationError('User account is deactivated.')
+                raise serializers.ValidationError('Invalid username or password.')
+            user = authenticate(username=user_obj.username, password=password)
+        else:
+            # Triggers Django's dummy password hasher once to equalize response time
+            user = authenticate(username=username, password=password)
 
         if not user:
             raise serializers.ValidationError('Invalid username or password.')
 
-        if not user.is_active:
-            raise serializers.ValidationError('User account is deactivated.')
-
         attrs['user'] = user
         return attrs
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate_current_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError('Current password is incorrect.')
+        return value
+
+    def validate_new_password(self, value):
+        user = self.context['request'].user
+        try:
+            django_validate_password(value, user=user)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError(list(e.messages))
+        return value
 
 
 class UserDeviceSessionSerializer(serializers.ModelSerializer):
@@ -117,10 +139,12 @@ class UserDeviceSessionSerializer(serializers.ModelSerializer):
 
 
 class InviteCodeSerializer(serializers.ModelSerializer):
+    used_by_username = serializers.CharField(source='used_by.username', read_only=True, default=None)
+
     class Meta:
         model = InviteCode
-        fields = ('id', 'code', 'uses_count', 'max_uses', 'is_active', 'expires_at', 'created_at')
-        read_only_fields = ('id', 'uses_count', 'created_at')
+        fields = ('id', 'code', 'uses_count', 'max_uses', 'is_active', 'used_by_username', 'expires_at', 'created_at')
+        read_only_fields = ('id', 'uses_count', 'max_uses', 'used_by_username', 'created_at')
 
 
 class ActivityLogSerializer(serializers.ModelSerializer):

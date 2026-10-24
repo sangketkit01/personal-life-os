@@ -424,17 +424,28 @@
       @close="showEditModal = false"
       @updated="refreshDebt"
     />
+
+    <ConfirmModal
+      :is-open="confirmModal.isOpen"
+      :title="confirmModal.title"
+      :message="confirmModal.message"
+      :confirm-text="confirmModal.confirmText"
+      :is-danger="confirmModal.isDanger"
+      @confirm="executeConfirmModal"
+      @cancel="confirmModal.isOpen = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDebts } from '../../composables/finance/useDebts'
 import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
 import PayModal from '../../components/finance/PayModal.vue'
 import EditObligationModal from '../../components/finance/EditObligationModal.vue'
+import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import {
   ArrowLeft,
   Check,
@@ -469,6 +480,20 @@ const copiedRecall = ref(false)
 
 const showPayModal = ref(false)
 const showEditModal = ref(false)
+
+const confirmModal = reactive({
+  isOpen: false,
+  title: '',
+  message: '',
+  confirmText: 'Delete',
+  isDanger: true,
+  action: () => {}
+})
+
+function executeConfirmModal() {
+  confirmModal.isOpen = false
+  confirmModal.action()
+}
 
 const tabs = computed<Array<{ id: 'LEDGER' | 'DOSSIER' | 'DOCS'; label: string; icon: any; badge?: string }>>(() => [
   { id: 'LEDGER', label: 'Repayment Ledger', icon: History, badge: debt.value?.payment_histories?.length ? `${debt.value.payment_histories.length}` : undefined },
@@ -542,24 +567,36 @@ async function handleFileUpload(e: Event) {
   }
 }
 
-async function handleDeleteAttachment(attachmentId: string) {
-  if (!confirm('Delete this document?')) return
-  try {
-    await deleteAttachment(attachmentId, debtId.value)
-    toast.success('Document deleted')
-  } catch (err: any) {
-    toast.error('Failed to delete document')
+function handleDeleteAttachment(attachmentId: string) {
+  confirmModal.title = 'Delete Attached Document'
+  confirmModal.message = 'Are you sure you want to delete this attached document from your vault?'
+  confirmModal.confirmText = 'Delete Document'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
+    try {
+      await deleteAttachment(attachmentId, debtId.value)
+      toast.success('Document deleted')
+    } catch (err: any) {
+      toast.error('Failed to delete document')
+    }
   }
+  confirmModal.isOpen = true
 }
 
-async function confirmDeleteDebt() {
-  if (!confirm(`Are you sure you want to delete this debt record?`)) return
-  try {
-    await deleteDebt(debtId.value)
-    toast.success('Debt record deleted')
-    router.push('/finance/debts')
-  } catch (err: any) {
-    toast.error('Failed to delete debt record')
+function confirmDeleteDebt() {
+  confirmModal.title = 'Delete Debt Record'
+  confirmModal.message = 'Are you sure you want to delete this debt record? All repayment logs will be removed.'
+  confirmModal.confirmText = 'Delete Debt'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
+    try {
+      await deleteDebt(debtId.value)
+      toast.success('Debt record deleted')
+      router.push('/finance/debts')
+    } catch (err: any) {
+      toast.error('Failed to delete debt record')
+    }
   }
+  confirmModal.isOpen = true
 }
 </script>

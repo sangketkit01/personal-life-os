@@ -543,11 +543,21 @@
       @close="showEditModal = false"
       @updated="refreshAccount"
     />
+
+    <ConfirmModal
+      :is-open="confirmModal.isOpen"
+      :title="confirmModal.title"
+      :message="confirmModal.message"
+      :confirm-text="confirmModal.confirmText"
+      :is-danger="confirmModal.isDanger"
+      @confirm="executeConfirmModal"
+      @cancel="confirmModal.isOpen = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBNPL } from '../../composables/finance/useBNPL'
 import { useStorageStore } from '../../stores/storage'
@@ -555,6 +565,7 @@ import { useToastStore } from '../../stores/toast'
 import type { FinancialObligation } from '../../types/finance'
 import PayModal from '../../components/finance/PayModal.vue'
 import EditObligationModal from '../../components/finance/EditObligationModal.vue'
+import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import {
   ArrowLeft,
   CreditCard,
@@ -591,6 +602,20 @@ const ordersFilter = ref<'ALL' | 'ACTIVE' | 'COMPLETED'>('ACTIVE')
 
 const showPayModal = ref(false)
 const showEditModal = ref(false)
+
+const confirmModal = reactive({
+  isOpen: false,
+  title: '',
+  message: '',
+  confirmText: 'Delete',
+  isDanger: true,
+  action: () => {}
+})
+
+function executeConfirmModal() {
+  confirmModal.isOpen = false
+  confirmModal.action()
+}
 
 const tabs = computed<Array<{ id: 'STATEMENT' | 'ORDERS' | 'DOCS' | 'HISTORY'; label: string; icon: any; badge?: string }>>(() => [
   { id: 'STATEMENT', label: 'Statement Reconciliation', icon: CreditCard, badge: activeSubOrders.value.length ? `${activeSubOrders.value.length}` : undefined },
@@ -664,14 +689,20 @@ async function handlePaymentFinished() {
   toast.success('Statement bill payment settled!')
 }
 
-async function handleDeleteOrder(orderId: string) {
-  if (!confirm('Are you sure you want to delete this purchase order?')) return
-  try {
-    await deleteOrder(orderId, accountId.value)
-    toast.success('Order deleted')
-  } catch (err: any) {
-    toast.error('Failed to delete order')
+function handleDeleteOrder(orderId: string) {
+  confirmModal.title = 'Delete Purchase Order'
+  confirmModal.message = 'Are you sure you want to delete this purchase order? Statement balances will recalculate.'
+  confirmModal.confirmText = 'Delete Order'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
+    try {
+      await deleteOrder(orderId, accountId.value)
+      toast.success('Order deleted')
+    } catch (err: any) {
+      toast.error('Failed to delete order')
+    }
   }
+  confirmModal.isOpen = true
 }
 
 async function handleFileUpload(e: Event) {
@@ -693,24 +724,36 @@ async function handleFileUpload(e: Event) {
   }
 }
 
-async function handleDeleteAttachment(attachmentId: string) {
-  if (!confirm('Delete this statement document?')) return
-  try {
-    await deleteAttachment(attachmentId, accountId.value)
-    toast.success('Document removed')
-  } catch (err: any) {
-    toast.error('Failed to delete document')
+function handleDeleteAttachment(attachmentId: string) {
+  confirmModal.title = 'Delete Statement Document'
+  confirmModal.message = 'Are you sure you want to delete this statement document from your vault?'
+  confirmModal.confirmText = 'Delete Document'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
+    try {
+      await deleteAttachment(attachmentId, accountId.value)
+      toast.success('Document removed')
+    } catch (err: any) {
+      toast.error('Failed to delete document')
+    }
   }
+  confirmModal.isOpen = true
 }
 
-async function confirmDeleteAccount() {
-  if (!confirm(`Are you sure you want to delete "${account.value?.title}"? All sub-orders will be removed.`)) return
-  try {
-    await deleteAccount(accountId.value)
-    toast.success('BNPL facility deleted')
-    router.push('/finance/bnpl')
-  } catch (err: any) {
-    toast.error('Failed to delete account')
+function confirmDeleteAccount() {
+  confirmModal.title = 'Delete BNPL Facility'
+  confirmModal.message = `Are you sure you want to delete "${account.value?.title}"? All sub-orders and records will be removed.`
+  confirmModal.confirmText = 'Delete Facility'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
+    try {
+      await deleteAccount(accountId.value)
+      toast.success('BNPL facility deleted')
+      router.push('/finance/bnpl')
+    } catch (err: any) {
+      toast.error('Failed to delete account')
+    }
   }
+  confirmModal.isOpen = true
 }
 </script>

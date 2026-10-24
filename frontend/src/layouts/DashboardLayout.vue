@@ -230,25 +230,55 @@
             </div>
           </div>
 
-          <!-- 4. Workspace & Tasks (Standalone) -->
+          <!-- 5. Workspace Accordion Group -->
           <div class="pt-1.5">
-            <RouterLink
-              to="/workspace"
-              class="flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors group"
+            <!-- Group Header Button -->
+            <button
+              type="button"
+              @click="toggleGroup('workspace')"
+              class="w-full flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors group"
               :class="[
-                $route.path === '/workspace' || $route.path.startsWith('/workspace/')
-                  ? 'bg-zinc-900 text-white border border-zinc-800 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
+                $route.path.startsWith('/workspace')
+                  ? 'text-zinc-100 bg-zinc-900/60'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/30'
               ]"
             >
               <div class="flex items-center gap-2.5">
                 <FolderKanban
                   class="w-3.5 h-3.5 transition-colors shrink-0"
-                  :class="$route.path === '/workspace' || $route.path.startsWith('/workspace/') ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
+                  :class="$route.path.startsWith('/workspace') ? 'text-zinc-100' : 'text-zinc-500 group-hover:text-zinc-300'"
                 />
-                <span>Workspace</span>
+                <span class="font-semibold tracking-tight">Workspace</span>
               </div>
-            </RouterLink>
+              <ChevronDown
+                class="w-3.5 h-3.5 text-zinc-500 transition-transform duration-200"
+                :class="{ 'rotate-180': expandedGroups.workspace }"
+              />
+            </button>
+
+            <!-- Collapsible Sub-menu -->
+            <div v-show="expandedGroups.workspace" class="pl-4 pr-1 py-1 space-y-0.5 border-l border-zinc-800/80 ml-4 my-1">
+              <RouterLink
+                v-for="sub in workspaceNavItems"
+                :key="sub.path"
+                :to="sub.path"
+                class="flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors group"
+                :class="[
+                  isNavActive(sub.path)
+                    ? 'bg-zinc-900 text-white border border-zinc-800/80 shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40'
+                ]"
+              >
+                <div class="flex items-center gap-2 truncate">
+                  <component
+                    :is="sub.icon"
+                    class="w-3 h-3 transition-colors shrink-0"
+                    :class="isNavActive(sub.path) ? 'text-zinc-200' : 'text-zinc-500 group-hover:text-zinc-300'"
+                  />
+                  <span class="truncate">{{ sub.label }}</span>
+                </div>
+              </RouterLink>
+            </div>
           </div>
 
           <!-- 5. Settings & Config (Standalone) -->
@@ -375,16 +405,23 @@
               </RouterLink>
             </div>
 
+            <!-- Workspace Sub-list -->
             <div class="pt-2">
+              <div class="text-[10px] font-mono uppercase text-zinc-500 px-3 py-1 font-semibold">Workspace</div>
               <RouterLink
-                to="/workspace"
+                v-for="sub in workspaceNavItems"
+                :key="sub.path"
+                :to="sub.path"
                 @click="isMobileMenuOpen = false"
-                class="flex items-center gap-2.5 px-3 py-2 rounded-md text-xs transition-colors"
-                :class="$route.path === '/workspace' || $route.path.startsWith('/workspace/') ? 'bg-zinc-900 text-white font-medium' : 'text-zinc-400 hover:text-zinc-200'"
+                class="flex items-center gap-2.5 px-3 py-1.5 rounded-md text-xs text-zinc-400 hover:text-zinc-200 pl-5"
+                :class="{ 'bg-zinc-900 text-white font-medium': isNavActive(sub.path) }"
               >
-                <FolderKanban class="w-3.5 h-3.5" />
-                <span>Workspace</span>
+                <component :is="sub.icon" class="w-3 h-3" />
+                <span>{{ sub.label }}</span>
               </RouterLink>
+            </div>
+
+            <div class="pt-2">
               <RouterLink
                 to="/settings"
                 @click="isMobileMenuOpen = false"
@@ -571,7 +608,8 @@ import {
   Newspaper,
   Wallet,
   Receipt,
-  Users
+  Users,
+  Calendar
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -593,7 +631,8 @@ const shortcutKey = isMac ? '⌘K' : 'Ctrl+K'
 const expandedGroups = ref<Record<string, boolean>>({
   finance: true,
   ledger: true,
-  portfolio: true
+  portfolio: true,
+  workspace: true
 })
 
 function toggleGroup(key: string) {
@@ -613,6 +652,9 @@ watch(
     if (path.startsWith('/portfolio')) {
       expandedGroups.value.portfolio = true
     }
+    if (path.startsWith('/workspace')) {
+      expandedGroups.value.workspace = true
+    }
   },
   { immediate: true }
 )
@@ -627,6 +669,9 @@ function isNavActive(path: string): boolean {
   }
   if (path === '/portfolio/overview') {
     return route.path === '/portfolio/overview' || route.path === '/portfolio' || route.path === '/portfolio/'
+  }
+  if (path === '/workspace') {
+    return route.path === '/workspace' || route.path === '/workspace/'
   }
 
   // All other sub-items: match exact route or nested child route (e.g. /ledger/accounts/123)
@@ -756,6 +801,20 @@ const portfolioNavItems: NavSubItem[] = [
   }
 ]
 
+// Sub-navigation for Workspace 2.0
+const workspaceNavItems: NavSubItem[] = [
+  {
+    path: '/workspace',
+    label: 'Projects Hub',
+    icon: FolderKanban
+  },
+  {
+    path: '/workspace/calendar',
+    label: 'Master Calendar',
+    icon: Calendar
+  }
+]
+
 // Dynamic Breadcrumbs
 const currentDomainLabel = computed(() => {
   const p = route.path
@@ -791,6 +850,9 @@ const currentSubdomainLabel = computed(() => {
   if (lMatch) return lMatch.label
   const pMatch = portfolioNavItems.find(i => i.path === p)
   if (pMatch) return pMatch.label
+  const wMatch = workspaceNavItems.find(i => i.path === p)
+  if (wMatch) return wMatch.label
+  if (p.startsWith('/workspace/projects/')) return 'Project Dossier'
   if (p.includes('/asset/')) return `Asset: ${route.params.ticker || ''}`
   return ''
 })

@@ -771,17 +771,28 @@
         </div>
       </div>
     </div>
+
+    <ConfirmModal
+      :is-open="confirmModal.isOpen"
+      :title="confirmModal.title"
+      :message="confirmModal.message"
+      :confirm-text="confirmModal.confirmText"
+      :is-danger="confirmModal.isDanger"
+      @confirm="executeConfirmModal"
+      @cancel="confirmModal.isOpen = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useInstallments, type InstallmentScheduleItem } from '../../composables/finance/useInstallments'
 import { useLedgerStore } from '../../stores/ledger'
 import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
 import type { FinancialObligation } from '../../types/finance'
+import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import {
   CreditCard,
   Table,
@@ -1047,27 +1058,54 @@ async function handleUploadDocument() {
   }
 }
 
-async function handleDeleteAttachment(attachmentId: string) {
-  if (!confirm('Are you sure you want to permanently delete this document?')) return
-  try {
-    await deleteAttachment(attachmentId)
-    toast.success('Document removed')
-    await loadContractDetails()
-  } catch (err: any) {
-    toast.error('Failed to delete document')
-  }
+const confirmModal = reactive({
+  isOpen: false,
+  title: '',
+  message: '',
+  confirmText: 'Delete',
+  isDanger: true,
+  action: () => {}
+})
+
+function executeConfirmModal() {
+  confirmModal.isOpen = false
+  confirmModal.action()
 }
 
-async function confirmDelete() {
-  if (!contract.value) return
-  if (!confirm(`Are you sure you want to delete contract "${contract.value.title}"?`)) return
-  try {
-    await deleteInstallment(contract.value.id)
-    toast.success('Contract deleted')
-    router.push('/finance/installments')
-  } catch (err: any) {
-    toast.error('Failed to delete contract')
+function handleDeleteAttachment(attachmentId: string) {
+  confirmModal.title = 'Delete Contract Document'
+  confirmModal.message = 'Are you sure you want to permanently delete this document from your vault?'
+  confirmModal.confirmText = 'Delete Document'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
+    try {
+      await deleteAttachment(attachmentId)
+      toast.success('Document removed')
+      await loadContractDetails()
+    } catch (err: any) {
+      toast.error('Failed to delete document')
+    }
   }
+  confirmModal.isOpen = true
+}
+
+function confirmDelete() {
+  if (!contract.value) return
+  confirmModal.title = 'Delete Installment Contract'
+  confirmModal.message = `Are you sure you want to delete contract "${contract.value.title}"? All amortization schedules and payment records will be removed.`
+  confirmModal.confirmText = 'Delete Contract'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
+    if (!contract.value) return
+    try {
+      await deleteInstallment(contract.value.id)
+      toast.success('Contract deleted')
+      router.push('/finance/installments')
+    } catch (err: any) {
+      toast.error('Failed to delete contract')
+    }
+  }
+  confirmModal.isOpen = true
 }
 
 function formatDate(dateStr?: string) {

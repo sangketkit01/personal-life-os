@@ -13,14 +13,15 @@ def hash_token(token: str) -> str:
 def get_client_ip(request) -> str:
     """Extract real client IP address from request headers, strictly validated."""
     import ipaddress
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        raw_ip = x_forwarded_for.split(',')[0].strip()
-        try:
-            ipaddress.ip_address(raw_ip)
-            return raw_ip
-        except ValueError:
-            pass
+    if getattr(settings, 'TRUST_X_FORWARDED_FOR', False):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            raw_ip = x_forwarded_for.split(',')[0].strip()
+            try:
+                ipaddress.ip_address(raw_ip)
+                return raw_ip
+            except ValueError:
+                pass
     remote_addr = request.META.get('REMOTE_ADDR', '')
     if remote_addr:
         try:
@@ -61,8 +62,8 @@ def get_device_name(request) -> str:
     return f"{browser} on {os_name}"
 
 
-def generate_access_token(user) -> str:
-    """Create 15-minute Access Token."""
+def generate_access_token(user, session_id: uuid.UUID = None) -> str:
+    """Create 15-minute Access Token bound to user and active device session."""
     now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
         'token_type': 'access',
@@ -71,6 +72,8 @@ def generate_access_token(user) -> str:
         'iat': now,
         'exp': now + datetime.timedelta(minutes=15)
     }
+    if session_id:
+        payload['session_id'] = str(session_id)
     return jwt.encode(payload, settings.SECRET_KEY, algorithm='HS256')
 
 

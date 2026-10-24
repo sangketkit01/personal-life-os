@@ -94,6 +94,17 @@ export const useAuthStore = defineStore('auth', () => {
     return response.data
   }
 
+  async function disconnectTelegram() {
+    const response = await apiClient.post<{ message: string; user: User }>('/auth/telegram/disconnect/')
+    user.value = response.data.user
+    return response.data
+  }
+
+  async function changePassword(payload: { current_password: string; new_password: string }) {
+    const response = await apiClient.post<{ message: string; revoked_sessions_count: number }>('/auth/password/change/', payload)
+    return response.data
+  }
+
   return {
     user,
     isLoading,
@@ -103,5 +114,7 @@ export const useAuthStore = defineStore('auth', () => {
     register,
     logout,
     generateTelegramConnect,
+    disconnectTelegram,
+    changePassword,
   }
 })

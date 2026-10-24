@@ -65,11 +65,21 @@
       @close="showPayModal = false"
       @paid="refreshAll"
     />
+
+    <ConfirmModal
+      :is-open="confirmModal.isOpen"
+      :title="confirmModal.title"
+      :message="confirmModal.message"
+      :confirm-text="confirmModal.confirmText"
+      :is-danger="confirmModal.isDanger"
+      @confirm="executeConfirmModal"
+      @cancel="confirmModal.isOpen = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useBNPL } from '../../composables/finance/useBNPL'
 import { useToastStore } from '../../stores/toast'
@@ -79,6 +89,7 @@ import CreateObligationModal from '../../components/finance/CreateObligationModa
 import EditObligationModal from '../../components/finance/EditObligationModal.vue'
 import PaymentHistoryModal from '../../components/finance/PaymentHistoryModal.vue'
 import PayModal from '../../components/finance/PayModal.vue'
+import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import { Plus } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -93,6 +104,20 @@ const showPayModal = ref(false)
 const selectedObligationForPay = ref<FinancialObligation | null>(null)
 const selectedObligationForEdit = ref<FinancialObligation | null>(null)
 const selectedObligationForHistory = ref<FinancialObligation | null>(null)
+
+const confirmModal = reactive({
+  isOpen: false,
+  title: '',
+  message: '',
+  confirmText: 'Delete',
+  isDanger: true,
+  action: () => {}
+})
+
+function executeConfirmModal() {
+  confirmModal.isOpen = false
+  confirmModal.action()
+}
 
 onMounted(async () => {
   await refreshAll()
@@ -117,14 +142,20 @@ function openHistoryModal(ob: FinancialObligation) {
   showHistoryModal.value = true
 }
 
-async function handleDeleteOrder(id: string) {
-  if (!confirm('Are you sure you want to delete this BNPL sub-order?')) return
-  try {
-    await deleteOrder(id)
-    toast.info('Deleted BNPL sub-order')
-    await fetchAccounts()
-  } catch {
-    toast.error('Failed to delete BNPL sub-order')
+function handleDeleteOrder(id: string) {
+  confirmModal.title = 'Delete BNPL Sub-Order'
+  confirmModal.message = 'Are you sure you want to delete this BNPL sub-order? Billing statements will recalculate.'
+  confirmModal.confirmText = 'Delete Order'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
+    try {
+      await deleteOrder(id)
+      toast.info('Deleted BNPL sub-order')
+      await fetchAccounts()
+    } catch {
+      toast.error('Failed to delete BNPL sub-order')
+    }
   }
+  confirmModal.isOpen = true
 }
 </script>

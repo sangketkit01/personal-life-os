@@ -23,6 +23,7 @@ export interface InviteCode {
   uses_count: number
   max_uses: number
   is_active: boolean
+  used_by_username?: string | null
   expires_at: string | null
   created_at: string
 }

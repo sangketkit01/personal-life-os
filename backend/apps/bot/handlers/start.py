@@ -10,12 +10,21 @@ User = get_user_model()
 
 @sync_to_async
 def pair_user_by_token(token: str, chat_id: int):
-    """Pair Telegram Chat ID with User using one-time token."""
+    """Pair Telegram Chat ID with User using one-time token (valid for 15 minutes)."""
+    from datetime import timedelta
+    from django.utils import timezone
     try:
-        user = User.objects.get(telegram_connect_token=token)
+        user = User.objects.get(telegram_connect_token=token, is_active=True)
+        if user.updated_at and (timezone.now() - user.updated_at) > timedelta(minutes=15):
+            user.telegram_connect_token = None
+            user.save(update_fields=['telegram_connect_token', 'updated_at'])
+            return None
+
+        User.objects.filter(telegram_chat_id=str(chat_id)).exclude(id=user.id).update(telegram_chat_id=None)
+
         user.telegram_chat_id = str(chat_id)
         user.telegram_connect_token = None
-        user.save(update_fields=['telegram_chat_id', 'telegram_connect_token'])
+        user.save(update_fields=['telegram_chat_id', 'telegram_connect_token', 'updated_at'])
         return user
     except User.DoesNotExist:
         return None

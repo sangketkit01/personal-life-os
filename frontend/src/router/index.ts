@@ -162,10 +162,21 @@ const router = createRouter({
           name: 'portfolio-news-detail',
           component: () => import('../views/NewsDetailView.vue'),
         },
+        // Workspace 2.0 Domain Routes (Notion-Style Project Hub)
         {
           path: 'workspace',
-          name: 'workspace',
-          component: () => import('../views/WorkspaceView.vue'),
+          name: 'workspace-hub',
+          component: () => import('../views/workspace/WorkspaceProjectsHubView.vue'),
+        },
+        {
+          path: 'workspace/calendar',
+          name: 'workspace-calendar',
+          component: () => import('../views/workspace/WorkspaceMasterCalendarView.vue'),
+        },
+        {
+          path: 'workspace/projects/:id',
+          name: 'workspace-project-detail',
+          component: () => import('../views/workspace/WorkspaceProjectDetailView.vue'),
         },
         // Cash Flow & Ledger Domain Routes
         {

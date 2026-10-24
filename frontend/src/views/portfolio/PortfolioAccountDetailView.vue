@@ -426,11 +426,21 @@
       @close="showMoveModal = false"
       @moved="refreshAll"
     />
+
+    <ConfirmModal
+      :is-open="confirmModal.isOpen"
+      :title="confirmModal.title"
+      :message="confirmModal.message"
+      :confirm-text="confirmModal.confirmText"
+      :is-danger="confirmModal.isDanger"
+      @confirm="executeConfirmModal"
+      @cancel="confirmModal.isOpen = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePortfolioStore } from '../../stores/portfolio'
 import { useToastStore } from '../../stores/toast'
@@ -440,6 +450,7 @@ import MarketStatusBar from '../../components/portfolio/MarketStatusBar.vue'
 import AddTransactionModal from '../../components/portfolio/AddTransactionModal.vue'
 import CreatePortfolioModal from '../../components/portfolio/CreatePortfolioModal.vue'
 import MoveHoldingModal from '../../components/portfolio/MoveHoldingModal.vue'
+import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import {
   ArrowLeft,
   Layers,
@@ -550,30 +561,56 @@ function openMoveModal(h: StockHolding) {
   showMoveModal.value = true
 }
 
-async function handleDeleteTransaction(txId: string) {
-  if (!confirm('Are you sure you want to delete this executed transaction? Cost basis will recompute.')) return
-  try {
-    await portfolioStore.deleteTransaction(txId)
-    toast.success('Transaction deleted')
-    await refreshAll()
-  } catch (err: any) {
-    toast.error('Failed to delete transaction')
-  }
+const confirmModal = reactive({
+  isOpen: false,
+  title: '',
+  message: '',
+  confirmText: 'Delete',
+  isDanger: true,
+  action: () => {}
+})
+
+function executeConfirmModal() {
+  confirmModal.isOpen = false
+  confirmModal.action()
 }
 
-async function confirmDeletePortfolio() {
+function handleDeleteTransaction(txId: string) {
+  confirmModal.title = 'Delete Executed Transaction'
+  confirmModal.message = 'Are you sure you want to delete this executed transaction? Cost basis and portfolio metrics will recompute.'
+  confirmModal.confirmText = 'Delete Transaction'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
+    try {
+      await portfolioStore.deleteTransaction(txId)
+      toast.success('Transaction deleted')
+      await refreshAll()
+    } catch (err: any) {
+      toast.error('Failed to delete transaction')
+    }
+  }
+  confirmModal.isOpen = true
+}
+
+function confirmDeletePortfolio() {
   if (!currentPortfolio.value) return
   if (accountOverview.value?.holdings && accountOverview.value.holdings.length > 0) {
     toast.error('Cannot delete account with active holdings. Move or close all positions first.')
     return
   }
-  if (!confirm(`Delete brokerage account "${currentPortfolio.value.name}"?`)) return
-  try {
-    await portfolioStore.deletePortfolio(accountId.value)
-    toast.success('Brokerage account removed')
-    router.push('/portfolio/accounts')
-  } catch (err: any) {
-    toast.error(err?.response?.data?.detail || 'Failed to delete portfolio account')
+  confirmModal.title = 'Delete Brokerage Account'
+  confirmModal.message = `Are you sure you want to delete brokerage account "${currentPortfolio.value.name}"?`
+  confirmModal.confirmText = 'Delete Account'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
+    try {
+      await portfolioStore.deletePortfolio(accountId.value)
+      toast.success('Brokerage account removed')
+      router.push('/portfolio/accounts')
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to delete portfolio account')
+    }
   }
+  confirmModal.isOpen = true
 }
 </script>

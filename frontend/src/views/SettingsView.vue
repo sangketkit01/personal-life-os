@@ -31,9 +31,19 @@
       </div>
 
       <div class="p-4">
-        <div v-if="authStore.user?.is_telegram_connected" class="p-3 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono flex items-center justify-between">
-          <span class="text-zinc-400">Linked Chat ID: <strong class="text-zinc-100 font-semibold">{{ authStore.user.telegram_chat_id }}</strong></span>
-          <span class="text-[11px] text-emerald-400">Active</span>
+        <div v-if="authStore.user?.is_telegram_connected" class="p-3 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2">
+            <span class="text-zinc-400">Linked Chat ID: <strong class="text-zinc-100 font-semibold">{{ authStore.user.telegram_chat_id }}</strong></span>
+            <span class="text-[11px] text-emerald-400">• Active</span>
+          </div>
+          <button
+            @click="handleDisconnectTelegram"
+            :disabled="isDisconnectingTelegram"
+            type="button"
+            class="px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-rose-400 text-xs font-sans transition-colors disabled:opacity-50"
+          >
+            {{ isDisconnectingTelegram ? 'Disconnecting...' : 'Disconnect' }}
+          </button>
         </div>
 
         <div v-else class="flex items-center justify-between p-3 rounded-md bg-zinc-900/60 border border-zinc-800">
@@ -123,20 +133,78 @@
       </div>
     </div>
 
-    <!-- 2. Active Devices & Sessions -->
+    <!-- 3. Password & Account Security -->
     <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
       <div class="p-4 border-b border-zinc-800/80 flex items-center justify-between">
+        <div>
+          <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Password & Account Credentials</h2>
+          <p class="text-xs text-zinc-500 mt-0.5">Rotate your account password and automatically revoke all other device sessions</p>
+        </div>
+      </div>
+
+      <form @submit.prevent="handleChangePassword" class="p-4 space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Current Password</label>
+            <input
+              v-model="passwordForm.current_password"
+              type="password"
+              required
+              autocomplete="current-password"
+              placeholder="••••••••"
+              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
+            />
+          </div>
+          <div>
+            <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">New Password</label>
+            <input
+              v-model="passwordForm.new_password"
+              type="password"
+              required
+              minlength="8"
+              autocomplete="new-password"
+              placeholder="Minimum 8 characters"
+              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
+            />
+          </div>
+        </div>
+        <div class="flex justify-end">
+          <button
+            type="submit"
+            :disabled="isChangingPassword"
+            class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors disabled:opacity-50"
+          >
+            {{ isChangingPassword ? 'Updating...' : 'Update Password' }}
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- 4. Active Devices & Sessions -->
+    <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
+      <div class="p-4 border-b border-zinc-800/80 flex items-center justify-between gap-2">
         <div>
           <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Active Sessions & Devices</h2>
           <p class="text-xs text-zinc-500 mt-0.5">Track hardware fingerprints and revoke unauthorized sessions</p>
         </div>
-        <button
-          @click="fetchSessions"
-          class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1 font-mono"
-        >
-          <RefreshCw class="w-3 h-3" />
-          <span>Sync</span>
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            v-if="sessions.length > 1"
+            @click="revokeOtherSessions"
+            type="button"
+            class="px-2.5 py-1 rounded bg-zinc-900 hover:bg-rose-950/20 text-zinc-400 hover:text-rose-400 border border-zinc-800 hover:border-rose-500/30 text-[11px] font-mono transition-colors"
+          >
+            Revoke All Others
+          </button>
+          <button
+            @click="fetchSessions"
+            type="button"
+            class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1 font-mono"
+          >
+            <RefreshCw class="w-3 h-3" />
+            <span>Sync</span>
+          </button>
+        </div>
       </div>
 
       <div class="p-4 space-y-2">
@@ -176,12 +244,12 @@
       </div>
     </div>
 
-    <!-- 3. Invite Codes for Friends -->
+    <!-- 5. Invite Codes for Friends (1 Code = 1 User) -->
     <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
       <div class="p-4 border-b border-zinc-800/80 flex items-center justify-between">
         <div>
           <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">Invitation Access Codes</h2>
-          <p class="text-xs text-zinc-500 mt-0.5">Generate single-use invite codes to onboard trusted peers</p>
+          <p class="text-xs text-zinc-500 mt-0.5">Generate single-use invite codes (1 Code = 1 User) to onboard trusted peers</p>
         </div>
         <button
           @click="createInviteCode"
@@ -201,21 +269,35 @@
           <div
             v-for="inv in invites"
             :key="inv.id"
-            class="p-3 rounded-md bg-zinc-900/60 border border-zinc-800 flex items-center justify-between font-mono"
+            class="p-3 rounded-md bg-zinc-900/60 border border-zinc-800 flex items-center justify-between gap-2 font-mono"
           >
             <div>
               <div class="text-xs font-bold text-zinc-200 tracking-wider">{{ inv.code }}</div>
               <div class="text-[10px] text-zinc-500 mt-0.5">
-                Uses: {{ inv.uses_count }} / {{ inv.max_uses }} • {{ inv.is_active ? 'Active' : 'Exhausted' }}
+                <span v-if="inv.used_by_username" class="text-zinc-400">Used by @{{ inv.used_by_username }} (1/1)</span>
+                <span v-else-if="inv.is_active" class="text-emerald-400">Available (1 User)</span>
+                <span v-else>Exhausted ({{ inv.uses_count }}/1)</span>
               </div>
             </div>
-            <button
-              @click="copyCode(inv.code)"
-              class="px-2 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-[10px] transition-colors flex items-center gap-1"
-            >
-              <Copy class="w-3 h-3" />
-              <span>Copy</span>
-            </button>
+            <div class="flex items-center gap-1.5">
+              <button
+                v-if="inv.is_active"
+                @click="copyCode(inv.code)"
+                type="button"
+                class="px-2 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-[10px] transition-colors flex items-center gap-1"
+              >
+                <Copy class="w-3 h-3" />
+                <span>Copy</span>
+              </button>
+              <button
+                @click="deleteInviteCode(inv.id, inv.code)"
+                type="button"
+                title="Delete invite code"
+                class="p-1.5 rounded bg-zinc-900 hover:bg-rose-950/20 border border-zinc-800 hover:border-rose-500/30 text-zinc-400 hover:text-rose-400 transition-colors"
+              >
+                <Trash2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -316,22 +398,34 @@
         </div>
       </div>
     </div>
+
+    <ConfirmModal
+      :is-open="confirmModal.isOpen"
+      :title="confirmModal.title"
+      :message="confirmModal.message"
+      :confirm-text="confirmModal.confirmText"
+      :is-danger="confirmModal.isDanger"
+      @confirm="executeConfirmModal"
+      @cancel="confirmModal.isOpen = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useStorageStore } from '../stores/storage'
 import { useToastStore } from '../stores/toast'
 import apiClient from '../api/client'
 import type { UserDeviceSession, InviteCode, ActivityLog } from '../types'
+import ConfirmModal from '../components/common/ConfirmModal.vue'
 import {
   Bot,
   Laptop,
   Plus,
   RefreshCw,
   Copy,
+  Trash2,
   ShieldCheck,
   HardDrive,
   ExternalLink,
@@ -343,10 +437,30 @@ const storageStore = useStorageStore()
 const toast = useToastStore()
 
 const isGeneratingToken = ref(false)
+const isDisconnectingTelegram = ref(false)
+const isChangingPassword = ref(false)
+const passwordForm = ref({
+  current_password: '',
+  new_password: '',
+})
 const sessions = ref<UserDeviceSession[]>([])
 const invites = ref<InviteCode[]>([])
 const auditLogs = ref<ActivityLog[]>([])
 const isLoadingLogs = ref(false)
+
+const confirmModal = reactive({
+  isOpen: false,
+  title: '',
+  message: '',
+  confirmText: 'Confirm',
+  isDanger: true,
+  action: () => {}
+})
+
+function executeConfirmModal() {
+  confirmModal.isOpen = false
+  confirmModal.action()
+}
 
 async function handleConnectTelegram() {
   isGeneratingToken.value = true
@@ -357,6 +471,54 @@ async function handleConnectTelegram() {
     toast.error('Failed to generate connection link')
   } finally {
     isGeneratingToken.value = false
+  }
+}
+
+function handleDisconnectTelegram() {
+  confirmModal.title = 'Disconnect Telegram Bot'
+  confirmModal.message = 'Are you sure you want to disconnect Telegram Bot? You will no longer receive daily notifications until reconnected.'
+  confirmModal.confirmText = 'Disconnect'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
+    isDisconnectingTelegram.value = true
+    try {
+      await authStore.disconnectTelegram()
+      await fetchAuditLogs()
+      toast.info('Telegram account disconnected')
+    } catch (err) {
+      toast.error('Failed to disconnect Telegram account')
+    } finally {
+      isDisconnectingTelegram.value = false
+    }
+  }
+  confirmModal.isOpen = true
+}
+
+async function handleChangePassword() {
+  isChangingPassword.value = true
+  try {
+    const res = await authStore.changePassword(passwordForm.value)
+    passwordForm.value.current_password = ''
+    passwordForm.value.new_password = ''
+    await fetchSessions()
+    await fetchAuditLogs()
+    toast.success(res.message || 'Password updated successfully')
+  } catch (err: any) {
+    const errorData = err.response?.data
+    let msg = 'Failed to update password'
+    if (errorData) {
+      if (typeof errorData.detail === 'string') msg = errorData.detail
+      else {
+        const firstKey = Object.keys(errorData)[0]
+        if (firstKey) {
+          const val = errorData[firstKey]
+          msg = Array.isArray(val) ? val[0] : String(val)
+        }
+      }
+    }
+    toast.error(msg)
+  } finally {
+    isChangingPassword.value = false
   }
 }
 
@@ -373,10 +535,29 @@ async function revokeSession(id: string) {
   try {
     await apiClient.post(`/auth/sessions/${id}/revoke/`)
     await fetchSessions()
+    await fetchAuditLogs()
     toast.info('Session revoked successfully')
   } catch (err) {
     toast.error('Failed to revoke session')
   }
+}
+
+function revokeOtherSessions() {
+  confirmModal.title = 'Revoke All Other Sessions'
+  confirmModal.message = 'Are you sure you want to revoke all other active device sessions? Other logged-in devices will be signed out immediately.'
+  confirmModal.confirmText = 'Revoke All Others'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
+    try {
+      const res = await apiClient.post<{ message: string; revoked_count: number }>('/auth/sessions/revoke-others/')
+      await fetchSessions()
+      await fetchAuditLogs()
+      toast.info(res.data.message || 'Other sessions revoked')
+    } catch (err) {
+      toast.error('Failed to revoke other sessions')
+    }
+  }
+  confirmModal.isOpen = true
 }
 
 async function fetchInvites() {
@@ -390,12 +571,31 @@ async function fetchInvites() {
 
 async function createInviteCode() {
   try {
-    await apiClient.post('/auth/invites/', { max_uses: 1 })
+    await apiClient.post('/auth/invites/')
     await fetchInvites()
-    toast.success('Generated new single-use invite code')
+    await fetchAuditLogs()
+    toast.success('Generated new single-use invite code (1 User)')
   } catch (err) {
     toast.error('Failed to create invite code')
   }
+}
+
+function deleteInviteCode(id: string, code: string) {
+  confirmModal.title = 'Delete Invite Code'
+  confirmModal.message = `Are you sure you want to delete invite code "${code}"? This action cannot be undone.`
+  confirmModal.confirmText = 'Delete Code'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
+    try {
+      await apiClient.delete(`/auth/invites/${id}/`)
+      await fetchInvites()
+      await fetchAuditLogs()
+      toast.info(`Deleted invite code ${code}`)
+    } catch (err) {
+      toast.error('Failed to delete invite code')
+    }
+  }
+  confirmModal.isOpen = true
 }
 
 function copyCode(code: string) {
@@ -443,10 +643,15 @@ function getStatusClass(status: string) {
   }
 }
 
-async function handleDisconnectDrive() {
-  if (confirm('Disconnect Google Drive? Uploading new files will be disabled until you reconnect.')) {
+function handleDisconnectDrive() {
+  confirmModal.title = 'Disconnect Google Drive'
+  confirmModal.message = 'Are you sure you want to disconnect Google Drive? Uploading new files will be disabled until you reconnect.'
+  confirmModal.confirmText = 'Disconnect'
+  confirmModal.isDanger = true
+  confirmModal.action = async () => {
     await storageStore.disconnect()
   }
+  confirmModal.isOpen = true
 }
 
 onMounted(() => {

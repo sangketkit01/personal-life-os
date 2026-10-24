@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import Dict, Any, List
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -58,16 +58,28 @@ def calculate_deadline_info(deadline) -> Dict[str, Any]:
         }
 
 
+def normalize_task_status(status_str: str) -> str:
+    """Normalize legacy pipeline status strings to the modern Kanban statuses."""
+    if not status_str:
+        return status_str
+    normalized = str(status_str).upper().strip()
+    from .models import LEGACY_STATUS_MAP
+    if normalized in LEGACY_STATUS_MAP:
+        return str(LEGACY_STATUS_MAP[normalized])
+    return normalized
+
+
 def transition_task_status(task: TaskDocument, new_status: str) -> TaskDocument:
     """Transition task/document status and automatically update completed_at timestamp."""
+    new_status = normalize_task_status(new_status)
     if new_status not in TaskStatus.values:
         raise ValueError(f"Invalid task status: {new_status}")
 
     task.status = new_status
-    if new_status == TaskStatus.COMPLETED:
+    if new_status == TaskStatus.DONE:
         task.completed_at = timezone.now()
     else:
-        # Reset completed_at if moved back to in-progress
+        # Reset completed_at if moved back to an active status
         task.completed_at = None
 
     task.save()
@@ -81,16 +93,16 @@ def get_workspace_overview(user, project_id: str = None) -> Dict[str, Any]:
         tasks_qs = tasks_qs.filter(project_id=project_id)
 
     # Status counts
-    drafting_count = tasks_qs.filter(status=TaskStatus.DRAFTING).count()
-    waiting_count = tasks_qs.filter(status=TaskStatus.WAITING).count()
-    completed_count = tasks_qs.filter(status=TaskStatus.COMPLETED).count()
+    todo_count = tasks_qs.filter(status=TaskStatus.TODO).count()
+    doing_count = tasks_qs.filter(status=TaskStatus.DOING).count()
+    done_count = tasks_qs.filter(status=TaskStatus.DONE).count()
     archived_count = tasks_qs.filter(status=TaskStatus.ARCHIVED).count()
 
     now = timezone.now()
     next_7_days = now + timedelta(days=7)
 
-    # Active tasks (Drafting or Waiting)
-    active_tasks = tasks_qs.filter(status__in=[TaskStatus.DRAFTING, TaskStatus.WAITING])
+    # Active tasks (To Do or Doing)
+    active_tasks = tasks_qs.filter(status__in=[TaskStatus.TODO, TaskStatus.DOING])
 
     # Overdue tasks
     overdue_count = active_tasks.filter(deadline__lt=now).count()
@@ -130,12 +142,19 @@ def get_workspace_overview(user, project_id: str = None) -> Dict[str, Any]:
         for n in pinned_notes
     ]
 
-    # Projects annotated with pending task count (Single query avoiding N+1)
+    # Projects annotated with task / note / link / attachment counts (Single query avoiding N+1)
     projects = WorkspaceProject.objects.filter(user=user, is_archived=False).annotate(
+        todo_count=Count('documents', filter=Q(documents__status=TaskStatus.TODO)),
+        doing_count=Count('documents', filter=Q(documents__status=TaskStatus.DOING)),
+        done_count=Count('documents', filter=Q(documents__status=TaskStatus.DONE)),
+        total_tasks_count=Count('documents', filter=Q(documents__status__in=[TaskStatus.TODO, TaskStatus.DOING, TaskStatus.DONE])),
         pending_tasks_count=Count(
             'documents',
-            filter=Q(documents__status__in=[TaskStatus.DRAFTING, TaskStatus.WAITING])
-        )
+            filter=Q(documents__status__in=[TaskStatus.TODO, TaskStatus.DOING])
+        ),
+        notes_count=Count('notes', distinct=True),
+        links_count=Count('links', distinct=True),
+        attachments_count=Count('attachments', distinct=True)
     )
     project_list = [
         {
@@ -143,18 +162,29 @@ def get_workspace_overview(user, project_id: str = None) -> Dict[str, Any]:
             'name': p.name,
             'color': p.color,
             'icon': p.icon,
-            'pending_tasks_count': p.pending_tasks_count
+            'todo_count': p.todo_count,
+            'doing_count': p.doing_count,
+            'done_count': p.done_count,
+            'total_tasks_count': p.total_tasks_count,
+            'pending_tasks_count': p.pending_tasks_count,
+            'notes_count': p.notes_count,
+            'links_count': p.links_count,
+            'attachments_count': p.attachments_count
         }
         for p in projects
     ]
 
     return {
         'pipeline_counts': {
-            'drafting': drafting_count,
-            'waiting': waiting_count,
-            'completed': completed_count,
+            'todo': todo_count,
+            'doing': doing_count,
+            'done': done_count,
+            # Legacy keys kept for backward compatibility with existing clients/tests
+            'drafting': todo_count,
+            'waiting': doing_count,
+            'completed': done_count,
             'archived': archived_count,
-            'total_active': drafting_count + waiting_count
+            'total_active': todo_count + doing_count
         },
         'overdue_count': overdue_count,
         'upcoming_deadlines_count': len(upcoming_list),

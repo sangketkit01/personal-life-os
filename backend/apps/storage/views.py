@@ -232,15 +232,53 @@ class CompleteUploadView(APIView):
                 )
 
             elif domain == 'workspace' and target_id:
-                from apps.workspace.models import TaskDocument
-                task = TaskDocument.objects.filter(id=target_id, user=request.user).first()
-                if not task:
+                import uuid as uuid_lib
+                from apps.workspace.models import ProjectAttachment, TaskDocument, WorkspaceProject
+
+                try:
+                    target_uuid = uuid_lib.UUID(str(target_id))
+                except (ValueError, AttributeError, TypeError):
                     return Response(
-                        {'error': f"Workspace task '{target_id}' not found or does not belong to user."},
+                        {'error': f"Invalid workspace target id '{target_id}'."},
                         status=status.HTTP_400_BAD_REQUEST
                     )
-                task.file_url = drive_file.web_view_link or drive_file.web_content_link
-                task.save(update_fields=['file_url'])
+
+                project = WorkspaceProject.objects.filter(id=target_uuid, user=request.user).first()
+                if project:
+                    ProjectAttachment.objects.create(
+                        user=request.user,
+                        project=project,
+                        task=None,
+                        file_name=drive_file.file_name,
+                        file_type=drive_file.file_type or 'application/octet-stream',
+                        file_size=drive_file.file_size,
+                        category=data.get('category', 'DOCUMENT'),
+                        drive_file_id=drive_file.drive_file_id,
+                        drive_view_link=drive_file.web_view_link,
+                        drive_download_link=drive_file.web_content_link
+                    )
+                else:
+                    task = TaskDocument.objects.filter(id=target_uuid, user=request.user).select_related('project').first()
+                    if not task:
+                        return Response(
+                            {'error': f"Workspace target '{target_id}' not found or does not belong to user."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    task.file_url = drive_file.web_view_link or drive_file.web_content_link
+                    task.save(update_fields=['file_url'])
+                    # Always register the attachment, even for tasks without a project
+                    ProjectAttachment.objects.create(
+                        user=request.user,
+                        project=task.project,
+                        task=task,
+                        file_name=drive_file.file_name,
+                        file_type=drive_file.file_type or 'application/octet-stream',
+                        file_size=drive_file.file_size,
+                        category=data.get('category', 'DOCUMENT'),
+                        drive_file_id=drive_file.drive_file_id,
+                        drive_view_link=drive_file.web_view_link,
+                        drive_download_link=drive_file.web_content_link
+                    )
 
             return Response(
                 DriveFileSerializer(drive_file).data,

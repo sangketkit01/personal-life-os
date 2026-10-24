@@ -69,8 +69,9 @@ apiClient.interceptors.response.use(
         return apiClient(originalRequest)
       } catch (refreshError) {
         processQueue(refreshError)
-        // If refresh fails, session is expired; redirect to login
-        if (window.location.pathname !== '/login') {
+        // If refresh fails on a protected route, redirect to login (do not redirect away from /login or /register)
+        const guestPaths = ['/login', '/register']
+        if (!guestPaths.includes(window.location.pathname)) {
           window.location.href = '/login'
         }
         return Promise.reject(refreshError)

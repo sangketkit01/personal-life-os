@@ -33,13 +33,13 @@ class Command(BaseCommand):
         else:
             self.stdout.write(self.style.WARNING(f'[INFO] User {username} already exists'))
 
-        # Create Master Invite Code if not exists
+        # Create Master Invite Code if not exists (1 Invite Code = 1 User)
         invite_code = 'LIFE-FOUNDER-2026'
         invite, inv_created = InviteCode.objects.get_or_create(
             code=invite_code,
             defaults={
                 'created_by': user,
-                'max_uses': 999,
+                'max_uses': 1,
                 'is_active': True
             }
         )

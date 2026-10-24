@@ -134,7 +134,7 @@ const defaultCommands: CommandItem[] = [
   { id: 'nav-ledger-splits', title: 'Shared Bill Splits', subtitle: 'Friend Receivables', category: 'Navigation', icon: Users, action: () => router.push('/ledger/splits') },
   { id: 'nav-ledger-budgets', title: 'Category Budgets', subtitle: 'Spending Ceilings', category: 'Navigation', icon: PieChart, action: () => router.push('/ledger/budgets') },
   { id: 'nav-portfolio', title: 'Portfolio Snapshot', subtitle: 'SET, US & Crypto', category: 'Navigation', icon: TrendingUp, action: () => router.push('/portfolio') },
-  { id: 'nav-workspace', title: 'Workspace Pipeline', subtitle: 'Kanban & Notes', category: 'Navigation', icon: FolderKanban, action: () => router.push('/workspace') },
+  { id: 'nav-workspace', title: 'Projects Hub', subtitle: 'Boards, Calendar & Pages', category: 'Navigation', icon: FolderKanban, action: () => router.push('/workspace') },
   { id: 'nav-settings', title: 'Settings & Security', subtitle: 'Sessions & Webhooks', category: 'Navigation', icon: Settings, action: () => router.push('/settings') },
 ]
 
@@ -204,7 +204,7 @@ const filteredResults = computed(() => {
         subtitle: `Task • ${t.status}`,
         category: 'Workspace',
         icon: FileText,
-        action: () => router.push('/workspace')
+        action: () => router.push(t.project ? `/workspace/projects/${t.project}?tab=board` : '/workspace')
       })
     }
   }

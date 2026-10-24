@@ -1,15 +1,17 @@
 import os
 import secrets
+from datetime import timedelta
 from django.conf import settings
 from django.utils import timezone
 from django.db import models, transaction as db_transaction
-from rest_framework import status, views, permissions, response
+from rest_framework import status, views, permissions, response, exceptions
 from rest_framework.throttling import ScopedRateThrottle
 from .models import User, InviteCode, UserDeviceSession, ActivityLog
 from .serializers import (
     UserSerializer,
     RegisterSerializer,
     LoginSerializer,
+    ChangePasswordSerializer,
     UserDeviceSessionSerializer,
     InviteCodeSerializer,
     ActivityLogSerializer
@@ -59,6 +61,21 @@ def clear_auth_cookies(res: response.Response):
     res.delete_cookie(key='refresh_token', path='/')
 
 
+def get_current_session_id(request):
+    """Extract current session_id from refresh_token or access_token cookie."""
+    for cookie_name in ('refresh_token', 'access_token'):
+        raw_token = request.COOKIES.get(cookie_name)
+        if raw_token:
+            try:
+                payload = decode_token(raw_token)
+                sid = payload.get('session_id')
+                if sid:
+                    return sid
+            except Exception:
+                pass
+    return None
+
+
 class RegisterView(views.APIView):
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
@@ -83,7 +100,7 @@ class RegisterView(views.APIView):
             refresh_token_hash=''
         )
 
-        access_token = generate_access_token(user)
+        access_token = generate_access_token(user, session.id)
         refresh_token = generate_refresh_token(user, session.id)
 
         session.refresh_token_hash = hash_token(refresh_token)
@@ -115,7 +132,7 @@ class LoginView(views.APIView):
             username_input = request.data.get('username')
             if username_input and isinstance(username_input, str):
                 user_found = User.objects.filter(
-                    models.Q(username__iexact=username_input) | models.Q(email__iexact=username_input)
+                    models.Q(username__iexact=username_input.strip()) | models.Q(email__iexact=username_input.strip())
                 ).first()
                 if user_found:
                     log_activity(user_found, 'AUTH', 'LOGIN_FAILED', 'Failed login attempt: invalid credentials', request=request, status='FAILED')
@@ -136,7 +153,7 @@ class LoginView(views.APIView):
             refresh_token_hash=''
         )
 
-        access_token = generate_access_token(user)
+        access_token = generate_access_token(user, session.id)
         refresh_token = generate_refresh_token(user, session.id)
 
         session.refresh_token_hash = hash_token(refresh_token)
@@ -159,15 +176,9 @@ class LogoutView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        refresh_token = request.COOKIES.get('refresh_token')
-        if refresh_token:
-            try:
-                payload = decode_token(refresh_token)
-                session_id = payload.get('session_id')
-                if session_id:
-                    UserDeviceSession.objects.filter(id=session_id, user=request.user).update(is_revoked=True)
-            except Exception:
-                pass
+        session_id = get_current_session_id(request)
+        if session_id:
+            UserDeviceSession.objects.filter(id=session_id, user=request.user).update(is_revoked=True)
 
         res = response.Response({'message': 'Logged out successfully'}, status=status.HTTP_200_OK)
         clear_auth_cookies(res)
@@ -182,6 +193,14 @@ class RefreshTokenView(views.APIView):
     throttle_scope = 'auth_refresh'
 
     def post(self, request):
+        # Origin validation for CSRF protection on cookie-based refresh
+        origin = request.META.get('HTTP_ORIGIN')
+        if origin:
+            allowed_origins = set(getattr(settings, 'CORS_ALLOWED_ORIGINS', []))
+            host = request.get_host()
+            if origin not in allowed_origins and origin not in (f"http://{host}", f"https://{host}"):
+                raise exceptions.PermissionDenied('CSRF validation failed: untrusted Origin.')
+
         refresh_token = request.COOKIES.get('refresh_token')
         if not refresh_token:
             return response.Response({'detail': 'Refresh token not found.'}, status=status.HTTP_401_UNAUTHORIZED)
@@ -208,10 +227,11 @@ class RefreshTokenView(views.APIView):
                     clear_auth_cookies(res)
                     return res
 
-                # Verify Token Hash: supports both current token and Grace Period
+                # Verify Token Hash: supports active sibling hashes and Grace Period parent hash
                 current_hash = hash_token(refresh_token)
-                is_current_token = (session.refresh_token_hash == current_hash)
-                
+                active_hashes = [h for h in session.refresh_token_hash.split(',') if h]
+                is_current_token = (current_hash in active_hashes)
+
                 is_grace_token = False
                 if not is_current_token and session.previous_refresh_token_hash == current_hash and session.rotated_at:
                     grace_seconds = getattr(settings, 'REFRESH_TOKEN_GRACE_PERIOD_SECONDS', 60)
@@ -234,16 +254,21 @@ class RefreshTokenView(views.APIView):
                 if not user.is_active:
                     return response.Response({'detail': 'User account is deactivated.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-                # Token Rotation: create new access token and refresh token
-                new_access_token = generate_access_token(user)
+                # Token Rotation: create new access token and refresh token bound to session
+                new_access_token = generate_access_token(user, session.id)
                 new_refresh_token = generate_refresh_token(user, session.id)
+                new_refresh_hash = hash_token(new_refresh_token)
 
-                # Update session hashes: retain previous_refresh_token_hash if during grace window
                 if is_current_token:
-                    session.previous_refresh_token_hash = session.refresh_token_hash
+                    session.previous_refresh_token_hash = current_hash
                     session.rotated_at = timezone.now()
+                    session.refresh_token_hash = new_refresh_hash
+                else:
+                    # Grace period concurrent request: keep parent hash & rotated_at intact,
+                    # and store sibling hash alongside the first rotated hash (max 3 hashes = 194 chars)
+                    sibling_hashes = (active_hashes + [new_refresh_hash])[-3:]
+                    session.refresh_token_hash = ','.join(sibling_hashes)
 
-                session.refresh_token_hash = hash_token(new_refresh_token)
                 session.ip_address = get_client_ip(request)
                 session.save(update_fields=['previous_refresh_token_hash', 'refresh_token_hash', 'rotated_at', 'ip_address', 'last_active_at'])
 
@@ -263,18 +288,50 @@ class MeView(views.APIView):
         return response.Response(UserSerializer(request.user).data)
 
 
+class ChangePasswordView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+        user.set_password(serializer.validated_data['new_password'])
+        user.save(update_fields=['password', 'updated_at'])
+
+        # Revoke all other active sessions on password change
+        current_session_id = get_current_session_id(request)
+        qs = UserDeviceSession.objects.filter(user=user, is_revoked=False)
+        if current_session_id:
+            qs = qs.exclude(id=current_session_id)
+        revoked_count = qs.update(is_revoked=True)
+
+        log_activity(
+            user,
+            'AUTH',
+            'PASSWORD_CHANGED',
+            f'Changed account password (revoked {revoked_count} other sessions)',
+            request=request
+        )
+        return response.Response({
+            'message': 'Password changed successfully.',
+            'revoked_sessions_count': revoked_count
+        })
+
+
 class SessionsListView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        current_session_id = None
-        refresh_token = request.COOKIES.get('refresh_token')
-        if refresh_token:
-            try:
-                payload = decode_token(refresh_token)
-                current_session_id = payload.get('session_id')
-            except Exception:
-                pass
+        current_session_id = get_current_session_id(request)
+
+        # Automatically expire stale sessions inactive for more than 7 days
+        cutoff = timezone.now() - timedelta(days=7)
+        UserDeviceSession.objects.filter(
+            user=request.user,
+            is_revoked=False,
+            last_active_at__lt=cutoff
+        ).update(is_revoked=True)
 
         sessions = UserDeviceSession.objects.filter(user=request.user, is_revoked=False).order_by('-last_active_at')
         serializer = UserDeviceSessionSerializer(sessions, many=True, context={'current_session_id': current_session_id})
@@ -289,9 +346,39 @@ class RevokeSessionView(views.APIView):
             session = UserDeviceSession.objects.get(id=session_id, user=request.user)
             session.is_revoked = True
             session.save(update_fields=['is_revoked'])
+            log_activity(
+                request.user,
+                'AUTH',
+                'SESSION_REVOKED',
+                f'Revoked session on {session.device_name} ({session.ip_address})',
+                request=request
+            )
             return response.Response({'message': 'Device session revoked successfully'})
         except UserDeviceSession.DoesNotExist:
             return response.Response({'detail': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class RevokeOtherSessionsView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        current_session_id = get_current_session_id(request)
+        qs = UserDeviceSession.objects.filter(user=request.user, is_revoked=False)
+        if current_session_id:
+            qs = qs.exclude(id=current_session_id)
+        revoked_count = qs.update(is_revoked=True)
+
+        log_activity(
+            request.user,
+            'AUTH',
+            'REVOKE_OTHER_SESSIONS',
+            f'Revoked {revoked_count} other active device sessions',
+            request=request
+        )
+        return response.Response({
+            'message': f'Revoked {revoked_count} other sessions successfully.',
+            'revoked_count': revoked_count
+        })
 
 
 class TelegramConnectTokenView(views.APIView):
@@ -308,35 +395,64 @@ class TelegramConnectTokenView(views.APIView):
         })
 
 
+class TelegramDisconnectView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        user.telegram_chat_id = None
+        user.telegram_connect_token = None
+        user.save(update_fields=['telegram_chat_id', 'telegram_connect_token', 'updated_at'])
+        log_activity(user, 'AUTH', 'TELEGRAM_DISCONNECT', 'Disconnected Telegram Bot', request=request)
+        return response.Response({
+            'message': 'Telegram account disconnected successfully.',
+            'user': UserSerializer(user).data
+        })
+
+
 class InviteCodeView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        invites = InviteCode.objects.filter(created_by=request.user).order_by('-created_at')
+        invites = InviteCode.objects.select_related('used_by').filter(created_by=request.user).order_by('-created_at')
         return response.Response(InviteCodeSerializer(invites, many=True).data)
 
     def post(self, request):
-        raw_max_uses = request.data.get('max_uses', 1)
-        try:
-            max_uses = int(raw_max_uses)
-            if max_uses <= 0 or max_uses > 1000:
-                raise ValueError()
-        except (ValueError, TypeError):
-            return response.Response(
-                {'detail': 'max_uses must be a positive integer between 1 and 1000.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # Strictly 1 Invite Code = 1 User
+        code = None
+        for _ in range(10):
+            candidate = f"LIFE-{secrets.token_hex(4).upper()}"
+            if not InviteCode.objects.filter(code=candidate).exists():
+                code = candidate
+                break
 
-        # Generate random invite code: e.g. LIFE-ABC8
-        random_part = secrets.token_hex(3).upper()
-        code = f"LIFE-{random_part}"
+        if not code:
+            return response.Response(
+                {'detail': 'Could not generate unique invite code. Please try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         invite = InviteCode.objects.create(
             code=code,
             created_by=request.user,
-            max_uses=max_uses
+            max_uses=1
         )
+        log_activity(request.user, 'AUTH', 'INVITE_CREATED', f'Generated single-use invite code {code}', request=request)
         return response.Response(InviteCodeSerializer(invite).data, status=status.HTTP_201_CREATED)
+
+
+class InviteCodeDetailView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, invite_id):
+        try:
+            invite = InviteCode.objects.get(id=invite_id, created_by=request.user)
+            code_str = invite.code
+            invite.delete()
+            log_activity(request.user, 'AUTH', 'INVITE_DELETED', f'Deleted invite code {code_str}', request=request)
+            return response.Response(status=status.HTTP_204_NO_CONTENT)
+        except InviteCode.DoesNotExist:
+            return response.Response({'detail': 'Invite code not found.'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class ActivityLogView(views.APIView):

@@ -158,3 +158,111 @@ class AuthTestCase(TestCase):
         failed_log = ActivityLog.objects.filter(user=self.admin, action='LOGIN_FAILED', status='FAILED').first()
         self.assertIsNotNone(failed_log)
         self.assertEqual(failed_log.category, 'AUTH')
+
+    def test_single_use_invite_code_and_deletion(self):
+        """Test that 1 Invite Code = 1 User strictly (ignores max_uses>1) and can be deleted."""
+        self.client.post(reverse('auth-login'), {'username': 'boss', 'password': 'Password123!'}, format='json')
+
+        # Attempt to pass max_uses=500 -> must enforce max_uses=1
+        create_res = self.client.post(reverse('auth-invites'), {'max_uses': 500}, format='json')
+        self.assertEqual(create_res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(create_res.data['max_uses'], 1)
+        invite_id = create_res.data['id']
+
+        # Another user cannot delete boss's invite code
+        other_user = User.objects.create_user(username='other', email='other@test.com', password='Password123!')
+        other_client = APIClient()
+        other_client.post(reverse('auth-login'), {'username': 'other', 'password': 'Password123!'}, format='json')
+        forbidden_del = other_client.delete(reverse('auth-invite-detail', kwargs={'invite_id': invite_id}))
+        self.assertEqual(forbidden_del.status_code, status.HTTP_404_NOT_FOUND)
+
+        # Owner can delete the invite code
+        del_res = self.client.delete(reverse('auth-invite-detail', kwargs={'invite_id': invite_id}))
+        self.assertEqual(del_res.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(InviteCode.objects.filter(id=invite_id).exists())
+
+    def test_instant_access_token_revocation_on_logout_and_session_revoke(self):
+        """Test that access_token bound to session_id is immediately rejected when session is revoked."""
+        login_res = self.client.post(reverse('auth-login'), {'username': 'boss', 'password': 'Password123!'}, format='json')
+        access_token = login_res.cookies['access_token'].value
+
+        # Capture the token in a separate client before logout
+        stolen_client = APIClient()
+        stolen_client.cookies['access_token'] = access_token
+        self.assertEqual(stolen_client.get(reverse('auth-me')).status_code, status.HTTP_200_OK)
+
+        # User logs out -> revokes the session in DB
+        self.client.post(reverse('auth-logout'))
+
+        # Stolen access_token must be rejected immediately (0-second revocation)
+        res_after = stolen_client.get(reverse('auth-me'))
+        self.assertEqual(res_after.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_grace_period_both_sibling_tokens_survive(self):
+        """Test that after concurrent grace-period refresh, the first rotated token (Token_1) is not wiped out."""
+        login_res = self.client.post(reverse('auth-login'), {'username': 'boss', 'password': 'Password123!'}, format='json')
+        initial_refresh = login_res.cookies['refresh_token'].value
+
+        # Tab 1 rotates initial_refresh -> gets Token_1
+        res1 = self.client.post(reverse('auth-refresh'))
+        self.assertEqual(res1.status_code, status.HTTP_200_OK)
+        token_1 = res1.cookies['refresh_token'].value
+
+        # Tab 2 concurrently sends initial_refresh within grace window -> gets Token_2
+        tab2_client = APIClient()
+        tab2_client.cookies['refresh_token'] = initial_refresh
+        res2 = tab2_client.post(reverse('auth-refresh'))
+        self.assertEqual(res2.status_code, status.HTTP_200_OK)
+
+        # Later, Tab 1 uses Token_1 -> must succeed (200 OK) and NOT trigger false-positive reuse revocation!
+        tab1_later = APIClient()
+        tab1_later.cookies['refresh_token'] = token_1
+        res3 = tab1_later.post(reverse('auth-refresh'))
+        self.assertEqual(res3.status_code, status.HTTP_200_OK)
+
+    def test_change_password_revokes_other_sessions(self):
+        """Test changing password updates credentials and revokes other active sessions."""
+        # Device 1 login
+        client1 = APIClient()
+        client1.post(reverse('auth-login'), {'username': 'boss', 'password': 'Password123!'}, format='json')
+
+        # Device 2 login
+        client2 = APIClient()
+        client2.post(reverse('auth-login'), {'username': 'boss', 'password': 'Password123!'}, format='json')
+
+        # Device 1 changes password
+        res = client1.post(reverse('auth-password-change'), {
+            'current_password': 'Password123!',
+            'new_password': 'NewStrongPassword456!'
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['revoked_sessions_count'], 1)
+
+        # Device 1 remains authenticated
+        self.assertEqual(client1.get(reverse('auth-me')).status_code, status.HTTP_200_OK)
+        # Device 2 is immediately revoked
+        self.assertEqual(client2.get(reverse('auth-me')).status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_register_does_not_leak_existing_username_without_valid_invite(self):
+        """Test that uninvited callers cannot enumerate existing usernames/emails via /api/auth/register/."""
+        res = self.client.post(reverse('auth-register'), {
+            'username': 'boss',
+            'email': 'boss@test.com',
+            'password': 'Password123!',
+            'invite_code': 'BOGUS-INVITE'
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('invite_code', res.data)
+        self.assertNotIn('username', res.data)
+        self.assertNotIn('email', res.data)
+
+    def test_x_forwarded_for_ignored_by_default(self):
+        """Test that spoofed X-Forwarded-For header does not forge session IP when TRUST_X_FORWARDED_FOR is False."""
+        self.client.post(
+            reverse('auth-login'),
+            {'username': 'boss', 'password': 'Password123!'},
+            format='json',
+            HTTP_X_FORWARDED_FOR='203.0.113.99'
+        )
+        session = UserDeviceSession.objects.filter(user=self.admin).first()
+        self.assertEqual(session.ip_address, '127.0.0.1')

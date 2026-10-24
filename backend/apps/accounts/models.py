@@ -39,7 +39,7 @@ class User(AbstractUser):
     def generate_telegram_connect_token(self):
         token = secrets.token_urlsafe(16)
         self.telegram_connect_token = token
-        self.save(update_fields=['telegram_connect_token'])
+        self.save(update_fields=['telegram_connect_token', 'updated_at'])
         return token
 
 

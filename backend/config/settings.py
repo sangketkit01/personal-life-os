@@ -149,7 +149,11 @@ REST_FRAMEWORK = {
         'auth_register': '10/min',
         'auth_refresh': '120/min',
     },
+    'NUM_PROXIES': int(os.getenv('NUM_PROXIES', '0')),
 }
+
+# Only trust X-Forwarded-For when explicitly behind a reverse proxy
+TRUST_X_FORWARDED_FOR = os.getenv('TRUST_X_FORWARDED_FOR', 'False') == 'True'
 
 # Token Rotation Grace Period (prevents race conditions across concurrent browser tabs or network latency)
 REFRESH_TOKEN_GRACE_PERIOD_SECONDS = 60

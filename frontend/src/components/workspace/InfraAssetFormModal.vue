@@ -51,7 +51,7 @@
                 <input v-model="form.os_name" type="text" placeholder="Ubuntu 24.04 LTS"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
               </label>
-              <label class="block">
+              <label v-if="form.asset_type === 'DOMAIN' || form.asset_type === 'SSL_CERT'" class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.expiry') }}</span>
                 <input v-model="form.expiry_date" type="date"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
@@ -91,11 +91,6 @@
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-mono focus:outline-none focus:border-zinc-600" />
               </label>
               <label class="block">
-                <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.hostname') }}</span>
-                <input v-model="form.hostname" type="text"
-                  class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
-              </label>
-              <label class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.domain') }}</span>
                 <input v-model="form.primary_domain" type="text" placeholder="example.com"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
@@ -116,7 +111,7 @@
               </label>
               <label v-if="form.ssh_auth_type !== 'NONE'" class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.sshUser') }}</span>
-                <input v-model="form.ssh_username" type="text"
+                <input v-model="form.ssh_username" type="text" placeholder="root / ubuntu"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-mono focus:outline-none focus:border-zinc-600" />
               </label>
             </div>
@@ -359,6 +354,8 @@ async function save() {
     const payload: Record<string, any> = {
       project: props.projectId,
       ...form.value,
+      expiry_date: form.value.expiry_date || null,
+      next_billing_date: form.value.next_billing_date || null,
       cost_amount: form.value.cost_amount === '' ? '0' : String(form.value.cost_amount),
       specs: {
         ...(specs.vcpu != null && { vcpu: specs.vcpu }),

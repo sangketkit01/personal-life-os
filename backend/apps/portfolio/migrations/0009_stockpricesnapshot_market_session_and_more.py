@@ -13,11 +13,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='stockpricesnapshot',
             name='market_session',
-            field=models.CharField(blank=True, default='REGULAR', max_length=20, verbose_name='ช่วงเวลาตลาดล่าสุด (REGULAR, PRE, POST)'),
+            field=models.CharField(blank=True, default='REGULAR', max_length=20, verbose_name='\u0e0a\u0e48\u0e27\u0e07\u0e40\u0e27\u0e25\u0e32\u0e15\u0e25\u0e32\u0e14\u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14 (REGULAR, PRE, POST)'),
         ),
         migrations.AddField(
             model_name='stockpricesnapshot',
             name='regular_price',
-            field=models.DecimalField(blank=True, decimal_places=8, max_digits=24, null=True, verbose_name='ราคาปิดตลาดปกติ'),
+            field=models.DecimalField(blank=True, decimal_places=8, max_digits=24, null=True, verbose_name='\u0e23\u0e32\u0e04\u0e32\u0e1b\u0e34\u0e14\u0e15\u0e25\u0e32\u0e14\u0e1b\u0e01\u0e15\u0e34'),
         ),
     ]

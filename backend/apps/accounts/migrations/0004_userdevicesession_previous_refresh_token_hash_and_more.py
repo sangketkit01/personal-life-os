@@ -13,11 +13,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='userdevicesession',
             name='previous_refresh_token_hash',
-            field=models.CharField(blank=True, db_index=True, default='', max_length=255, verbose_name='Hash ของ Refresh Token ใบก่อนหน้า (Grace Period)'),
+            field=models.CharField(blank=True, db_index=True, default='', max_length=255, verbose_name='Hash \u0e02\u0e2d\u0e07 Refresh Token \u0e43\u0e1a\u0e01\u0e48\u0e2d\u0e19\u0e2b\u0e19\u0e49\u0e32 (Grace Period)'),
         ),
         migrations.AddField(
             model_name='userdevicesession',
             name='rotated_at',
-            field=models.DateTimeField(blank=True, null=True, verbose_name='เวลาที่ทำการหมุน Token ล่าสุด'),
+            field=models.DateTimeField(blank=True, null=True, verbose_name='\u0e40\u0e27\u0e25\u0e32\u0e17\u0e35\u0e48\u0e17\u0e33\u0e01\u0e32\u0e23\u0e2b\u0e21\u0e38\u0e19 Token \u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14'),
         ),
     ]

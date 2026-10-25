@@ -128,6 +128,15 @@ class WorkspaceProjectSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('id', 'ma_obligation', 'created_at', 'updated_at')
 
+    def to_internal_value(self, data):
+        # Empty-string MA dates from multipart forms mean "not set".
+        if isinstance(data, dict):
+            data = data.copy()
+            for field in ('ma_start_date', 'ma_end_date', 'ma_next_billing_date'):
+                if data.get(field) == '':
+                    data[field] = None
+        return super().to_internal_value(data)
+
     def _annotated(self, obj, attr, fallback_queryset):
         value = getattr(obj, attr, None)
         return value if value is not None else fallback_queryset.count()
@@ -630,15 +639,15 @@ class CalendarEventSerializer(serializers.ModelSerializer):
 class InfrastructureAssetSerializer(serializers.ModelSerializer):
     """Infrastructure asset with write-only SSH secrets (encrypted at rest)."""
     ssh_password = serializers.CharField(
-        write_only=True, required=False, allow_blank=True,
+        write_only=True, required=False, allow_blank=True, trim_whitespace=False,
         help_text='SSH password - encrypted on save, never returned.'
     )
     ssh_private_key = serializers.CharField(
-        write_only=True, required=False, allow_blank=True,
+        write_only=True, required=False, allow_blank=True, trim_whitespace=False,
         help_text='SSH private key PEM - encrypted on save, never returned.'
     )
     ssh_passphrase = serializers.CharField(
-        write_only=True, required=False, allow_blank=True,
+        write_only=True, required=False, allow_blank=True, trim_whitespace=False,
         help_text='SSH key passphrase - encrypted on save, never returned.'
     )
     has_ssh_password = serializers.SerializerMethodField()
@@ -693,6 +702,16 @@ class InfrastructureAssetSerializer(serializers.ModelSerializer):
             'id', 'health_status', 'last_checked_at', 'last_telemetry',
             'financial_obligation', 'created_at', 'updated_at'
         )
+
+    def to_internal_value(self, data):
+        # HTML/multipart forms submit unset dates as "" which DateField
+        # rejects - coerce to None before validation.
+        if isinstance(data, dict):
+            data = data.copy()
+            for field in ('expiry_date', 'next_billing_date'):
+                if data.get(field) == '':
+                    data[field] = None
+        return super().to_internal_value(data)
 
     def get_has_ssh_password(self, obj):
         return bool(obj.ssh_password_encrypted)
@@ -761,7 +780,7 @@ class ServerCredentialSerializer(serializers.ModelSerializer):
     """Encrypted secret vault entry - plaintext secret never leaves the API
     except through the dedicated /reveal/ action."""
     secret = serializers.CharField(
-        write_only=True, required=False, allow_blank=True,
+        write_only=True, required=False, allow_blank=True, trim_whitespace=False,
         help_text='Secret value - encrypted on save, never returned in lists.'
     )
     has_secret = serializers.SerializerMethodField()

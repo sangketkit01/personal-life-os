@@ -8,6 +8,8 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from apps.finance.models import FinancialObligation, ObligationType
 from apps.finance.strategies import ObligationStrategyFactory
+from apps.bot.i18n import bot_msg
+from apps.bot.markdown_utils import escape_md
 
 User = get_user_model()
 
@@ -136,7 +138,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     chat_id = update.effective_chat.id
     user = await get_user_by_chat_id(chat_id)
     if not user:
-        await update.message.reply_text("⚠️ Your Telegram account is not connected. Please connect via your profile settings in the web app.")
+        await update.message.reply_text(bot_msg(None, 'common.not_connected'))
         return
 
     text = update.message.text
@@ -151,22 +153,14 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             metadata=parsed['metadata']
         )
 
-        reply = (
-            f"⚡ *Quick Obligation Recorded!*\n\n"
-            f"• Title: *{ob.title}*\n"
-            f"• Amount: *฿{float(ob.amount):,.2f}*\n"
-            f"• Type: `{ob.type}`\n"
-            f"• Next Due Date: *{ob.due_date.strftime('%d/%m/%Y')}*\n\n"
-            f"_Data has been synchronized with your Financial Radar dashboard._"
+        reply = bot_msg(
+            user, 'quick.recorded',
+            title=escape_md(ob.title),
+            amount=f"{float(ob.amount):,.2f}",
+            type=ob.type,
+            due=ob.due_date.strftime('%d/%m/%Y')
         )
         await update.message.reply_text(reply, parse_mode='Markdown')
     else:
         # Invalid syntax fallback
-        await update.message.reply_text(
-            "💡 *Quick capture syntax examples:*\n"
-            "• `installment iPad 1500 10`\n"
-            "• `trial Canva 499 email work@example.com`\n"
-            "• `sub Netflix 419`\n"
-            "• `debt John 500`",
-            parse_mode='Markdown'
-        )
+        await update.message.reply_text(bot_msg(user, 'quick.help'), parse_mode='Markdown')

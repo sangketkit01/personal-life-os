@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='stocktransaction',
             name='currency',
-            field=models.CharField(default='THB', max_length=5, verbose_name='สกุลเงินที่ทำรายการ (THB / USD)'),
+            field=models.CharField(default='THB', max_length=5, verbose_name='\u0e2a\u0e01\u0e38\u0e25\u0e40\u0e07\u0e34\u0e19\u0e17\u0e35\u0e48\u0e17\u0e33\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23 (THB / USD)'),
         ),
     ]

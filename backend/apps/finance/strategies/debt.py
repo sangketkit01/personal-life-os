@@ -72,7 +72,7 @@ class DebtStrategy(BaseObligationStrategy):
         if obligation.direction == 'INFLOW':
             pp_text = f"PromptPay {promptpay}" if promptpay else "the designated account"
             cur = obligation.currency or 'THB'
-            cur_symbol = '฿' if cur == 'THB' else cur
+            cur_symbol = '\u0e3f' if cur == 'THB' else cur
             recall_template = (
                 f"Hi {counterparty}, friendly reminder regarding the outstanding balance of "
                 f"{cur_symbol}{remaining_balance:,.2f} (due: {due_date_str}). "
@@ -128,7 +128,7 @@ class DebtStrategy(BaseObligationStrategy):
                 raise ValueError("Payment amount must be greater than 0.")
 
             if paid_amount > current_remaining:
-                raise ValueError(f"Payment amount of ฿{paid_amount:,.2f} exceeds remaining debt balance of ฿{current_remaining:,.2f}.")
+                raise ValueError(f"Payment amount of \u0e3f{paid_amount:,.2f} exceeds remaining debt balance of \u0e3f{current_remaining:,.2f}.")
 
             # 1. Record payment history with audit/reversal metadata
             payment = PaymentHistory.objects.create(

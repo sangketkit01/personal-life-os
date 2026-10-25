@@ -3,6 +3,7 @@ import datetime
 from zoneinfo import ZoneInfo
 from django.core.management.base import BaseCommand
 from django.conf import settings
+from telegram import BotCommand
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from apps.bot.handlers.start import (
     start_handler,
@@ -21,6 +22,23 @@ from apps.bot.dispatcher import (
     dispatch_morning_briefings,
     dispatch_vps_watchdog_alerts
 )
+
+
+async def post_init_commands(application):
+    """Register slash commands in the Telegram chat menu."""
+    commands = [
+        BotCommand("brief", "Executive Morning Briefing summary"),
+        BotCommand("status", "Monthly Burn Rate & upcoming bills"),
+        BotCommand("portfolio", "Investment portfolio & PnL overview"),
+        BotCommand("news", "Latest market & asset news"),
+        BotCommand("servers", "Servers & infrastructure live status"),
+        BotCommand("ma", "MA contracts, expiry & next billing"),
+        BotCommand("help", "Show available commands & guide"),
+    ]
+    try:
+        await application.bot.set_my_commands(commands)
+    except Exception as exc:
+        print(f"[WARN] Could not register Telegram bot commands: {exc}")
 
 
 async def scheduled_morning_briefing(context):
@@ -62,7 +80,7 @@ class Command(BaseCommand):
         self.stdout.write(f"Bot Username: @{settings.TELEGRAM_BOT_USERNAME}")
 
         # Create Application instance
-        app = ApplicationBuilder().token(token).build()
+        app = ApplicationBuilder().token(token).post_init(post_init_commands).build()
 
         # 1. Command Handlers
         app.add_handler(CommandHandler("start", start_handler))

@@ -423,10 +423,11 @@ class TelegramTestAlertView(views.APIView):
 
         from telegram import Bot
         from apps.bot.i18n import bot_msg
+        from apps.bot.markdown_utils import escape_md
 
         text = (
             f"{bot_msg(user, 'test.title')}\n\n"
-            f"{bot_msg(user, 'test.body', username=user.username)}"
+            f"{bot_msg(user, 'test.body', username=escape_md(user.username))}"
         )
 
         async def _send():

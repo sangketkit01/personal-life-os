@@ -134,7 +134,7 @@ class BillSplitServiceTests(APITestCase):
         )
 
     def test_create_split_bill_with_auto_radar_debtors(self):
-        # Shabu bill ฿2,400. 4 people (฿600 each). My share = ฿600.
+        # Shabu bill \u0e3f2,400. 4 people (\u0e3f600 each). My share = \u0e3f600.
         splits_data = [
             {'counterparty_name': 'Ball', 'counterparty_contact': '0811111111', 'amount': '600.00'},
             {'counterparty_name': 'Earth', 'counterparty_contact': '0822222222', 'amount': '600.00'},

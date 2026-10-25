@@ -72,7 +72,7 @@ class AccountBalanceService:
         from apps.ledger.models import AccountType
         if locked_source.account_type != AccountType.CREDIT_CARD and locked_source.current_balance < amount:
             raise ValueError(
-                f"Insufficient funds: {locked_source.name} has balance ฿{locked_source.current_balance:,.2f}, but transfer requires ฿{amount:,.2f}."
+                f"Insufficient funds: {locked_source.name} has balance \u0e3f{locked_source.current_balance:,.2f}, but transfer requires \u0e3f{amount:,.2f}."
             )
 
         # 1. Outflow from source
@@ -269,7 +269,7 @@ class BillSplitService:
         locked_account = Account.objects.select_for_update().get(id=account.id, user=user)
         if locked_account.account_type != AccountType.CREDIT_CARD and locked_account.current_balance < gross_amount:
             raise ValueError(
-                f"Insufficient funds: {locked_account.name} has balance ฿{locked_account.current_balance:,.2f}, but transaction requires ฿{gross_amount:,.2f}."
+                f"Insufficient funds: {locked_account.name} has balance \u0e3f{locked_account.current_balance:,.2f}, but transaction requires \u0e3f{gross_amount:,.2f}."
             )
 
         tx = Transaction.objects.create(

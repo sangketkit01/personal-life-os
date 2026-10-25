@@ -216,7 +216,7 @@ class FinancialObligationSerializer(serializers.ModelSerializer):
 
             if down_acc.account_type != AccountType.CREDIT_CARD and down_acc.current_balance < down_payment:
                 raise serializers.ValidationError({
-                    'down_payment': f"Insufficient funds: {down_acc.name} has balance ฿{down_acc.current_balance:,.2f}, but down payment requires ฿{down_payment:,.2f}."
+                    'down_payment': f"Insufficient funds: {down_acc.name} has balance \u0e3f{down_acc.current_balance:,.2f}, but down payment requires \u0e3f{down_payment:,.2f}."
                 })
 
         # Calculate initial due_date if this is a BNPL sub-order

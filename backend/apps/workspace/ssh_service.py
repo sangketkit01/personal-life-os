@@ -22,6 +22,18 @@ from .models import InfrastructureAsset, SshAuthType
 CONTAINER_ID_RE = re.compile(r'^[a-zA-Z0-9_.-]{1,128}$')
 DOCKER_ACTIONS = ('start', 'stop', 'restart', 'logs')
 
+# Single round-trip telemetry probe: all seven metrics in ONE exec channel.
+PROBE_SECTION_SEP = '===LIFEOS_SECTION==='
+PROBE_BATCH_CMD = (
+    "cat /proc/uptime 2>/dev/null; echo '===LIFEOS_SECTION==='; "
+    "cat /proc/loadavg 2>/dev/null; echo '===LIFEOS_SECTION==='; "
+    "nproc 2>/dev/null; echo '===LIFEOS_SECTION==='; "
+    "free -m 2>/dev/null | awk 'NR==2{printf \"%s %s\", $3,$2}'; echo '===LIFEOS_SECTION==='; "
+    "df -BM / 2>/dev/null | awk 'NR==2{printf \"%s %s %s\", $3,$2,$5}'; echo '===LIFEOS_SECTION==='; "
+    "uname -sr 2>/dev/null; echo '===LIFEOS_SECTION==='; "
+    "docker ps -a --format '{{json .}}' 2>/dev/null"
+)
+
 HEALTH_ONLINE = 'ONLINE'
 HEALTH_OFFLINE = 'OFFLINE'
 HEALTH_WARNING = 'WARNING'
@@ -36,7 +48,11 @@ def _load_private_key_from_memory(key_material: str, passphrase: str = '') -> pa
     Load a paramiko private key from an in-memory string, trying the common
     key families in order. Never writes the key to disk.
     """
-    key_file = io.StringIO(key_material)
+    # Normalize Windows CRLF to LF, strip surrounding blank whitespace and
+    # guarantee a trailing newline - PEM/OpenSSH parsers reject missing final
+    # newlines and stray CR characters.
+    normalized_key = key_material.replace('\r\n', '\n').replace('\r', '\n').strip() + '\n'
+    key_file = io.StringIO(normalized_key)
     passphrase_bytes = passphrase.encode('utf-8') if passphrase else None
     errors = []
     for key_cls in (paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey):
@@ -169,32 +185,55 @@ def probe_server_telemetry(asset: InfrastructureAsset) -> Dict[str, Any]:
     try:
         client = open_ssh_client(asset)
 
-        out, _, _ = _run_command(client, 'cat /proc/uptime')
-        parts = out.split()
+        # One batched exec round-trip instead of seven. If the batch marker is
+        # absent (e.g. a test mocking per-command responses), fall back to the
+        # original individual calls so behavior stays identical.
+        batch_out, _, _ = _run_command(client, PROBE_BATCH_CMD, timeout=15)
+        if PROBE_SECTION_SEP in batch_out:
+            sections = batch_out.split(PROBE_SECTION_SEP)
+
+            def _sec(i):
+                return sections[i] if i < len(sections) else ''
+
+            uptime_out = _sec(0)
+            load_out = _sec(1)
+            nproc_out = _sec(2)
+            free_out = _sec(3)
+            df_out = _sec(4)
+            uname_out = _sec(5)
+            docker_out = _sec(6)
+            docker_ok = bool(docker_out.strip())
+        else:
+            uptime_out, _, _ = _run_command(client, 'cat /proc/uptime')
+            load_out, _, _ = _run_command(client, 'cat /proc/loadavg')
+            nproc_out, _, _ = _run_command(client, 'nproc')
+            free_out, _, _ = _run_command(client, "free -m | awk 'NR==2{printf \"%s %s\", $3,$2}'")
+            df_out, _, _ = _run_command(client, "df -BM / | awk 'NR==2{printf \"%s %s %s\", $3,$2,$5}'")
+            uname_out, _, _ = _run_command(client, 'uname -sr')
+            docker_out, _, docker_status = _run_command(client, "docker ps -a --format '{{json .}}' 2>/dev/null")
+            docker_ok = docker_status == 0
+
+        parts = uptime_out.split()
         if parts:
             telemetry['uptime_seconds'] = float(parts[0])
             telemetry['uptime_human'] = _format_uptime(float(parts[0]))
 
-        out, _, _ = _run_command(client, 'cat /proc/loadavg')
-        if out.split():
-            telemetry['load_avg'] = float(out.split()[0])
+        if load_out.split():
+            telemetry['load_avg'] = float(load_out.split()[0])
 
-        out, _, _ = _run_command(client, 'nproc')
         try:
-            nproc = max(1, int(out.strip()))
+            nproc = max(1, int(nproc_out.strip()))
         except ValueError:
             nproc = 1
 
-        out, _, _ = _run_command(client, "free -m | awk 'NR==2{printf \"%s %s\", $3,$2}'")
-        free_parts = out.split()
+        free_parts = free_out.split()
         if len(free_parts) == 2:
             used_mb, total_mb = float(free_parts[0]), float(free_parts[1])
             telemetry['ram_used_mb'] = used_mb
             telemetry['ram_total_mb'] = total_mb
             telemetry['ram_pct'] = round((used_mb / total_mb) * 100, 1) if total_mb > 0 else None
 
-        out, _, _ = _run_command(client, "df -BM / | awk 'NR==2{printf \"%s %s %s\", $3,$2,$5}'")
-        df_parts = out.split()
+        df_parts = df_out.split()
         if len(df_parts) == 3:
             used_gb = float(df_parts[0].rstrip('M')) / 1024.0
             total_gb = float(df_parts[1].rstrip('M')) / 1024.0
@@ -202,12 +241,10 @@ def probe_server_telemetry(asset: InfrastructureAsset) -> Dict[str, Any]:
             telemetry['disk_total_gb'] = round(total_gb, 2)
             telemetry['disk_pct'] = float(df_parts[2].rstrip('%')) if '%' in df_parts[2] else None
 
-        out, _, _ = _run_command(client, 'uname -sr')
-        telemetry['kernel'] = out.strip()
+        telemetry['kernel'] = uname_out.strip()
 
-        out, _, status_code = _run_command(client, "docker ps -a --format '{{json .}}' 2>/dev/null")
-        if status_code == 0:
-            telemetry['containers'] = _parse_docker_ps(out)
+        if docker_ok:
+            telemetry['containers'] = _parse_docker_ps(docker_out)
 
         # CPU utilization estimate from 1-minute load average vs core count.
         if telemetry['load_avg'] is not None:

@@ -130,6 +130,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 
 type WsStatus = 'connecting' | 'connected' | 'disconnected'
 const wsStatus = ref<WsStatus>('disconnected')
+const lastErrorMessage = ref('')
 const isMaximized = ref(false)
 const showRunbookBar = ref(true)
 
@@ -210,6 +211,7 @@ function connect() {
     ws = null
   }
   wsStatus.value = 'connecting'
+  lastErrorMessage.value = ''
   term?.writeln(`\x1b[38;5;245m${t('term.connectingTo')} ${props.asset.ip_address || props.asset.hostname}...\x1b[0m`)
 
   const socket = new WebSocket(wsUrl())
@@ -217,8 +219,9 @@ function connect() {
 
   socket.onopen = () => {
     if (socket !== ws) return
-    wsStatus.value = 'connected'
-    term?.writeln(`\x1b[38;2;52;211;153m${t('term.connected')}\x1b[0m\r`)
+    // Stay CONNECTING (amber) here: the WebSocket transport is up but the
+    // SSH handshake has not finished. Green CONNECTED only after the
+    // server's 'ready' frame confirms the PTY is alive.
     const dims = term ? { cols: term.cols, rows: term.rows } : { cols: 120, rows: 30 }
     socket.send(JSON.stringify({ type: 'resize', ...dims }))
   }
@@ -227,8 +230,14 @@ function connect() {
     if (socket !== ws) return
     try {
       const payload = JSON.parse(event.data)
-      if (payload.type === 'output' && typeof payload.data === 'string') {
+      if (payload.type === 'ready') {
+        wsStatus.value = 'connected'
+      } else if (payload.type === 'output' && typeof payload.data === 'string') {
         term?.write(payload.data)
+      } else if (payload.type === 'error' && typeof payload.message === 'string') {
+        lastErrorMessage.value = payload.message
+        wsStatus.value = 'disconnected'
+        term?.writeln(`\r\n\x1b[38;2;251;113;133m✗ ${payload.message}\x1b[0m`)
       } else if (payload.type === 'closed') {
         wsStatus.value = 'disconnected'
         term?.writeln(`\r\n\x1b[38;5;245m${t('term.sessionClosed')}\x1b[0m`)
@@ -246,7 +255,7 @@ function connect() {
     wsStatus.value = 'disconnected'
     if (event.code === 4401) term?.writeln(`\r\n\x1b[38;2;251;113;133m${t('term.authFailed')}\x1b[0m`)
     else if (event.code === 4403) term?.writeln(`\r\n\x1b[38;2;251;113;133m${t('term.forbidden')}\x1b[0m`)
-    else if (event.code === 1011) term?.writeln(`\r\n\x1b[38;2;251;113;133m${t('term.sshFailed')}\x1b[0m`)
+    else if (event.code === 1011 && !lastErrorMessage.value) term?.writeln(`\r\n\x1b[38;2;251;113;133m${t('term.sshFailed')}\x1b[0m`)
     else term?.writeln(`\r\n\x1b[38;5;245m${t('term.disconnected')}\x1b[0m`)
   }
 }

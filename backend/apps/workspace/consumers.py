@@ -39,6 +39,7 @@ class SshTerminalConsumer(AsyncWebsocketConsumer):
         self.ssh_client = None
         self.channel = None
         self._reader_task = None
+        self.session_opened = False
 
     # ----- lifecycle -----
 
@@ -57,14 +58,25 @@ class SshTerminalConsumer(AsyncWebsocketConsumer):
         self.user = user
         self.asset = asset
 
+        # Accept BEFORE opening the PTY so the exact SSH failure reason can
+        # reach the browser as an error frame instead of a bare close code.
+        await self.accept()
+
         try:
             self.ssh_client, self.channel = await asyncio.to_thread(self._open_pty)
         except Exception as exc:
             logger.warning('SSH terminal open failed for asset %s: %s', asset_id, exc)
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': str(exc),
+            }))
             await self.close(code=WS_CLOSE_SSH_FAILED)
             return
 
-        await self.accept()
+        self.session_opened = True
+        # Tell the browser the SSH PTY is genuinely alive - only then may the
+        # UI show a green CONNECTED badge (WS transport alone is not enough).
+        await self.send(text_data=json.dumps({'type': 'ready'}))
         await self._log('SSH_SESSION_START', f'Interactive SSH session opened to {asset.name}')
         self._reader_task = asyncio.create_task(self._stream_output())
 
@@ -80,7 +92,7 @@ class SshTerminalConsumer(AsyncWebsocketConsumer):
             self._reader_task = None
         if self.channel is not None or self.ssh_client is not None:
             await asyncio.to_thread(self._close_ssh)
-        if self.user is not None and self.asset is not None:
+        if self.session_opened and self.user is not None and self.asset is not None:
             await self._log('SSH_SESSION_END', f'Interactive SSH session closed for {self.asset.name}')
 
     async def receive(self, text_data=None, bytes_data=None):

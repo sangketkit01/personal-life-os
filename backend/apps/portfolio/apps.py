@@ -9,10 +9,15 @@ class PortfolioConfig(AppConfig):
 
     def ready(self):
         # Avoid running scheduler during migrate, test, or CLI management commands.
-        # 'run_bot' is skipped too: the bot worker schedules the same hourly news
-        # sync via its own job_queue, so running both would double-ingest (P1-BOT-04).
         skip_commands = ['migrate', 'makemigrations', 'test', 'collectstatic', 'shell', 'run_bot']
         if any(cmd in sys.argv for cmd in skip_commands):
+            return
+
+        # The hourly news sync already runs inside the bot worker's job_queue.
+        # The web container only starts its own APScheduler when explicitly
+        # opted in (standalone deployment without the bot), preventing
+        # duplicate hourly ingestion across containers.
+        if os.environ.get('ENABLE_PORTFOLIO_SCHEDULER', '').lower() != 'true':
             return
 
         # Prevent double execution with Django runserver auto-reloader

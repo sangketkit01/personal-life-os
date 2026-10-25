@@ -14,11 +14,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='stockpricesnapshot',
             name='change_amount',
-            field=models.DecimalField(decimal_places=8, default=Decimal('0.0000'), max_digits=24, verbose_name='เปลี่ยนแปลงรายวัน (จำนวนเงิน)'),
+            field=models.DecimalField(decimal_places=8, default=Decimal('0.0000'), max_digits=24, verbose_name='\u0e40\u0e1b\u0e25\u0e35\u0e48\u0e22\u0e19\u0e41\u0e1b\u0e25\u0e07\u0e23\u0e32\u0e22\u0e27\u0e31\u0e19 (\u0e08\u0e33\u0e19\u0e27\u0e19\u0e40\u0e07\u0e34\u0e19)'),
         ),
         migrations.AddField(
             model_name='stockpricesnapshot',
             name='previous_close',
-            field=models.DecimalField(blank=True, decimal_places=8, max_digits=24, null=True, verbose_name='ราคาปิดวันก่อนหน้า'),
+            field=models.DecimalField(blank=True, decimal_places=8, max_digits=24, null=True, verbose_name='\u0e23\u0e32\u0e04\u0e32\u0e1b\u0e34\u0e14\u0e27\u0e31\u0e19\u0e01\u0e48\u0e2d\u0e19\u0e2b\u0e19\u0e49\u0e32'),
         ),
     ]

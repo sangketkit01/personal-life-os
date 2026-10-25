@@ -4,10 +4,19 @@ from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
 from apps.finance.services import get_financial_overview
 from apps.portfolio.services import get_portfolio_overview
-from apps.bot.i18n import bot_msg
+from apps.bot.i18n import bot_msg, currency_symbol
 from apps.bot.markdown_utils import escape_md
 
 User = get_user_model()
+
+
+async def _send_typing(context, chat_id):
+    """Show the typing indicator while data loads (never raises - safe under
+    unit-test mocks that have no real bot behind the context)."""
+    try:
+        await context.bot.send_chat_action(chat_id=chat_id, action='typing')
+    except Exception:
+        pass
 
 
 @sync_to_async
@@ -68,42 +77,22 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = await pair_user_by_token(connect_token, chat_id)
 
         if user:
-            text = (
-                f"🎉 *Account Connected Successfully!*\n\n"
-                f"Hello *{user.username}*, welcome to **Personal Life OS** ⚡\n\n"
-                f"Daily bill reminders will be delivered 1 day in advance at *10:00 AM* directly to this chat.\n\n"
-                f"• Type /status to view this month's financial summary\n"
-                f"• Type /help to view all available commands"
-            )
+            text = bot_msg(user, 'start.connected', username=escape_md(user.username))
             await update.message.reply_text(text, parse_mode='Markdown')
             return
         else:
-            text = (
-                "❌ *Invalid or Expired Token*\n\n"
-                "Please open the Personal Life OS web app and click *[ Connect Telegram Bot ]* to generate a fresh link."
-            )
+            # No user object yet -> catalog defaults to English.
+            text = bot_msg(None, 'start.invalid_token')
             await update.message.reply_text(text, parse_mode='Markdown')
             return
 
     # If no token: check if chat ID is already paired
     user = await get_user_by_chat_id(chat_id)
     if user:
-        text = (
-            f"👋 *Hello {user.username}!*\n\n"
-            f"Your Telegram account is connected to Personal Life OS.\n\n"
-            f"• Type /status to check your financial summary\n"
-            f"• Type /help to see all available commands"
-        )
+        text = bot_msg(user, 'start.already_connected', username=escape_md(user.username))
         await update.message.reply_text(text, parse_mode='Markdown')
     else:
-        text = (
-            "⚠️ *Account Not Connected*\n\n"
-            "This chat is not linked to any Personal Life OS account.\n\n"
-            "👉 *How to connect:*\n"
-            "1. Log in to the Life OS web app\n"
-            "2. Click *[ Connect Telegram ]* in the top right header\n"
-            "3. The bot will open with an automatic pairing token"
-        )
+        text = bot_msg(None, 'start.unpaired')
         await update.message.reply_text(text, parse_mode='Markdown')
 
 
@@ -116,9 +105,10 @@ async def status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await get_user_by_chat_id(chat_id)
 
     if not user:
-        await update.message.reply_text("⚠️ This account is not connected. Please connect from the web app first.")
+        await update.message.reply_text(bot_msg(None, 'common.not_connected'))
         return
 
+    await _send_typing(context, chat_id)
     overview = await get_user_overview_summary(user)
     burn_rate = float(overview.get('confirmed_burn_rate', 0))
     risk_amount = float(overview.get('potential_risk_amount', 0))
@@ -127,19 +117,27 @@ async def status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     month_name = overview.get('target_month', '')
 
     text = (
-        f"📊 *Financial Summary ({month_name})*\n"
-        f"👤 User: *{user.username}*\n\n"
-        f"• 💸 *Monthly Burn Rate:* ฿{burn_rate:,.2f}\n"
-        f"  _(Fixed obligations due this month)_\n\n"
-        f"• 🚨 *Free Trial Risk:* ฿{risk_amount:,.2f} ({trials_count} items)\n"
-        f"  _(Potential charges if not cancelled)_\n\n"
-        f"• ⏰ *Due in next 7 days:* {upcoming_count} obligations\n"
+        f"{bot_msg(user, 'status.title', month=month_name)}\n"
+        f"{bot_msg(user, 'status.user', username=escape_md(user.username))}\n\n"
+        f"{bot_msg(user, 'status.burn_rate', value=f'{burn_rate:,.2f}')}\n"
+        f"{bot_msg(user, 'status.burn_rate_sub')}\n\n"
+        f"{bot_msg(user, 'status.trial_risk', value=f'{risk_amount:,.2f}', count=trials_count)}\n"
+        f"{bot_msg(user, 'status.trial_risk_sub')}\n\n"
+        f"{bot_msg(user, 'status.due_7d', count=upcoming_count)}\n"
     )
 
     if upcoming_count > 0:
-        text += "\n*Upcoming Obligations:*\n"
+        text += f"\n{bot_msg(user, 'status.upcoming_header')}\n"
         for item in overview.get('upcoming_7_days', [])[:5]:
-            text += f"  - {item['title']}: ฿{float(item['amount']):,.2f} (in {item['days_left']} days)\n"
+            when = (
+                bot_msg(user, 'status.due_today')
+                if item.get('days_left', 0) <= 0
+                else bot_msg(user, 'status.due_in_days', n=item['days_left'])
+            )
+            text += (
+                f"  - {escape_md(item['title'])}: "
+                f"{currency_symbol(item.get('currency'))}{float(item['amount']):,.2f} ({when})\n"
+            )
 
     await update.message.reply_text(text, parse_mode='Markdown')
 
@@ -153,9 +151,10 @@ async def portfolio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await get_user_by_chat_id(chat_id)
 
     if not user:
-        await update.message.reply_text("⚠️ This account is not connected. Please connect from the web app first.")
+        await update.message.reply_text(bot_msg(None, 'common.not_connected'))
         return
 
+    await _send_typing(context, chat_id)
     overview = await get_user_portfolio_summary(user)
     market_val = float(overview.get('total_market_value', 0))
     invested = float(overview.get('total_cost_basis', 0))
@@ -169,29 +168,32 @@ async def portfolio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pnl_icon = "🟢" if unrealized >= 0 else "🔴"
 
     text = (
-        f"📈 *Portfolio Overview*\n"
-        f"👤 Account: *{user.username}*\n\n"
-        f"• 💰 *Portfolio Value:* ฿{market_val:,.2f}\n"
-        f"• 📊 *Net Invested Capital:* ฿{invested:,.2f}\n"
-        f"• {pnl_icon} *Unrealized PnL:* {pnl_sign}฿{unrealized:,.2f} ({pnl_sign}{unrealized_pct:.2f}%)\n"
-        f"• 💵 *Realized PnL:* ฿{realized:,.2f}\n"
-        f"• 🎁 *Total Dividends:* ฿{dividends:,.2f}\n"
+        f"{bot_msg(user, 'portfolio.title')}\n"
+        f"{bot_msg(user, 'portfolio.account', username=escape_md(user.username))}\n\n"
+        f"{bot_msg(user, 'portfolio.value', value=f'{market_val:,.2f}')}\n"
+        f"{bot_msg(user, 'portfolio.invested', value=f'{invested:,.2f}')}\n"
+        f"{bot_msg(user, 'portfolio.unrealized', icon=pnl_icon, sign=pnl_sign, value=f'{unrealized:,.2f}', pct=f'{unrealized_pct:.2f}')}\n"
+        f"{bot_msg(user, 'portfolio.realized', value=f'{realized:,.2f}')}\n"
+        f"{bot_msg(user, 'portfolio.dividends', value=f'{dividends:,.2f}')}\n"
     )
 
     active_holdings = [h for h in holdings if h['position']['is_active']]
     if active_holdings:
-        text += f"\n*Holdings ({len(active_holdings)} assets):*\n"
+        text += f"\n{bot_msg(user, 'portfolio.holdings', count=len(active_holdings))}\n"
         for h in active_holdings[:8]:
             pos = h['position']
             item_pnl = float(pos['unrealized_pnl'])
             item_sign = "+" if item_pnl >= 0 else ""
             item_icon = "🟢" if item_pnl >= 0 else "🔴"
-            text += (
-                f"  - *{h['ticker']}*: {float(pos['shares']):,.2f} shares @ ฿{float(pos['current_price']):,.2f} "
-                f"({item_icon} {item_sign}฿{item_pnl:,.2f})\n"
-            )
+            text += bot_msg(
+                user, 'portfolio.holding_line',
+                ticker=escape_md(h['ticker']),
+                shares=f"{float(pos['shares']):,.2f}",
+                price=f"{float(pos['current_price']):,.2f}",
+                icon=item_icon, sign=item_sign, pnl=f"{item_pnl:,.2f}"
+            ) + "\n"
     else:
-        text += "\n_(No active holdings found. You can add holdings via the Portfolio page)_"
+        text += f"\n{bot_msg(user, 'portfolio.empty')}"
 
     await update.message.reply_text(text, parse_mode='Markdown')
 
@@ -222,9 +224,10 @@ async def servers_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = await get_user_by_chat_id(update.effective_chat.id)
     if not user:
-        await update.message.reply_text("⚠️ This account is not connected. Please connect from the web app first.")
+        await update.message.reply_text(bot_msg(None, 'common.not_connected'))
         return
 
+    await _send_typing(context, update.effective_chat.id)
     assets = await get_user_servers(user)
     if not assets:
         await update.message.reply_text(bot_msg(user, 'servers.empty'))
@@ -270,7 +273,7 @@ async def ma_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = await get_user_by_chat_id(update.effective_chat.id)
     if not user:
-        await update.message.reply_text("⚠️ This account is not connected. Please connect from the web app first.")
+        await update.message.reply_text(bot_msg(None, 'common.not_connected'))
         return
 
     projects = await get_user_ma_contracts(user)
@@ -295,31 +298,19 @@ async def ma_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if p.ma_next_billing_date:
             parts.append(bot_msg(user, 'ma.next_billing', date=p.ma_next_billing_date.strftime('%d/%m/%Y')))
         if p.ma_amount and float(p.ma_amount) > 0:
-            parts.append(f"฿{float(p.ma_amount):,.2f}/{p.ma_billing_cycle}")
+            parts.append(f"{currency_symbol(p.ma_currency)}{float(p.ma_amount):,.2f}/{p.ma_billing_cycle}")
         lines.append(f"   {' · '.join(parts)}")
 
     await update.message.reply_text("\n".join(lines), parse_mode='Markdown')
 
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler for /help command."""
+    """Handler for /help command, rendered in the user's preferred language."""
     if not update.message:
         return
 
-    text = (
-        "🤖 *Life OS Assistant — Available Commands:*\n\n"
-        "• /brief — Executive Morning Briefing summary\n"
-        "• /status — Monthly Burn Rate & upcoming bills\n"
-        "• /portfolio — Investment portfolio & PnL overview\n"
-        "• /news [TICKER] — Latest market & asset news (e.g. /news NVDA)\n"
-        "• /servers — Servers & infrastructure live status\n"
-        "• /ma — MA contracts, expiry dates & next billing\n"
-        "• /help — Show help manual\n\n"
-        "⏰ *Automated Dispatches:*\n"
-        "• 08:30 — Morning Executive Briefing (tasks & market overview)\n"
-        "• 10:00 — Bill & document due reminders (1 day advance notice)"
-    )
-    await update.message.reply_text(text, parse_mode='Markdown')
+    user = await get_user_by_chat_id(update.effective_chat.id) if update.effective_chat else None
+    await update.message.reply_text(bot_msg(user, 'help.body'), parse_mode='Markdown')
 
 
 async def brief_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -330,9 +321,10 @@ async def brief_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = await get_user_by_chat_id(chat_id)
     if not user:
-        await update.message.reply_text("⚠️ This account is not connected. Please connect from the web app first.")
+        await update.message.reply_text(bot_msg(None, 'common.not_connected'))
         return
 
+    await _send_typing(context, chat_id)
     from apps.bot.dispatcher import send_morning_briefing
     await send_morning_briefing(context.bot, str(chat_id), user)
 
@@ -345,7 +337,7 @@ async def news_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = await get_user_by_chat_id(chat_id)
     if not user:
-        await update.message.reply_text("⚠️ This account is not connected. Please connect from the web app first.")
+        await update.message.reply_text(bot_msg(None, 'common.not_connected'))
         return
 
     from apps.portfolio.models import StockNewsArticle, StockHolding
@@ -356,6 +348,7 @@ async def news_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if args and len(args) > 0:
         target_ticker = normalize_ticker(args[0].strip())
 
+    await _send_typing(context, chat_id)
     @sync_to_async
     def get_news(ticker=None):
         qs = StockNewsArticle.objects.all()
@@ -368,20 +361,23 @@ async def news_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     articles = await get_news(target_ticker)
     if not articles:
-        msg = f"No news found for {target_ticker}" if target_ticker else "No recent news for your portfolio holdings (you can sync news from the Portfolio page)."
+        msg = (
+            bot_msg(user, 'news.empty_ticker', ticker=target_ticker)
+            if target_ticker else bot_msg(user, 'news.empty_portfolio')
+        )
         await update.message.reply_text(f"📰 {msg}")
         return
 
-    lines = [f"📰 *Latest Asset News:*"]
+    is_th = getattr(user, 'preferred_language', 'en') == 'th'
+    lines = [bot_msg(user, 'news.title')]
     for a in articles:
-        headline = a.title or a.title_th
+        headline = (a.title_th or a.title) if is_th else (a.title or a.title_th)
+        summary_text = (a.summary_th or a.summary) if is_th else (a.summary or a.summary_th)
         sent_icon = "🟢" if a.sentiment == 'BULLISH' else ("🔴" if a.sentiment == 'BEARISH' else "⚪")
-        lines.append(f"\n{sent_icon} *[{a.ticker}]* [{a.source}]\n*{headline}*")
-        if a.summary:
-            lines.append(f"_{a.summary}_")
-        elif a.summary_th:
-            lines.append(f"_{a.summary_th}_")
+        lines.append(f"\n{sent_icon} *[{escape_md(a.ticker)}]* [{escape_md(a.source)}]\n*{escape_md(headline)}*")
+        if summary_text:
+            lines.append(f"_{escape_md(summary_text)}_")
         if a.url:
-            lines.append(f"[🔗 Original Article]({a.url})")
+            lines.append(f"[{bot_msg(user, 'news.read_more')}]({a.url})")
 
     await update.message.reply_text("\n".join(lines), parse_mode='Markdown', disable_web_page_preview=True)

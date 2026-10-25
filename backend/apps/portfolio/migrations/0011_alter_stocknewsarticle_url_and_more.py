@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='stocknewsarticle',
             name='url',
-            field=models.URLField(db_index=True, max_length=1000, verbose_name='ลิงก์ข่าว'),
+            field=models.URLField(db_index=True, max_length=1000, verbose_name='\u0e25\u0e34\u0e07\u0e01\u0e4c\u0e02\u0e48\u0e32\u0e27'),
         ),
         migrations.AlterUniqueTogether(
             name='stocknewsarticle',

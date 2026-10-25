@@ -1,8 +1,10 @@
+import asyncio
 from datetime import date, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from telegram import Bot, InlineKeyboardMarkup, InlineKeyboardButton
 from asgiref.sync import sync_to_async
 from django.db import close_old_connections
+from django.db.models import Q
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from apps.finance.models import FinancialObligation, ObligationStatus, ObligationType, FlowDirection
@@ -11,7 +13,7 @@ from apps.workspace.models import (
     TaskDocument, TaskStatus, CalendarEvent,
     WorkspaceProject, ProjectType, InfrastructureAsset
 )
-from .i18n import bot_msg
+from .i18n import bot_msg, currency_symbol
 from .markdown_utils import escape_md
 
 User = get_user_model()
@@ -41,7 +43,7 @@ def get_due_tomorrow_obligations_for_user(user, target_date: date = None) -> Lis
             user=user,
             status=ObligationStatus.ACTIVE,
             due_date__in=[target_date, tomorrow]
-        ).order_by('due_date')
+        ).select_related('user').order_by('due_date')
     )
 
 
@@ -64,27 +66,28 @@ def get_due_tasks_for_user(user, target_date: date = None) -> List[Any]:
             ],
             deadline__lte=tomorrow_end,
             deadline__gte=now - timedelta(days=1)
-        ).select_related('project').order_by('deadline')
+        ).select_related('project', 'user').order_by('deadline')
     )
 
 
 async def send_alert_for_task(bot: Bot, chat_id: str, task: TaskDocument):
     """Send alert message for upcoming task / document deadline"""
+    user = task.user
     deadline_str = task.deadline.strftime('%d/%m/%Y %H:%M') if task.deadline else ''
     project_str = f"[{escape_md(task.project.name)}] " if task.project else ""
 
     text = (
-        f"📄 *Task & Document Deadline Alert!*\n\n"
-        f"Task: *{project_str}{escape_md(task.title)}*\n"
+        f"{bot_msg(user, 'alert.task.title')}\n\n"
+        f"{bot_msg(user, 'alert.task.task')}: *{project_str}{escape_md(task.title)}*\n"
     )
     if task.doc_number:
-        text += f"• Doc #: `{escape_md(task.doc_number)}`\n"
-    text += f"• Deadline: *{deadline_str}*\n\n_Please ensure timely completion!_"
+        text += f"{bot_msg(user, 'alert.task.doc')}`{escape_md(task.doc_number)}`\n"
+    text += f"{bot_msg(user, 'alert.task.deadline')}: *{deadline_str}*\n\n{bot_msg(user, 'alert.task.footer')}"
 
     keyboard = []
     if task.file_url and task.file_url.startswith('http'):
-        keyboard.append([InlineKeyboardButton("🔗 Open Document / Drive", url=task.file_url)])
-    keyboard.append([InlineKeyboardButton("✅ Mark Completed", callback_data=f"done_task:{task.id}")])
+        keyboard.append([InlineKeyboardButton(bot_msg(user, 'alert.task.open_btn'), url=task.file_url)])
+    keyboard.append([InlineKeyboardButton(bot_msg(user, 'alert.task.done_btn'), callback_data=f"done_task:{task.id}")])
 
     await bot.send_message(
         chat_id=chat_id,
@@ -98,12 +101,14 @@ async def send_alert_for_obligation(bot: Bot, chat_id: str, ob: FinancialObligat
     """Format and send notification message with inline action buttons"""
     strategy = ObligationStrategyFactory.get_strategy(ob.type)
     summary = strategy.get_summary(ob)
+    user = ob.user
     today = timezone.localdate()
     is_today = ob.due_date == today
-    day_label = "Today! 🚨" if is_today else "Tomorrow (1 day notice) ⚠️"
+    day_label = bot_msg(user, 'alert.today') if is_today else bot_msg(user, 'alert.tomorrow')
 
     formatted_due = ob.due_date.strftime('%d/%m/%Y') if ob.due_date else ''
     meta = ob.metadata or {}
+    cur = currency_symbol(ob.currency)
 
     # 1. Installment
     if ob.type == ObligationType.INSTALLMENT:
@@ -111,18 +116,18 @@ async def send_alert_for_obligation(bot: Bot, chat_id: str, ob: FinancialObligat
         total_terms = summary.get('total_terms', 0)
         lender = summary.get('lender', '')
 
+        amount_val = f'{cur}{float(ob.amount):,.2f}'
+        remaining_val = f'{cur}{float(summary.get("remaining_balance", 0)):,.2f}'
         text = (
-            f"🏍️ *Installment Due Alert: {day_label}*\n\n"
-            f"Item: *{escape_md(ob.title)}*\n"
-            f"• Due Amount: *฿{float(ob.amount):,.2f}*\n"
-            f"• Term: *{next_term} / {total_terms}*\n"
-            f"• Remaining Balance: ฿{float(summary.get('remaining_balance', 0)):,.2f}\n"
+            f"{bot_msg(user, 'alert.inst.title', day=day_label)}\n\n"
+            f"{bot_msg(user, 'alert.inst.body', item=escape_md(ob.title), amount=amount_val, term=next_term, total=total_terms, remaining=remaining_val)}"
         )
         if lender:
-            text += f"• Lender / Bank: {escape_md(lender)}\n"
-        text += f"• Due Date: *{formatted_due}*\n\n_Tap the button below to record settlement._"
+            text += bot_msg(user, 'alert.inst.lender_line', lender=escape_md(lender))
+        text += bot_msg(user, 'alert.inst.due_line', due=formatted_due)
+        text += bot_msg(user, 'alert.inst.footer')
 
-        keyboard = [[InlineKeyboardButton("✅ Paid This Term", callback_data=f"pay:{ob.id}")]]
+        keyboard = [[InlineKeyboardButton(bot_msg(user, 'alert.inst.paid_btn'), callback_data=f"pay:{ob.id}")]]
         await bot.send_message(
             chat_id=chat_id,
             text=text,
@@ -138,20 +143,20 @@ async def send_alert_for_obligation(bot: Bot, chat_id: str, ob: FinancialObligat
         cancel_url = summary.get('cancel_url', '')
 
         text = (
-            f"🚨 *Urgent! Free Trial Expiring: {day_label}*\n\n"
-            f"Service: *{escape_md(ob.title)}*\n"
-            f"• Auto-renew Charge: *฿{auto_renew:,.2f}*\n"
+            f"{bot_msg(user, 'alert.trial.title', day=day_label)}\n\n"
+            f"{bot_msg(user, 'alert.trial.body', service=escape_md(ob.title), amount=f'{cur}{auto_renew:,.2f}')}"
         )
         if email:
-            text += f"• Account Email: `{escape_md(email)}`\n"
+            text += bot_msg(user, 'alert.trial.email_line', email=escape_md(email))
         if card:
-            text += f"• Linked Card: {escape_md(card)}\n"
-        text += f"• Expiration Date: *{formatted_due}*\n\n_Cancel now to avoid unwanted charges!_"
+            text += bot_msg(user, 'alert.trial.card_line', card=escape_md(card))
+        text += bot_msg(user, 'alert.trial.due_line', due=formatted_due)
+        text += bot_msg(user, 'alert.trial.footer')
 
         keyboard = []
         if cancel_url and cancel_url.startswith('http'):
-            keyboard.append([InlineKeyboardButton("🔗 Open Cancellation Page", url=cancel_url)])
-        keyboard.append([InlineKeyboardButton("✅ Marked as Cancelled", callback_data=f"cancel_trial:{ob.id}")])
+            keyboard.append([InlineKeyboardButton(bot_msg(user, 'alert.trial.cancel_url_btn'), url=cancel_url)])
+        keyboard.append([InlineKeyboardButton(bot_msg(user, 'alert.trial.cancelled_btn'), callback_data=f"cancel_trial:{ob.id}")])
 
         await bot.send_message(
             chat_id=chat_id,
@@ -166,17 +171,14 @@ async def send_alert_for_obligation(bot: Bot, chat_id: str, ob: FinancialObligat
     ):
         client_label = meta.get('client_name') or ''
         text = (
-            f"{bot_msg(ob.user, 'billing.ma_inflow')}: {day_label}\n\n"
-            f"Item: *{escape_md(ob.title)}*\n"
+            f"{bot_msg(user, 'billing.ma_inflow')}: {day_label}\n\n"
+            f"{bot_msg(user, 'alert.ma.item_line', item=escape_md(ob.title))}"
         )
         if client_label:
-            text += f"• Client: {escape_md(client_label)}\n"
-        text += (
-            f"• Amount: *฿{float(ob.amount):,.2f}*\n"
-            f"• Billing Date: *{formatted_due}*\n\n"
-            f"_Record the incoming MA payment to roll the next cycle._"
-        )
-        keyboard = [[InlineKeyboardButton(bot_msg(ob.user, 'billing.ma_button'), callback_data=f"pay:{ob.id}")]]
+            text += bot_msg(user, 'alert.ma.client_line', client=escape_md(client_label))
+        text += bot_msg(user, 'alert.ma.body', amount=f'{cur}{float(ob.amount):,.2f}', due=formatted_due)
+        text += bot_msg(user, 'alert.ma.footer')
+        keyboard = [[InlineKeyboardButton(bot_msg(user, 'billing.ma_button'), callback_data=f"pay:{ob.id}")]]
         await bot.send_message(
             chat_id=chat_id,
             text=text,
@@ -187,13 +189,11 @@ async def send_alert_for_obligation(bot: Bot, chat_id: str, ob: FinancialObligat
     # 3b. Self-funded infrastructure billing (synced from an infra asset)
     elif ob.type == ObligationType.SUBSCRIPTION and meta.get('source_type') == 'INFRA_ASSET':
         text = (
-            f"🖥 *Server Bill Due: {day_label}*\n\n"
-            f"Item: *{escape_md(ob.title)}*\n"
-            f"• Amount: *฿{float(ob.amount):,.2f}*\n"
-            f"• Billing Date: *{formatted_due}*\n\n"
-            f"_Record the payment to roll the next cycle._"
+            f"{bot_msg(user, 'alert.infra.title', day=day_label)}\n\n"
+            f"{bot_msg(user, 'alert.infra.body', item=escape_md(ob.title), amount=f'{cur}{float(ob.amount):,.2f}', due=formatted_due)}"
+            f"{bot_msg(user, 'alert.infra.footer')}"
         )
-        keyboard = [[InlineKeyboardButton(bot_msg(ob.user, 'billing.infra_button'), callback_data=f"pay:{ob.id}")]]
+        keyboard = [[InlineKeyboardButton(bot_msg(user, 'billing.infra_button'), callback_data=f"pay:{ob.id}")]]
         await bot.send_message(
             chat_id=chat_id,
             text=text,
@@ -207,14 +207,11 @@ async def send_alert_for_obligation(bot: Bot, chat_id: str, ob: FinancialObligat
         total_due = float(statement.get('total_due', ob.amount) or 0)
         month_key = statement.get('statement_month', '')
         text = (
-            f"💳 *BNPL Statement Due: {day_label}*\n\n"
-            f"Account: *{escape_md(ob.title)}*\n"
-            f"• Statement: `{escape_md(str(month_key))}`\n"
-            f"• Total Due: *฿{total_due:,.2f}*\n"
-            f"• Due Date: *{formatted_due}*\n\n"
-            f"_Tap below to settle the outstanding statement._"
+            f"{bot_msg(user, 'alert.bnpl.title', day=day_label)}\n\n"
+            f"{bot_msg(user, 'alert.bnpl.body', account=escape_md(ob.title), statement=escape_md(str(month_key)), amount=f'{cur}{total_due:,.2f}', due=formatted_due)}"
+            f"{bot_msg(user, 'alert.bnpl.footer')}"
         )
-        keyboard = [[InlineKeyboardButton("✅ Paid This Statement", callback_data=f"pay:{ob.id}")]]
+        keyboard = [[InlineKeyboardButton(bot_msg(user, 'alert.bnpl.paid_btn'), callback_data=f"pay:{ob.id}")]]
         await bot.send_message(
             chat_id=chat_id,
             text=text,
@@ -224,14 +221,12 @@ async def send_alert_for_obligation(bot: Bot, chat_id: str, ob: FinancialObligat
 
     # 4. Regular Subscriptions
     elif ob.type == ObligationType.SUBSCRIPTION:
-        cycle = "Yearly" if summary.get('is_yearly') else "Monthly"
+        cycle = bot_msg(user, 'alert.sub.yearly') if summary.get('is_yearly') else bot_msg(user, 'alert.sub.monthly')
         text = (
-            f"🔄 *Subscription Renewal Alert: {day_label}*\n\n"
-            f"Service: *{escape_md(ob.title)}* ({cycle})\n"
-            f"• Amount: *฿{float(ob.amount):,.2f}*\n"
-            f"• Billing Date: *{formatted_due}*\n"
+            f"{bot_msg(user, 'alert.sub.title', day=day_label)}\n\n"
+            f"{bot_msg(user, 'alert.sub.body', service=escape_md(ob.title), cycle=cycle, amount=f'{cur}{float(ob.amount):,.2f}', due=formatted_due)}"
         )
-        keyboard = [[InlineKeyboardButton("💳 Record Payment", callback_data=f"pay:{ob.id}")]]
+        keyboard = [[InlineKeyboardButton(bot_msg(user, 'alert.sub.pay_btn'), callback_data=f"pay:{ob.id}")]]
         await bot.send_message(
             chat_id=chat_id,
             text=text,
@@ -244,13 +239,10 @@ async def send_alert_for_obligation(bot: Bot, chat_id: str, ob: FinancialObligat
         remaining = float(summary.get('remaining_balance', ob.amount))
         person = summary.get('counterparty', '')
         text = (
-            f"🤝 *Debt Settlement Due: {day_label}*\n\n"
-            f"Item: *{escape_md(ob.title)}*\n"
-            f"• Counterparty: *{escape_md(person)}*\n"
-            f"• Remaining Balance: *฿{remaining:,.2f}*\n"
-            f"• Due Date: *{formatted_due}*\n"
+            f"{bot_msg(user, 'alert.debt.title', day=day_label)}\n\n"
+            f"{bot_msg(user, 'alert.debt.body', item=escape_md(ob.title), counterparty=escape_md(person), remaining=f'{cur}{remaining:,.2f}', due=formatted_due)}"
         )
-        keyboard = [[InlineKeyboardButton("🤝 Record Payment / Settle", callback_data=f"pay:{ob.id}")]]
+        keyboard = [[InlineKeyboardButton(bot_msg(user, 'alert.debt.pay_btn'), callback_data=f"pay:{ob.id}")]]
         await bot.send_message(
             chat_id=chat_id,
             text=text,
@@ -271,9 +263,10 @@ def get_expiring_items_for_user(user):
 
     ma_projects = list(WorkspaceProject.objects.filter(
         user=user,
-        project_type=ProjectType.MA_CONTRACT,
         ma_end_date__isnull=False,
         ma_end_date__in=notice_dates
+    ).filter(
+        Q(project_type=ProjectType.MA_CONTRACT) | Q(ma_amount__gt=0)
     ))
     expiring_assets = list(InfrastructureAsset.objects.filter(
         user=user,
@@ -299,7 +292,7 @@ async def send_ma_expiry_alert(bot: Bot, chat_id: str, user, project: WorkspaceP
         f"• End Date: *{project.ma_end_date.strftime('%d/%m/%Y')}* ({label})\n"
     )
     if project.ma_amount and float(project.ma_amount) > 0:
-        text += f"• MA Fee: ฿{float(project.ma_amount):,.2f} / {escape_md(project.ma_billing_cycle)}\n"
+        text += f"• MA Fee: {currency_symbol(project.ma_currency)}{float(project.ma_amount):,.2f} / {escape_md(project.ma_billing_cycle)}\n"
     sla = project.sla_details or {}
     if sla.get('uptime_target'):
         text += f"• SLA Uptime: {escape_md(sla['uptime_target'])}\n"
@@ -351,19 +344,24 @@ def evaluate_watchdog_breaches(asset: InfrastructureAsset, telemetry: Dict[str, 
 
 
 @sync_to_async
-def scan_watchdog_assets() -> List[Dict[str, Any]]:
-    """
-    Probe every watchdog-enabled asset once and decide whether an alert
-    should fire (cooldown-aware, recovery bypasses the cooldown).
-    """
-    from apps.workspace.ssh_service import probe_server_telemetry
-
-    due_alerts: List[Dict[str, Any]] = []
-    assets = list(InfrastructureAsset.objects.filter(
+def _get_watchdog_assets() -> List[InfrastructureAsset]:
+    """Load every watchdog-enabled asset once (with its user prefetched)."""
+    return list(InfrastructureAsset.objects.filter(
         watchdog_enabled=True
     ).select_related('user'))
 
-    for asset in assets:
+
+@sync_to_async(thread_sensitive=False)
+def _probe_one_watchdog_asset(asset) -> Optional[Dict[str, Any]]:
+    """
+    Probe a single watchdog asset and decide whether an alert should fire
+    (cooldown-aware, recovery bypasses the cooldown). Runs on its own worker
+    thread so several servers can be probed concurrently.
+    """
+    from apps.workspace.ssh_service import probe_server_telemetry
+
+    close_old_connections()
+    try:
         previous_status = asset.health_status
         try:
             telemetry = probe_server_telemetry(asset)
@@ -384,7 +382,7 @@ def scan_watchdog_assets() -> List[Dict[str, Any]]:
         if (breaches or recovered) and not within_cooldown:
             asset.last_alerted_at = now
             asset.save(update_fields=['last_alerted_at', 'updated_at'])
-            due_alerts.append({
+            return {
                 'asset_id': str(asset.id),
                 'chat_id': asset.user.telegram_chat_id,
                 'user_id': asset.user_id,
@@ -394,9 +392,23 @@ def scan_watchdog_assets() -> List[Dict[str, Any]]:
                 'recovered': recovered,
                 'health': asset.health_status,
                 'telemetry': telemetry,
-            })
+            }
+        return None
+    finally:
+        close_old_connections()
 
-    return due_alerts
+
+async def scan_watchdog_assets() -> List[Dict[str, Any]]:
+    """Probe every watchdog-enabled asset, up to 5 servers concurrently."""
+    sem = asyncio.Semaphore(5)
+
+    async def _bounded_probe(asset):
+        async with sem:
+            return await _probe_one_watchdog_asset(asset)
+
+    assets = await _get_watchdog_assets()
+    results = await asyncio.gather(*(_bounded_probe(a) for a in assets))
+    return [item for item in results if item is not None]
 
 
 def _breach_line(user, breach: Dict[str, Any]) -> str:
@@ -559,11 +571,35 @@ def get_morning_briefing_data(user):
         ticker__in=held_tickers
     ).order_by('-published_at').values('ticker', 'title_th', 'title', 'sentiment')[:2])
 
+    # 5. Infrastructure fleet & MA/domain expiry snapshot (next 7 days)
+    total_servers = InfrastructureAsset.objects.filter(user=user).count()
+    online_servers = InfrastructureAsset.objects.filter(
+        user=user, health_status='ONLINE'
+    ).count()
+    unhealthy_servers = list(InfrastructureAsset.objects.filter(
+        user=user, health_status__in=['WARNING', 'OFFLINE']
+    ).values('name', 'health_status')[:5])
+    window_end = today + timedelta(days=7)
+    expiring_soon_count = (
+        WorkspaceProject.objects.filter(
+            user=user, ma_end_date__range=[today, window_end]
+        ).filter(Q(project_type=ProjectType.MA_CONTRACT) | Q(ma_amount__gt=0)).count()
+        + InfrastructureAsset.objects.filter(
+            user=user, expiry_date__range=[today, window_end]
+        ).count()
+    )
+
     return {
         'today': today.strftime('%d/%m/%Y'),
         'tasks': today_tasks,
         'bills': today_bills,
         'events': today_events,
+        'infra': {
+            'total': total_servers,
+            'online': online_servers,
+            'unhealthy': unhealthy_servers,
+            'expiring_soon_count': expiring_soon_count
+        },
         'portfolio_val': float(portfolio.get('total_market_value', 0)),
         'unrealized_pnl': float(portfolio.get('total_unrealized_pnl', 0)),
         'unrealized_pct': float(portfolio.get('total_unrealized_pnl_pct', 0)),
@@ -576,33 +612,37 @@ async def send_morning_briefing(bot: Bot, chat_id: str, user):
     data = await get_morning_briefing_data(user)
 
     pnl_sign = "+" if data['unrealized_pnl'] >= 0 else ""
-    pnl_icon = "🟢" if data['unrealized_pnl'] >= 0 else "🔴"
+    pnl_icon = "\U0001F7E2" if data['unrealized_pnl'] >= 0 else "\U0001F534"
 
     lines = [
-        f"☀️ *Executive Morning Briefing* ({data['today']})",
-        f"Good morning *{escape_md(user.username)}*, here is your morning snapshot:\n",
-        f"📈 *Portfolio Snapshot*",
-        f"• Value: *฿{data['portfolio_val']:,.2f}*",
-        f"• Unrealized PnL: {pnl_icon} *{pnl_sign}฿{data['unrealized_pnl']:,.2f}* ({pnl_sign}{data['unrealized_pct']:.2f}%)\n"
+        bot_msg(user, 'brief.title', today=data['today']),
+        bot_msg(user, 'brief.greeting', username=escape_md(user.username)),
+        "",
+        bot_msg(user, 'brief.portfolio'),
+        bot_msg(user, 'brief.value', value=f"{data['portfolio_val']:,.2f}"),
+        bot_msg(user, 'brief.pnl', icon=pnl_icon, sign=pnl_sign, value=f"{data['unrealized_pnl']:,.2f}", pct=f"{data['unrealized_pct']:.2f}"),
+        ""
     ]
 
     # Bills today
     if data['bills']:
-        lines.append("💸 *Obligations Due Today:*")
+        lines.append(bot_msg(user, 'brief.bills_today'))
         for b in data['bills']:
-            lines.append(f"  - {escape_md(b['title'])}: ฿{float(b['amount']):,.2f}")
+            lines.append(f"  - {escape_md(b['title'])}: {currency_symbol(b.get('currency'))}{float(b['amount']):,.2f}")
         lines.append("")
     else:
-        lines.append("💸 *Bills Today:* No bills due today\n")
+        lines.append(bot_msg(user, 'brief.bills_none'))
+        lines.append("")
 
     # Tasks today
     if data['tasks']:
-        lines.append("📄 *Tasks / Documents Due Today:*")
+        lines.append(bot_msg(user, 'brief.tasks_today'))
         for t in data['tasks']:
             lines.append(f"  - {escape_md(t['title'])} [{t['priority']}]")
         lines.append("")
     else:
-        lines.append("📄 *Tasks Today:* No urgent deadlines\n")
+        lines.append(bot_msg(user, 'brief.tasks_none'))
+        lines.append("")
 
     # Calendar events today
     if data['events']:
@@ -612,15 +652,30 @@ async def send_morning_briefing(bot: Bot, chat_id: str, user):
             lines.append(f"  - {time_str} {escape_md(ev['title'])}")
         lines.append("")
     else:
-        lines.append(bot_msg(user, 'brief.no_events') + "\n")
+        lines.append(bot_msg(user, 'brief.no_events'))
+        lines.append("")
+
+    # Infrastructure & MA snapshot
+    infra = data.get('infra') or {}
+    if infra.get('total', 0) > 0 or infra.get('expiring_soon_count', 0) > 0:
+        lines.append(bot_msg(user, 'brief.infra'))
+        if infra.get('total', 0) > 0:
+            lines.append(bot_msg(user, 'brief.infra_servers', online=infra.get('online', 0), total=infra.get('total', 0)))
+        for s in infra.get('unhealthy', []):
+            icon = "\U0001F7E1" if s.get('health_status') == 'WARNING' else "\U0001F534"
+            lines.append(f"  {icon} {escape_md(s.get('name', ''))} [{s.get('health_status')}]")
+        if infra.get('expiring_soon_count', 0) > 0:
+            lines.append(bot_msg(user, 'brief.infra_expiring', n=infra.get('expiring_soon_count', 0)))
+        lines.append("")
 
     # Market news
     if data['news']:
-        lines.append("📰 *Portfolio Asset News:*")
+        lines.append(bot_msg(user, 'brief.news'))
+        is_th = getattr(user, 'preferred_language', 'en') == 'th'
         for n in data['news']:
-            headline = n['title'] or n['title_th']
-            sent_icon = "🟢" if n['sentiment'] == 'BULLISH' else ("🔴" if n['sentiment'] == 'BEARISH' else "⚪")
-            lines.append(f"  {sent_icon} *[{n['ticker']}]* {escape_md(headline)}")
+            headline = (n['title_th'] or n['title']) if is_th else (n['title'] or n['title_th'])
+            sent_icon = "\U0001F7E2" if n['sentiment'] == 'BULLISH' else ("\U0001F534" if n['sentiment'] == 'BEARISH' else "\u26aa")
+            lines.append(f"  {sent_icon} *[{escape_md(n['ticker'])}]* {escape_md(headline)}")
 
     text = "\n".join(lines)
     await bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')

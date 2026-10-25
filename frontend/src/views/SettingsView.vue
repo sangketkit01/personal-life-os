@@ -187,7 +187,7 @@
           class="text-[10px] font-mono px-2 py-0.5 rounded border uppercase"
           :class="[
             storageStore.isConnected
-              ? 'bg-zinc-900 text-zinc-100 border-zinc-700 font-semibold'
+              ? 'bg-zinc-900 text-emerald-400 border-zinc-800'
               : 'bg-zinc-900 text-zinc-500 border-zinc-800'
           ]"
         >

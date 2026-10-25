@@ -2,9 +2,9 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
-from apps.finance.models import FinancialObligation, ObligationType, PaymentHistory
+from apps.finance.models import FinancialObligation, ObligationType, ObligationStatus, PaymentHistory
 from apps.finance.strategies import ObligationStrategyFactory
-from apps.bot.i18n import bot_msg
+from apps.bot.i18n import bot_msg, currency_symbol
 from apps.bot.markdown_utils import escape_md
 
 User = get_user_model()
@@ -49,13 +49,31 @@ def process_pay_callback(obligation_id: str, chat_id: int):
             )
             obligation.refresh_from_db()
 
+            next_due = obligation.due_date.strftime('%d/%m/%Y') if obligation.due_date else None
+            if obligation.type == 'INSTALLMENT':
+                remaining_disp = f"{currency_symbol(obligation.currency)}{float(summary.get('remaining_balance', 0)):,.2f}"
+                new_text = bot_msg(
+                    user, 'cb.pay.inst_recorded',
+                    title=escape_md(obligation.title),
+                    term=summary.get('current_term'),
+                    total=summary.get('total_terms'),
+                    remaining=remaining_disp
+                )
+                if obligation.status == 'COMPLETED':
+                    new_text += bot_msg(user, 'cb.pay.completed')
+                elif next_due:
+                    new_text += bot_msg(user, 'cb.pay.next_due', date=next_due)
+            else:
+                new_text = bot_msg(user, 'cb.pay.recorded', title=escape_md(obligation.title))
+
             return {
                 'success': True,
                 'title': obligation.title,
                 'type': obligation.type,
                 'status': obligation.status,
                 'summary': summary,
-                'next_due': obligation.due_date.strftime('%d/%m/%Y') if obligation.due_date else None
+                'next_due': next_due,
+                'new_text': new_text
             }
     except FinancialObligation.DoesNotExist:
         return {'success': False, 'message': 'Obligation not found or access denied.'}
@@ -63,26 +81,42 @@ def process_pay_callback(obligation_id: str, chat_id: int):
 
 @sync_to_async
 def process_cancel_trial_callback(obligation_id: str, chat_id: int):
-    """Process [Cancel Trial] button click from Telegram"""
+    """Process [Cancel Trial] button click from Telegram (atomic + idempotent)."""
+    from django.db import transaction
+
     try:
         user = User.objects.get(telegram_chat_id=str(chat_id), is_active=True)
     except User.DoesNotExist:
         return {'success': False, 'message': 'User account not found.'}
 
     try:
-        obligation = FinancialObligation.objects.get(id=obligation_id, user=user)
+        with transaction.atomic():
+            obligation = FinancialObligation.objects.select_for_update().get(
+                id=obligation_id, user=user
+            )
+
+            # Tapping the button on an already-cancelled trial must succeed
+            # without running the cancellation logic a second time.
+            if obligation.status == ObligationStatus.CANCELLED:
+                return {
+                    'success': True,
+                    'title': obligation.title,
+                    'already_cancelled': True,
+                    'new_text': bot_msg(user, 'cb.cancel.recorded', title=escape_md(obligation.title))
+                }
+
+            if obligation.type != ObligationType.FREE_TRIAL:
+                return {'success': False, 'message': 'This item is not a Free Trial.'}
+
+            strategy = ObligationStrategyFactory.get_strategy(obligation.type)
+            strategy.cancel(obligation)
     except FinancialObligation.DoesNotExist:
         return {'success': False, 'message': 'Free Trial not found.'}
 
-    if obligation.type != ObligationType.FREE_TRIAL:
-        return {'success': False, 'message': 'This item is not a Free Trial.'}
-
-    strategy = ObligationStrategyFactory.get_strategy(obligation.type)
-    strategy.cancel(obligation)
-
     return {
         'success': True,
-        'title': obligation.title
+        'title': obligation.title,
+        'new_text': bot_msg(user, 'cb.cancel.recorded', title=escape_md(obligation.title))
     }
 
 
@@ -103,7 +137,12 @@ def process_done_task_callback(task_id: str, chat_id: int):
         return {'success': False, 'message': 'Task document not found.'}
 
     if task.status == TaskStatus.DONE:
-        return {'success': True, 'title': task.title, 'already_done': True}
+        return {
+            'success': True,
+            'title': task.title,
+            'already_done': True,
+            'new_text': bot_msg(user, 'cb.task.done', title=escape_md(task.title), extra=bot_msg(user, 'cb.task.already_done'))
+        }
 
     task.status = TaskStatus.DONE
     task.completed_at = timezone.now()
@@ -111,7 +150,8 @@ def process_done_task_callback(task_id: str, chat_id: int):
 
     return {
         'success': True,
-        'title': task.title
+        'title': task.title,
+        'new_text': bot_msg(user, 'cb.task.done', title=escape_md(task.title), extra=bot_msg(user, 'cb.task.celebrate'))
     }
 
 
@@ -157,7 +197,11 @@ def process_probe_vps_callback(asset_id: str, chat_id: int):
         running = sum(1 for c in containers if str(c.get('State', '')).lower() == 'running')
         lines.append(f"• Containers: {running}/{len(containers)} running")
 
-    return {'success': True, 'text': "\n".join(lines)}
+    return {
+        'success': True,
+        'text': "\n".join(lines),
+        'button_label': bot_msg(user, 'watchdog.probe_again')
+    }
 
 
 async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -166,9 +210,18 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
     if not query or not query.data or not update.effective_chat:
         return
 
-    await query.answer()
     chat_id = update.effective_chat.id
     data = query.data
+
+    # The VPS probe runs a full SSH round-trip - answer immediately so the
+    # user feels the tap registered while it works (safe under test mocks).
+    if data.startswith('probe_vps:'):
+        try:
+            await query.answer()
+        except Exception:
+            pass
+    else:
+        await query.answer()
 
     # 1. Action Pay / Settle Term
     if data.startswith('pay:'):
@@ -176,21 +229,7 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         result = await process_pay_callback(ob_id, chat_id)
 
         if result['success']:
-            if result['type'] == 'INSTALLMENT':
-                new_text = (
-                    f"✅ *Installment Payment Recorded!*\n"
-                    f"Item: *{escape_md(result['title'])}*\n"
-                    f"• Term: *{result['summary']['current_term']}/{result['summary']['total_terms']}*\n"
-                    f"• Remaining Balance: ฿{result['summary']['remaining_balance']:,.2f}\n"
-                )
-                if result['status'] == 'COMPLETED':
-                    new_text += "\n🎉 *Congratulations! All installments have been completed.*"
-                elif result['next_due']:
-                    new_text += f"• Next Due Date: *{result['next_due']}*"
-            else:
-                new_text = f"✅ *Payment Recorded Successfully!*\nItem: *{escape_md(result['title'])}*"
-
-            await query.edit_message_text(new_text, parse_mode='Markdown')
+            await query.edit_message_text(result['new_text'], parse_mode='Markdown')
         else:
             await query.edit_message_text(f"❌ {result['message']}")
 
@@ -200,12 +239,7 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         result = await process_cancel_trial_callback(ob_id, chat_id)
 
         if result['success']:
-            new_text = (
-                f"✅ *Cancellation Recorded!*\n"
-                f"Item: *{escape_md(result['title'])}*\n"
-                f"Status updated to: `CANCELLED` (Will not be charged)"
-            )
-            await query.edit_message_text(new_text, parse_mode='Markdown')
+            await query.edit_message_text(result['new_text'], parse_mode='Markdown')
         else:
             await query.edit_message_text(f"❌ {result['message']}")
 
@@ -215,13 +249,7 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         result = await process_done_task_callback(task_id, chat_id)
 
         if result['success']:
-            done_label = " (already completed)" if result.get('already_done') else " 🎉"
-            new_text = (
-                f"✅ *Task Marked Completed!*\n"
-                f"Task: *{escape_md(result['title'])}*\n"
-                f"Status: `DONE`{done_label}"
-            )
-            await query.edit_message_text(new_text, parse_mode='Markdown')
+            await query.edit_message_text(result['new_text'], parse_mode='Markdown')
         else:
             await query.edit_message_text(f"❌ {result['message']}")
 
@@ -231,6 +259,15 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         result = await process_probe_vps_callback(asset_id, chat_id)
 
         if result['success']:
-            await query.edit_message_text(result['text'], parse_mode='Markdown')
+            await query.edit_message_text(
+                result['text'],
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        result['button_label'],
+                        callback_data=f"probe_vps:{asset_id}"
+                    )
+                ]])
+            )
         else:
             await query.edit_message_text(f"❌ {result['message']}")

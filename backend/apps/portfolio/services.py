@@ -65,6 +65,115 @@ def normalize_ticker(raw_ticker: str, currency: Optional[str] = None) -> str:
     return ticker
 
 
+def _fetch_single_yf_quote(t: str) -> Optional[Dict[str, Any]]:
+    """
+    Network fetch + parse for ONE ticker. Pure HTTP work - never touches the
+    Django ORM, so it is safe to run inside ThreadPoolExecutor workers.
+    Returns the parsed quote dict, or None when no usable price was found.
+    """
+    import yfinance as yf
+
+    try:
+        stock = yf.Ticker(t)
+        fast_info = getattr(stock, 'fast_info', None)
+        price_val = None
+        regular_price_val = None
+        change_pct_val = Decimal('0.0000')
+        change_amount_val = Decimal('0.0000')
+        previous_close_val = None
+        session_val = 'REGULAR'
+
+        # Fetch stock.info for US Pre-market and Post-market session quotes
+        info = {}
+        try:
+            info = stock.info or {}
+        except Exception:
+            pass
+
+        # 1. Previous close
+        raw_prev_close = info.get('regularMarketPreviousClose') or (fast_info.get('previousClose') if fast_info else None)
+        if raw_prev_close is not None:
+            previous_close_val = Decimal(str(round(raw_prev_close, 8)))
+
+        # 2. Regular market price & change (primary regular session quote)
+        raw_reg_price = info.get('regularMarketPrice') or (fast_info.get('regularMarketPrice') if fast_info else None) or (fast_info.get('lastPrice') if fast_info else None)
+        if raw_reg_price is not None:
+            regular_price_val = Decimal(str(round(raw_reg_price, 8)))
+            price_val = regular_price_val
+
+        raw_reg_change = info.get('regularMarketChange') or (fast_info.get('regularMarketChange') if fast_info else None)
+        if raw_reg_change is not None:
+            change_amount_val = Decimal(str(round(raw_reg_change, 8)))
+        elif price_val and previous_close_val:
+            change_amount_val = price_val - previous_close_val
+
+        raw_reg_change_pct = info.get('regularMarketChangePercent') or (fast_info.get('regularMarketChangePercent') if fast_info else None)
+        if raw_reg_change_pct is not None:
+            change_pct_val = Decimal(str(round(raw_reg_change_pct, 4)))
+        elif previous_close_val and previous_close_val > Decimal('0') and price_val:
+            change_pct_val = Decimal(str(round(((price_val - previous_close_val) / previous_close_val) * 100, 4)))
+
+        # 3. Extended hours quotes for Pre-Market and Post-Market sessions
+        market_state = str(info.get('marketState', '')).upper()
+        raw_post_price = info.get('postMarketPrice')
+        raw_pre_price = info.get('preMarketPrice')
+
+        extended_price_val = None
+        extended_change_val = None
+        extended_change_pct_val = None
+        session_val = 'REGULAR'
+
+        # If in PRE-market session with available preMarketPrice
+        if (market_state == 'PRE' or 'PRE' in market_state) and raw_pre_price is not None:
+            session_val = 'PRE'
+            extended_price_val = Decimal(str(round(raw_pre_price, 8)))
+            raw_pre_change_pct = info.get('preMarketChangePercent')
+            if raw_pre_change_pct is not None:
+                extended_change_pct_val = Decimal(str(round(raw_pre_change_pct, 4)))
+            elif previous_close_val and previous_close_val > Decimal('0'):
+                extended_change_pct_val = Decimal(str(round(((extended_price_val - previous_close_val) / previous_close_val) * 100, 4)))
+
+            raw_pre_change = info.get('preMarketChange')
+            if raw_pre_change is not None:
+                extended_change_val = Decimal(str(round(raw_pre_change, 8)))
+            elif previous_close_val:
+                extended_change_val = extended_price_val - previous_close_val
+
+        # If in POST-market or closed session with available postMarketPrice
+        elif raw_post_price is not None and (market_state in ('POST', 'POSTPOST', 'CLOSED') or not market_state):
+            session_val = 'POST'
+            extended_price_val = Decimal(str(round(raw_post_price, 8)))
+            raw_post_change_pct = info.get('postMarketChangePercent')
+            if raw_post_change_pct is not None:
+                extended_change_pct_val = Decimal(str(round(raw_post_change_pct, 4)))
+            elif previous_close_val and previous_close_val > Decimal('0'):
+                extended_change_pct_val = Decimal(str(round(((extended_price_val - previous_close_val) / previous_close_val) * 100, 4)))
+
+            raw_post_change = info.get('postMarketChange')
+            if raw_post_change is not None:
+                extended_change_val = Decimal(str(round(raw_post_change, 8)))
+            elif previous_close_val:
+                extended_change_val = extended_price_val - previous_close_val
+
+        if price_val is not None and price_val > Decimal('0'):
+            return {
+                'ticker': t,
+                'price': price_val,
+                'regular_price': price_val,
+                'extended_price': extended_price_val,
+                'extended_change': extended_change_val,
+                'extended_change_pct': extended_change_pct_val,
+                'market_session': session_val,
+                'change_amount': change_amount_val,
+                'change_pct': change_pct_val,
+                'previous_close': previous_close_val,
+                'currency': 'THB' if t.endswith('.BK') else 'USD'
+            }
+        return None
+    except Exception:
+        return None
+
+
 def fetch_and_cache_market_prices(
     tickers: List[str],
     force: bool = False,
@@ -108,115 +217,23 @@ def fetch_and_cache_market_prices(
         else:
             missing_or_stale.append(t)
 
-    # 2. Fetch live quotes for missing or stale tickers
+    # 2. Fetch live quotes for missing or stale tickers (network work in
+    #    parallel; ORM writes happen afterwards on the main thread only).
     if missing_or_stale:
         try:
-            import yfinance as yf
-            for t in missing_or_stale:
-                try:
-                    stock = yf.Ticker(t)
-                    fast_info = getattr(stock, 'fast_info', None)
-                    price_val = None
-                    regular_price_val = None
-                    change_pct_val = Decimal('0.0000')
-                    change_amount_val = Decimal('0.0000')
-                    previous_close_val = None
-                    session_val = 'REGULAR'
+            if len(missing_or_stale) == 1:
+                quotes = [_fetch_single_yf_quote(missing_or_stale[0])]
+            else:
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=min(5, len(missing_or_stale))) as executor:
+                    quotes = list(executor.map(_fetch_single_yf_quote, missing_or_stale))
 
-                    # Fetch stock.info for US Pre-market and Post-market session quotes
-                    info = {}
-                    try:
-                        info = stock.info or {}
-                    except Exception:
-                        pass
-
-                    # 1. Previous close
-                    raw_prev_close = info.get('regularMarketPreviousClose') or (fast_info.get('previousClose') if fast_info else None)
-                    if raw_prev_close is not None:
-                        previous_close_val = Decimal(str(round(raw_prev_close, 8)))
-
-                    # 2. Regular market price & change (primary regular session quote)
-                    raw_reg_price = info.get('regularMarketPrice') or (fast_info.get('regularMarketPrice') if fast_info else None) or (fast_info.get('lastPrice') if fast_info else None)
-                    if raw_reg_price is not None:
-                        regular_price_val = Decimal(str(round(raw_reg_price, 8)))
-                        price_val = regular_price_val
-
-                    raw_reg_change = info.get('regularMarketChange') or (fast_info.get('regularMarketChange') if fast_info else None)
-                    if raw_reg_change is not None:
-                        change_amount_val = Decimal(str(round(raw_reg_change, 8)))
-                    elif price_val and previous_close_val:
-                        change_amount_val = price_val - previous_close_val
-
-                    raw_reg_change_pct = info.get('regularMarketChangePercent') or (fast_info.get('regularMarketChangePercent') if fast_info else None)
-                    if raw_reg_change_pct is not None:
-                        change_pct_val = Decimal(str(round(raw_reg_change_pct, 4)))
-                    elif previous_close_val and previous_close_val > Decimal('0') and price_val:
-                        change_pct_val = Decimal(str(round(((price_val - previous_close_val) / previous_close_val) * 100, 4)))
-
-                    # 3. Extended hours quotes for Pre-Market and Post-Market sessions
-                    market_state = str(info.get('marketState', '')).upper()
-                    raw_post_price = info.get('postMarketPrice')
-                    raw_pre_price = info.get('preMarketPrice')
-
-                    extended_price_val = None
-                    extended_change_val = None
-                    extended_change_pct_val = None
-                    session_val = 'REGULAR'
-
-                    # If in PRE-market session with available preMarketPrice
-                    if (market_state == 'PRE' or 'PRE' in market_state) and raw_pre_price is not None:
-                        session_val = 'PRE'
-                        extended_price_val = Decimal(str(round(raw_pre_price, 8)))
-                        raw_pre_change_pct = info.get('preMarketChangePercent')
-                        if raw_pre_change_pct is not None:
-                            extended_change_pct_val = Decimal(str(round(raw_pre_change_pct, 4)))
-                        elif previous_close_val and previous_close_val > Decimal('0'):
-                            extended_change_pct_val = Decimal(str(round(((extended_price_val - previous_close_val) / previous_close_val) * 100, 4)))
-
-                        raw_pre_change = info.get('preMarketChange')
-                        if raw_pre_change is not None:
-                            extended_change_val = Decimal(str(round(raw_pre_change, 8)))
-                        elif previous_close_val:
-                            extended_change_val = extended_price_val - previous_close_val
-
-                    # If in POST-market or closed session with available postMarketPrice
-                    elif raw_post_price is not None and (market_state in ('POST', 'POSTPOST', 'CLOSED') or not market_state):
-                        session_val = 'POST'
-                        extended_price_val = Decimal(str(round(raw_post_price, 8)))
-                        raw_post_change_pct = info.get('postMarketChangePercent')
-                        if raw_post_change_pct is not None:
-                            extended_change_pct_val = Decimal(str(round(raw_post_change_pct, 4)))
-                        elif previous_close_val and previous_close_val > Decimal('0'):
-                            extended_change_pct_val = Decimal(str(round(((extended_price_val - previous_close_val) / previous_close_val) * 100, 4)))
-
-                        raw_post_change = info.get('postMarketChange')
-                        if raw_post_change is not None:
-                            extended_change_val = Decimal(str(round(raw_post_change, 8)))
-                        elif previous_close_val:
-                            extended_change_val = extended_price_val - previous_close_val
-
-                    if price_val is not None and price_val > Decimal('0'):
-                        StockPriceSnapshot.objects.update_or_create(
-                            ticker=t,
-                            defaults={
-                                'price': price_val,
-                                'regular_price': price_val,
-                                'extended_price': extended_price_val,
-                                'extended_change': extended_change_val,
-                                'extended_change_pct': extended_change_pct_val,
-                                'market_session': session_val,
-                                'change_amount': change_amount_val,
-                                'change_pct': change_pct_val,
-                                'previous_close': previous_close_val,
-                                'currency': 'THB' if t.endswith('.BK') else 'USD'
-                            }
-                        )
-                        prices[t] = price_val
-                    elif t in cached_snapshots:
-                        prices[t] = cached_snapshots[t].price
-                except Exception:
-                    if t in cached_snapshots:
-                        prices[t] = cached_snapshots[t].price
+            for quote in quotes:
+                if quote is None:
+                    continue
+                t = quote.pop('ticker')
+                StockPriceSnapshot.objects.update_or_create(ticker=t, defaults=quote)
+                prices[t] = quote['price']
         except ImportError:
             pass
 

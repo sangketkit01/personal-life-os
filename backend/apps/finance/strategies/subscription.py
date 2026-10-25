@@ -113,7 +113,7 @@ class SubscriptionStrategy(BaseObligationStrategy):
         else:
             paid_amount = Decimal(str(paid_amount))
             if paid_amount != scheduled_amount:
-                raise ValueError(f"Full subscription payment of ฿{scheduled_amount:,.2f} is required.")
+                raise ValueError(f"Full subscription payment of \u0e3f{scheduled_amount:,.2f} is required.")
 
         metadata = obligation.metadata or {}
         billing_cycle = metadata.get('billing_cycle', 'MONTHLY').upper()

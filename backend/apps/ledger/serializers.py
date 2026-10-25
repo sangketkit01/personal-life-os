@@ -291,7 +291,7 @@ class TransactionSerializer(serializers.ModelSerializer):
         if locked_acc.account_type != AccountType.CREDIT_CARD and validated_data.get('transaction_type') == TransactionType.OUTFLOW:
             if locked_acc.current_balance < gross_amount:
                 raise serializers.ValidationError({
-                    'gross_amount': f"Insufficient funds: {locked_acc.name} has balance ฿{locked_acc.current_balance:,.2f}, but payment requires ฿{gross_amount:,.2f}."
+                    'gross_amount': f"Insufficient funds: {locked_acc.name} has balance \u0e3f{locked_acc.current_balance:,.2f}, but payment requires \u0e3f{gross_amount:,.2f}."
                 })
 
         validated_data['account'] = locked_acc
@@ -345,7 +345,7 @@ class TransactionSerializer(serializers.ModelSerializer):
             if 'net_amount' in validated_data:
                 expected_net = instance.gross_amount - split_sum
                 if validated_data['net_amount'] != expected_net:
-                    raise serializers.ValidationError({'net_amount': f"Net personal share for a split bill is locked to gross amount minus friend splits (฿{expected_net:,.2f})."})
+                    raise serializers.ValidationError({'net_amount': f"Net personal share for a split bill is locked to gross amount minus friend splits (\u0e3f{expected_net:,.2f})."})
             return super().update(instance, validated_data)
 
         # 4. For non-split transactions, handle amount delta
@@ -365,7 +365,7 @@ class TransactionSerializer(serializers.ModelSerializer):
                 if diff > Decimal('0.00') and locked_acc.account_type != AccountType.CREDIT_CARD:
                     if locked_acc.current_balance < diff:
                         raise serializers.ValidationError({
-                            'gross_amount': f"Insufficient funds: {locked_acc.name} has balance ฿{locked_acc.current_balance:,.2f}, cannot increase expense by ฿{diff:,.2f}."
+                            'gross_amount': f"Insufficient funds: {locked_acc.name} has balance \u0e3f{locked_acc.current_balance:,.2f}, cannot increase expense by \u0e3f{diff:,.2f}."
                         })
                 Account.objects.filter(id=locked_acc.id).update(
                     current_balance=models.F('current_balance') - diff,

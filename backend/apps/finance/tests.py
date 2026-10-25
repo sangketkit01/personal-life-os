@@ -473,7 +473,7 @@ class FinancialAPITestCase(TestCase):
         """User Domain Test: Multi-order BNPL monthly statement aggregation & hybrid down payment."""
         from apps.ledger.models import Account, AccountType, Transaction, TransactionType
 
-        # 1. Payer's Cash flow bank account with ฿10,000
+        # 1. Payer's Cash flow bank account with \u0e3f10,000
         bank = Account.objects.create(
             user=self.user,
             name='Main Bank Account',
@@ -500,7 +500,7 @@ class FinancialAPITestCase(TestCase):
             }
         )
 
-        # Order A: ฿300, bought in Oct 2026, 3 months pay-later (฿100/mo)
+        # Order A: \u0e3f300, bought in Oct 2026, 3 months pay-later (\u0e3f100/mo)
         res_a = self.client.post('/api/finance/obligations/', {
             'parent': str(bnpl.id),
             'title': 'Product A',
@@ -519,7 +519,7 @@ class FinancialAPITestCase(TestCase):
         }, format='json')
         self.assertEqual(res_a.status_code, status.HTTP_201_CREATED)
 
-        # Order B: ฿800, bought in Oct 2026, 2 months pay-later (฿400/mo)
+        # Order B: \u0e3f800, bought in Oct 2026, 2 months pay-later (\u0e3f400/mo)
         res_b = self.client.post('/api/finance/obligations/', {
             'parent': str(bnpl.id),
             'title': 'Product B',
@@ -538,7 +538,7 @@ class FinancialAPITestCase(TestCase):
         }, format='json')
         self.assertEqual(res_b.status_code, status.HTTP_201_CREATED)
 
-        # Order C: ฿500, bought in Oct 2026, Down Payment ฿200 + 6 months pay-later (฿50/mo)
+        # Order C: \u0e3f500, bought in Oct 2026, Down Payment \u0e3f200 + 6 months pay-later (\u0e3f50/mo)
         res_c = self.client.post('/api/finance/obligations/', {
             'parent': str(bnpl.id),
             'title': 'Product C',
@@ -1145,7 +1145,7 @@ class FinancialAPITestCase(TestCase):
             'statement_month': '2026-11'
         }, format='json')
         self.assertEqual(res_mismatch.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('Full statement amount of ฿1,300.00 is required for 2026-11', res_mismatch.data['detail'])
+        self.assertIn('Full statement amount of \u0e3f1,300.00 is required for 2026-11', res_mismatch.data['detail'])
 
     def test_audit_partial_debt_repayment_keeps_split_unsettled(self):
         """Audit P1: Partial debt repayment keeps linked Split unsettled until paid in full."""

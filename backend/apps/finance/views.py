@@ -159,7 +159,7 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
                 actual_paid = Decimal(str(paid_amount))
                 if actual_paid != statement_due:
                     return response.Response({
-                        'detail': f"Partial payment is not supported. Full statement amount of ฿{statement_due:,.2f} is required for {target_month_key}."
+                        'detail': f"Partial payment is not supported. Full statement amount of \u0e3f{statement_due:,.2f} is required for {target_month_key}."
                     }, status=status.HTTP_400_BAD_REQUEST)
 
             statement_month = target_month_key
@@ -174,7 +174,7 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
                 actual_paid = Decimal(str(paid_amount))
                 if actual_paid != scheduled_amount:
                     return response.Response({
-                        'detail': f"Partial payment is not supported. Scheduled installment amount of ฿{scheduled_amount:,.2f} is required."
+                        'detail': f"Partial payment is not supported. Scheduled installment amount of \u0e3f{scheduled_amount:,.2f} is required."
                     }, status=status.HTTP_400_BAD_REQUEST)
 
         elif obligation.type == ObligationType.SUBSCRIPTION:
@@ -185,7 +185,7 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
                 actual_paid = Decimal(str(paid_amount))
                 if actual_paid != scheduled_amount:
                     return response.Response({
-                        'detail': f"Full subscription payment of ฿{scheduled_amount:,.2f} is required."
+                        'detail': f"Full subscription payment of \u0e3f{scheduled_amount:,.2f} is required."
                     }, status=status.HTTP_400_BAD_REQUEST)
 
         elif obligation.type == ObligationType.DEBT:
@@ -202,7 +202,7 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
                     return response.Response({'detail': 'Payment amount must be greater than 0.'}, status=status.HTTP_400_BAD_REQUEST)
                 if actual_paid > cur_rem:
                     return response.Response({
-                        'detail': f"Payment amount of ฿{actual_paid:,.2f} exceeds remaining debt balance of ฿{cur_rem:,.2f}."
+                        'detail': f"Payment amount of \u0e3f{actual_paid:,.2f} exceeds remaining debt balance of \u0e3f{cur_rem:,.2f}."
                     }, status=status.HTTP_400_BAD_REQUEST)
         else:
             actual_paid = Decimal(str(paid_amount if paid_amount is not None else obligation.amount))
@@ -227,7 +227,7 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
                 if account.account_type != AccountType.CREDIT_CARD:
                     if account.current_balance < actual_paid:
                         return response.Response({
-                            'detail': f"Insufficient funds: {account.name} has balance ฿{account.current_balance:,.2f}, but payment requires ฿{actual_paid:,.2f}."
+                            'detail': f"Insufficient funds: {account.name} has balance \u0e3f{account.current_balance:,.2f}, but payment requires \u0e3f{actual_paid:,.2f}."
                         }, status=status.HTTP_400_BAD_REQUEST)
 
         try:

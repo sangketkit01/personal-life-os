@@ -1469,6 +1469,10 @@ class SshTerminalConsumerTests(TransactionTestCase):
                 connected, _subprotocol = await communicator.connect()
                 assert connected
 
+                # The PTY-alive handshake frame arrives before any shell output
+                ready_frame = _json.loads(await communicator.receive_from())
+                assert ready_frame['type'] == 'ready'
+
                 first = await communicator.receive_from()
                 payload = _json.loads(first)
                 assert payload['type'] == 'output'
@@ -1609,3 +1613,115 @@ class ProjectEconomicsConsistencyTests(InfrastructureBaseTestCase):
         self.assertEqual(Decimal(eco['realized_inflow']), Decimal('2500.00'))
         self.assertEqual(Decimal(eco['realized_outflow']), Decimal('650.00'))
         self.assertEqual(Decimal(eco['margin_pct']), Decimal('74.00'))
+
+
+# ---------------------------------------------------------------------------
+# SSH key normalization & empty-string date coercion
+# ---------------------------------------------------------------------------
+class SSHKeyNormalizationTests(InfrastructureBaseTestCase):
+
+    def test_crlf_key_without_trailing_newline_loads(self):
+        """Windows CRLF line endings + missing trailing newline must still load."""
+        import paramiko
+        from apps.workspace.ssh_service import _load_private_key_from_memory
+
+        key = paramiko.RSAKey.generate(2048)
+        buffer = io.StringIO()
+        key.write_private_key(buffer)
+        mangled = buffer.getvalue().replace('\n', '\r\n').rstrip('\r\n')
+        self.assertNotIn('\n', mangled[-5:])
+
+        loaded = _load_private_key_from_memory(mangled, '')
+        self.assertIsInstance(loaded, paramiko.RSAKey)
+        self.assertEqual(loaded.get_fingerprint(), key.get_fingerprint())
+
+
+class EmptyDateCoercionTests(InfrastructureBaseTestCase):
+
+    def test_create_and_update_asset_with_empty_date_strings(self):
+        res = self.client.post('/api/workspace/infrastructure/', {
+            'project': str(self.project.id),
+            'name': 'edge-box',
+            'asset_type': 'VPS',
+            'expiry_date': '',
+            'next_billing_date': ''
+        })
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        asset = InfrastructureAsset.objects.get(id=res.data['id'])
+        self.assertIsNone(asset.expiry_date)
+        self.assertIsNone(asset.next_billing_date)
+
+        # Set real dates first, then clear them back via empty strings
+        res = self.client.patch(f'/api/workspace/infrastructure/{asset.id}/', {
+            'expiry_date': str(date.today() + timedelta(days=30)),
+            'next_billing_date': str(date.today() + timedelta(days=5))
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        asset.refresh_from_db()
+        self.assertIsNotNone(asset.expiry_date)
+
+        res = self.client.patch(f'/api/workspace/infrastructure/{asset.id}/', {
+            'expiry_date': '',
+            'next_billing_date': ''
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        asset.refresh_from_db()
+        self.assertIsNone(asset.expiry_date)
+        self.assertIsNone(asset.next_billing_date)
+
+    def test_project_ma_dates_empty_string_accepted(self):
+        res = self.client.patch(f'/api/workspace/projects/{self.project.id}/', {
+            'ma_start_date': '',
+            'ma_end_date': '',
+            'ma_next_billing_date': ''
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.project.refresh_from_db()
+        self.assertIsNone(self.project.ma_start_date)
+        self.assertIsNone(self.project.ma_end_date)
+        self.assertIsNone(self.project.ma_next_billing_date)
+
+
+class BatchedProbeTests(InfrastructureBaseTestCase):
+
+    @patch('apps.workspace.ssh_service._run_command')
+    @patch('apps.workspace.ssh_service.open_ssh_client')
+    def test_single_shot_batched_probe_parses_all_sections(self, mock_open, mock_run):
+        from apps.workspace.ssh_service import (
+            probe_server_telemetry, PROBE_BATCH_CMD, PROBE_SECTION_SEP
+        )
+
+        combined = PROBE_SECTION_SEP.join([
+            '987654.32 100000\n',
+            '0.80 0.50 0.30 1/150 9000\n',
+            '2\n',
+            '800 1600',
+            '10240M 20480M 51%\n',
+            'Linux 5.15.0-generic\n',
+            '{"ID":"abc123","Names":"web","Image":"nginx:latest","State":"running","Status":"Up 3 hours","Ports":""}\n'
+            '{"ID":"def456","Names":"worker","Image":"redis:7","State":"exited","Status":"Exited (0) 5 minutes ago","Ports":""}\n',
+        ])
+        mock_run.return_value = (combined, '', 0)
+        mock_open.return_value = MagicMock()
+
+        telemetry = probe_server_telemetry(self.asset)
+
+        # Exactly ONE exec round-trip carrying the batched command
+        self.assertEqual(mock_run.call_count, 1)
+        self.assertEqual(mock_run.call_args[0][1], PROBE_BATCH_CMD)
+
+        self.assertEqual(telemetry['uptime_human'], '11d 10h')
+        self.assertEqual(telemetry['load_avg'], 0.8)
+        self.assertEqual(telemetry['cpu_pct'], 40.0)
+        self.assertEqual(telemetry['ram_used_mb'], 800.0)
+        self.assertEqual(telemetry['ram_total_mb'], 1600.0)
+        self.assertEqual(telemetry['ram_pct'], 50.0)
+        self.assertEqual(telemetry['disk_used_gb'], 10.0)
+        self.assertEqual(telemetry['disk_total_gb'], 20.0)
+        self.assertEqual(telemetry['disk_pct'], 51.0)
+        self.assertEqual(telemetry['kernel'], 'Linux 5.15.0-generic')
+        self.assertEqual(len(telemetry['containers']), 2)
+        self.assertEqual(telemetry['containers'][0]['Names'], 'web')
+        self.assertIsNone(telemetry['error'])
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.health_status, 'ONLINE')

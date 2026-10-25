@@ -323,7 +323,7 @@ class InstallmentStrategy(BaseObligationStrategy):
             else:
                 paid_amount = Decimal(str(paid_amount))
                 if paid_amount != statement_due:
-                    raise ValueError(f"Partial payment is not supported. Full statement amount of ฿{statement_due:,.2f} is required for {target_statement_month}.")
+                    raise ValueError(f"Partial payment is not supported. Full statement amount of \u0e3f{statement_due:,.2f} is required for {target_statement_month}.")
 
             with transaction.atomic():
                 month_display = target_statement.get('month_label') or target_statement_month
@@ -434,7 +434,7 @@ class InstallmentStrategy(BaseObligationStrategy):
         else:
             paid_amount = Decimal(str(paid_amount))
             if paid_amount != scheduled_amount:
-                raise ValueError(f"Partial payment is not supported. Scheduled installment amount of ฿{scheduled_amount:,.2f} is required.")
+                raise ValueError(f"Partial payment is not supported. Scheduled installment amount of \u0e3f{scheduled_amount:,.2f} is required.")
 
         total_terms = int(metadata.get('total_terms', 1))
         current_term = int(metadata.get('current_term', 0))

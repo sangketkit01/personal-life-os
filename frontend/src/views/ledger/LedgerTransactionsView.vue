@@ -119,8 +119,8 @@
 
     <!-- Transactions Table -->
     <div class="rounded-xl bg-zinc-900/30 border border-zinc-800/80 overflow-hidden shadow-sm">
-      <div v-if="ledgerStore.isLoading" class="p-16 text-center text-xs font-mono text-zinc-500">
-        Loading transactions...
+      <div v-if="ledgerStore.isLoading && ledgerStore.transactions.length === 0" class="p-4">
+        <SkeletonLoader variant="table" :count="6" />
       </div>
 
       <div v-else-if="ledgerStore.transactions.length === 0" class="p-16 text-center text-xs font-mono text-zinc-500">
@@ -252,6 +252,7 @@
 </template>
 
 <script setup lang="ts">
+import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useLedgerStore } from '../../stores/ledger'
 import TransactionModal from '../../components/ledger/TransactionModal.vue'

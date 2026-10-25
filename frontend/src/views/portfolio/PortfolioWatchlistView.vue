@@ -254,7 +254,13 @@
             </tr>
 
             <!-- Empty State -->
-            <tr v-if="portfolioStore.watchlist.length === 0">
+            <tr v-if="portfolioStore.isLoadingWatchlist && portfolioStore.watchlist.length === 0">
+              <td colspan="7" class="p-4">
+                <SkeletonLoader variant="table" :count="5" />
+              </td>
+            </tr>
+
+            <tr v-else-if="portfolioStore.watchlist.length === 0">
               <td colspan="7" class="py-12 text-center text-xs text-zinc-500 font-mono">
                 <div class="flex flex-col items-center justify-center gap-2">
                   <Star class="w-6 h-6 text-zinc-600" />
@@ -279,6 +285,7 @@
 </template>
 
 <script setup lang="ts">
+import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePortfolioStore } from '../../stores/portfolio'

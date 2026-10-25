@@ -24,8 +24,12 @@
     </div>
 
     <!-- Dashboard Content -->
-    <div v-if="financeStore.isLoading" class="p-12 text-center text-xs font-mono text-zinc-500">
-      {{ t('ov.loadingHeadlines') }}
+    <div
+      v-if="(financeStore.isLoading || financeStore.isOverviewLoading) && financeStore.obligations.length === 0 && !financeStore.overview"
+      class="space-y-6"
+    >
+      <SkeletonLoader variant="metrics" :count="4" />
+      <SkeletonLoader variant="table" :count="5" />
     </div>
 
     <FinanceRadarDashboard
@@ -52,6 +56,7 @@
 </template>
 
 <script setup lang="ts">
+import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFinanceStore } from '../../stores/finance'

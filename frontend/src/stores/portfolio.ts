@@ -193,6 +193,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   }
 
   async function fetchTransactions(options?: { holdingId?: string; portfolioId?: string; ticker?: string }) {
+    isLoading.value = true
     try {
       const params: Record<string, string> = {}
       if (options?.holdingId) params.holding_id = options.holdingId
@@ -209,6 +210,8 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     } catch (err: any) {
       error.value = err?.response?.data?.detail || 'Failed to load transactions'
       throw err
+    } finally {
+      isLoading.value = false
     }
   }
 

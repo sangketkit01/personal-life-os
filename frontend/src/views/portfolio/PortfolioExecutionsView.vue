@@ -235,7 +235,13 @@
             </tr>
 
             <!-- Empty State -->
-            <tr v-if="filteredTransactions.length === 0">
+            <tr v-if="portfolioStore.isLoading && portfolioStore.transactions.length === 0">
+              <td colspan="10" class="p-4">
+                <SkeletonLoader variant="table" :count="5" />
+              </td>
+            </tr>
+
+            <tr v-else-if="filteredTransactions.length === 0">
               <td colspan="10" class="py-12 text-center text-xs text-zinc-500 font-mono">
                 <div class="flex flex-col items-center justify-center gap-2">
                   <History class="w-6 h-6 text-zinc-600" />
@@ -278,6 +284,7 @@
 </template>
 
 <script setup lang="ts">
+import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePortfolioStore } from '../../stores/portfolio'

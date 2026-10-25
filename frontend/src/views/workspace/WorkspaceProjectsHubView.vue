@@ -22,7 +22,13 @@
     </div>
 
     <!-- Top Metric Strip -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+    <SkeletonLoader
+      v-if="workspaceStore.isProjectsLoading && workspaceStore.projects.length === 0 && !workspaceStore.overview"
+      variant="metrics"
+      :count="4"
+    />
+
+    <div v-else class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
       <div class="p-4 rounded-lg bg-zinc-900/30 border border-zinc-800/80">
         <div class="flex items-center gap-2 mb-2">
           <FolderKanban class="w-3.5 h-3.5 text-zinc-500" />
@@ -89,7 +95,13 @@
     </div>
 
     <!-- Projects Grid -->
-    <div v-if="visibleProjects.length === 0" class="p-12 rounded-lg bg-zinc-900/30 border border-zinc-800 text-center space-y-3">
+    <SkeletonLoader
+      v-if="workspaceStore.isProjectsLoading && workspaceStore.projects.length === 0"
+      variant="cards"
+      :count="6"
+    />
+
+    <div v-else-if="visibleProjects.length === 0" class="p-12 rounded-lg bg-zinc-900/30 border border-zinc-800 text-center space-y-3">
       <FolderKanban class="w-8 h-8 text-zinc-700 mx-auto" />
       <p class="text-xs font-mono text-zinc-500">{{ t('ws.empty') }}</p>
       <button
@@ -313,6 +325,7 @@
 </template>
 
 <script setup lang="ts">
+import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {

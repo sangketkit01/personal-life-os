@@ -32,7 +32,13 @@
     </div>
 
     <!-- 4 Cloudflare Console Metric Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+    <SkeletonLoader
+      v-if="(financeStore.isOverviewLoading && !financeStore.overview) || (portfolioStore.isLoading && !portfolioStore.overview)"
+      variant="metrics"
+      :count="4"
+    />
+
+    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
       <!-- 1. Monthly Burn Rate -->
       <div class="p-4 rounded-lg bg-zinc-900/40 border border-zinc-800/80 relative">
         <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-500">
@@ -134,7 +140,11 @@
         </RouterLink>
       </div>
 
-      <div v-if="(financeStore.overview?.upcoming_7_days?.length || 0) === 0" class="p-8 text-center text-xs text-zinc-500 font-mono">
+      <div v-if="financeStore.isOverviewLoading && !financeStore.overview" class="p-4">
+        <SkeletonLoader variant="table" :count="3" />
+      </div>
+
+      <div v-else-if="(financeStore.overview?.upcoming_7_days?.length || 0) === 0" class="p-8 text-center text-xs text-zinc-500 font-mono">
         {{ t('ov.noUpcomingBills') }}
       </div>
 
@@ -184,9 +194,8 @@
         </RouterLink>
       </div>
 
-      <div v-if="portfolioStore.isLoadingNews" class="p-8 text-center text-xs text-zinc-500 font-mono">
-        <RefreshCw class="w-4 h-4 animate-spin mx-auto mb-2 text-zinc-400" />
-        {{ t('ov.loadingHeadlines') }}
+      <div v-if="portfolioStore.isLoadingNews && todayNews.length === 0" class="p-4">
+        <SkeletonLoader variant="list" :count="3" />
       </div>
 
       <div v-else-if="todayNews.length === 0" class="p-8 text-center text-xs text-zinc-500 font-mono">
@@ -357,7 +366,11 @@
           </RouterLink>
         </div>
 
-        <div class="p-4 space-y-2 text-xs">
+        <div v-if="workspaceStore.isOverviewLoading && !workspaceStore.overview" class="p-4">
+          <SkeletonLoader variant="list" :count="3" />
+        </div>
+
+        <div v-else class="p-4 space-y-2 text-xs">
           <div class="p-2.5 rounded bg-zinc-900/60 border border-zinc-800/60 flex items-center justify-between">
             <span class="text-zinc-400 flex items-center gap-2">
               <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
@@ -404,6 +417,7 @@
 </template>
 
 <script setup lang="ts">
+import SkeletonLoader from '../components/common/SkeletonLoader.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'

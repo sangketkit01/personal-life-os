@@ -265,8 +265,12 @@
           class="w-full md:w-72 shrink-0 overflow-y-auto space-y-1.5 pr-0.5"
           :class="{ 'hidden md:block': !!activeNote }"
         >
-          <div
-            v-if="filteredNotes.length === 0"
+                    <div v-if="workspaceStore.isNotesLoading && filteredNotes.length === 0" class="space-y-2">
+            <SkeletonLoader variant="list" :count="5" />
+          </div>
+
+<div
+            v-else-if="filteredNotes.length === 0"
             class="p-8 text-center space-y-3 border border-dashed border-zinc-800/80 rounded-xl bg-zinc-950/40"
           >
             <StickyNote class="w-7 h-7 text-zinc-700 mx-auto" />
@@ -388,8 +392,12 @@
         </div>
 
         <div v-else class="flex-1 min-h-0 overflow-y-auto">
-          <div
-            v-if="filteredNotes.length === 0"
+                    <div v-if="workspaceStore.isNotesLoading && filteredNotes.length === 0">
+            <SkeletonLoader variant="cards" :count="6" />
+          </div>
+
+<div
+            v-else-if="filteredNotes.length === 0"
             class="p-12 text-center space-y-3 border border-dashed border-zinc-800 rounded-xl bg-zinc-950/40"
           >
             <StickyNote class="w-8 h-8 text-zinc-700 mx-auto" />
@@ -470,6 +478,7 @@
 </template>
 
 <script setup lang="ts">
+import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import {
   ArrowLeft,

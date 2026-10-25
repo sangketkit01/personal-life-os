@@ -34,21 +34,35 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const serverCredentials = ref<ServerCredential[]>([])
   const serverRunbooks = ref<ServerRunbook[]>([])
   const isLoading = ref<boolean>(false)
+  const isProjectsLoading = ref<boolean>(false)
+  const isOverviewLoading = ref<boolean>(false)
+  const isNotesLoading = ref<boolean>(false)
+  const isInfraLoading = ref<boolean>(false)
   const selectedProjectId = ref<string | null>(null)
 
   async function fetchOverview(projectId?: string) {
-    const params: Record<string, string> = {}
-    if (projectId) params.project_id = projectId
+    isOverviewLoading.value = true
+    try {
+      const params: Record<string, string> = {}
+      if (projectId) params.project_id = projectId
 
-    const res = await apiClient.get<WorkspaceOverview>('/workspace/overview/', { params })
-    overview.value = res.data
-    return res.data
+      const res = await apiClient.get<WorkspaceOverview>('/workspace/overview/', { params })
+      overview.value = res.data
+      return res.data
+    } finally {
+      isOverviewLoading.value = false
+    }
   }
 
   async function fetchProjects() {
-    const res = await apiClient.get<WorkspaceProject[]>('/workspace/projects/')
-    projects.value = extractList<WorkspaceProject>(res.data)
-    return projects.value
+    isProjectsLoading.value = true
+    try {
+      const res = await apiClient.get<WorkspaceProject[]>('/workspace/projects/')
+      projects.value = extractList<WorkspaceProject>(res.data)
+      return projects.value
+    } finally {
+      isProjectsLoading.value = false
+    }
   }
 
   async function fetchProjectDetail(id: string) {
@@ -126,13 +140,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function fetchNotes(filters: Record<string, string> = {}) {
-    const params = { ...filters }
-    if (selectedProjectId.value) {
-      params.project_id = selectedProjectId.value
+    isNotesLoading.value = true
+    try {
+      const params = { ...filters }
+      if (selectedProjectId.value) {
+        params.project_id = selectedProjectId.value
+      }
+      const res = await apiClient.get<Note[]>('/workspace/notes/', { params })
+      notes.value = extractList<Note>(res.data)
+      return notes.value
+    } finally {
+      isNotesLoading.value = false
     }
-    const res = await apiClient.get<Note[]>('/workspace/notes/', { params })
-    notes.value = extractList<Note>(res.data)
-    return notes.value
   }
 
   async function createNote(data: Record<string, any>) {
@@ -279,17 +298,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function fetchStandaloneNotes(filters: Record<string, string> = {}) {
-    // Fetch live and trashed lists in parallel so Smart View badge counts
-    // stay accurate no matter which view is currently open.
-    const liveParams = { standalone: 'true', ...filters }
-    const trashedParams = { standalone: 'true', trashed: 'true', ...filters }
-    const [liveRes, trashedRes] = await Promise.all([
-      apiClient.get<Note[]>('/workspace/notes/', { params: liveParams }),
-      apiClient.get<Note[]>('/workspace/notes/', { params: trashedParams })
-    ])
-    standaloneNotes.value = extractList<Note>(liveRes.data)
-    trashedNotes.value = extractList<Note>(trashedRes.data)
-    return standaloneNotes.value
+    isNotesLoading.value = true
+    try {
+      // Fetch live and trashed lists in parallel so Smart View badge counts
+      // stay accurate no matter which view is currently open.
+      const liveParams = { standalone: 'true', ...filters }
+      const trashedParams = { standalone: 'true', trashed: 'true', ...filters }
+      const [liveRes, trashedRes] = await Promise.all([
+        apiClient.get<Note[]>('/workspace/notes/', { params: liveParams }),
+        apiClient.get<Note[]>('/workspace/notes/', { params: trashedParams })
+      ])
+      standaloneNotes.value = extractList<Note>(liveRes.data)
+      trashedNotes.value = extractList<Note>(trashedRes.data)
+      return standaloneNotes.value
+    } finally {
+      isNotesLoading.value = false
+    }
   }
 
   async function fetchNote(id: string) {
@@ -374,11 +398,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   // ===== MA & Infrastructure =====
   async function fetchInfraAssets(projectId: string) {
-    const res = await apiClient.get<InfrastructureAsset[]>('/workspace/infrastructure/', {
-      params: { project_id: projectId }
-    })
-    infraAssets.value = extractList<InfrastructureAsset>(res.data)
-    return infraAssets.value
+    isInfraLoading.value = true
+    try {
+      const res = await apiClient.get<InfrastructureAsset[]>('/workspace/infrastructure/', {
+        params: { project_id: projectId }
+      })
+      infraAssets.value = extractList<InfrastructureAsset>(res.data)
+      return infraAssets.value
+    } finally {
+      isInfraLoading.value = false
+    }
   }
 
   async function createInfraAsset(payload: Record<string, any>) {
@@ -428,11 +457,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function fetchServerCredentials(projectId: string) {
-    const res = await apiClient.get<ServerCredential[]>('/workspace/credentials/', {
-      params: { project_id: projectId }
-    })
-    serverCredentials.value = extractList<ServerCredential>(res.data)
-    return serverCredentials.value
+    isInfraLoading.value = true
+    try {
+      const res = await apiClient.get<ServerCredential[]>('/workspace/credentials/', {
+        params: { project_id: projectId }
+      })
+      serverCredentials.value = extractList<ServerCredential>(res.data)
+      return serverCredentials.value
+    } finally {
+      isInfraLoading.value = false
+    }
   }
 
   async function createServerCredential(payload: Record<string, any>) {
@@ -461,12 +495,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function fetchServerRunbooks(projectId?: string, assetId?: string) {
-    const params: Record<string, string> = {}
-    if (projectId) params.project_id = projectId
-    if (assetId) params.asset_id = assetId
-    const res = await apiClient.get<ServerRunbook[]>('/workspace/runbooks/', { params })
-    serverRunbooks.value = extractList<ServerRunbook>(res.data)
-    return serverRunbooks.value
+    isInfraLoading.value = true
+    try {
+      const params: Record<string, string> = {}
+      if (projectId) params.project_id = projectId
+      if (assetId) params.asset_id = assetId
+      const res = await apiClient.get<ServerRunbook[]>('/workspace/runbooks/', { params })
+      serverRunbooks.value = extractList<ServerRunbook>(res.data)
+      return serverRunbooks.value
+    } finally {
+      isInfraLoading.value = false
+    }
   }
 
   async function createServerRunbook(payload: Record<string, any>) {
@@ -504,6 +543,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     links,
     attachments,
     isLoading,
+    isProjectsLoading,
+    isOverviewLoading,
+    isNotesLoading,
+    isInfraLoading,
     selectedProjectId,
     fetchOverview,
     fetchProjects,

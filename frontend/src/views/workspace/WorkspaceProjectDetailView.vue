@@ -21,7 +21,8 @@
           </div>
 
           <div class="min-w-0">
-            <h1 class="text-lg font-semibold text-zinc-100 tracking-tight truncate">{{ project?.name || 'Loading...' }}</h1>
+            <h1 v-if="isInitialLoading && !project" class="h-6 w-48 bg-zinc-800/80 animate-pulse rounded"></h1>
+          <h1 v-else class="text-lg font-semibold text-zinc-100 tracking-tight truncate">{{ project?.name || 'Loading...' }}</h1>
             <div class="flex items-center gap-2 flex-wrap mt-1.5">
               <span
                 v-if="project"
@@ -133,6 +134,11 @@
       </button>
     </div>
 
+    <div v-if="isInitialLoading && !project" class="space-y-4">
+      <SkeletonLoader variant="kanban" />
+    </div>
+
+    <template v-else>
     <!-- ======== Tab 1: Kanban Board ======== -->
     <div v-if="activeTab === 'board'">
       <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -146,7 +152,12 @@
         </button>
       </div>
 
+      <SkeletonLoader
+        v-if="workspaceStore.isLoading && workspaceStore.tasks.length === 0"
+        variant="kanban"
+      />
       <WorkspaceKanbanBoard
+        v-else
         :tasks="projectTasks"
         :show-project-badge="false"
         @select-task="openDrawer"
@@ -515,6 +526,8 @@
       />
     </div>
 
+    </template>
+
     <!-- ============ Drawers & Modals ============ -->
     <!-- Task Side Peek Drawer -->
     <TaskSidePeekDrawer
@@ -807,6 +820,7 @@
 </template>
 
 <script setup lang="ts">
+import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -869,6 +883,7 @@ const toast = useToastStore()
 const projectId = computed(() => String(route.params.id || ''))
 
 const project = ref<WorkspaceProject | null>(null)
+const isInitialLoading = ref(true)
 const isUploading = ref(false)
 const uploadPct = ref(0)
 
@@ -892,6 +907,10 @@ function switchTab(tab: string) {
 // ===== Data loading (reactive to route param changes) =====
 async function loadAllProjectData() {
   if (!projectId.value) return
+  // Route changed to a different project: restart the initial-load gate.
+  if (!project.value || project.value.id !== projectId.value) {
+    isInitialLoading.value = true
+  }
   await Promise.allSettled([
     loadProject(),
     workspaceStore.fetchTasks({ project_id: projectId.value }),
@@ -902,6 +921,7 @@ async function loadAllProjectData() {
     workspaceStore.fetchInfraAssets(projectId.value),
     storageStore.fetchStatus()
   ])
+  isInitialLoading.value = false
 }
 
 watch(projectId, loadAllProjectData, { immediate: true })

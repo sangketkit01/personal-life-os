@@ -114,8 +114,8 @@
     </div>
 
     <!-- News Feed List -->
-    <div v-if="isLoading" class="p-12 text-center text-xs font-mono text-zinc-500">
-      Loading market news...
+    <div v-if="isLoading && portfolioStore.news.length === 0" class="p-2">
+      <SkeletonLoader variant="list" :count="5" />
     </div>
 
     <div v-else-if="portfolioStore.news.length > 0" class="space-y-3">
@@ -263,6 +263,7 @@
 </template>
 
 <script setup lang="ts">
+import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePortfolioStore } from '../../stores/portfolio'

@@ -34,7 +34,13 @@
     <MarketStatusBar />
 
     <!-- Summary KPI Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <SkeletonLoader
+      v-if="portfolioStore.isLoading && !portfolioStore.overview"
+      variant="metrics"
+      :count="4"
+    />
+
+    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <!-- 1. Total Net Worth -->
       <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 hover:border-zinc-700/80 transition-colors shadow-sm">
         <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-500">
@@ -182,6 +188,10 @@
           </div>
         </div>
 
+        <div v-if="portfolioStore.isLoading && portfolioStore.portfolios.length === 0">
+          <SkeletonLoader variant="cards" :count="4" />
+        </div>
+
         <!-- Individual Account Cards -->
         <div
           v-for="p in portfolioStore.portfolios"
@@ -308,6 +318,7 @@
 </template>
 
 <script setup lang="ts">
+import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePortfolioStore } from '../../stores/portfolio'

@@ -153,7 +153,11 @@
         </button>
       </div>
 
-      <div v-if="assets.length === 0" class="p-10 text-center">
+      <div v-if="workspaceStore.isInfraLoading && assets.length === 0" class="p-4">
+          <SkeletonLoader variant="cards" :count="2" />
+        </div>
+
+        <div v-else-if="assets.length === 0" class="p-10 text-center">
         <Server class="w-7 h-7 text-zinc-600 mx-auto mb-2.5" />
         <p class="text-xs text-zinc-400">{{ t('infra.emptyFleet') }}</p>
         <p class="text-[11px] text-zinc-600 mt-1 font-mono">{{ t('infra.emptyFleetHint') }}</p>
@@ -358,7 +362,11 @@
         </button>
       </div>
 
-      <div v-if="credentials.length === 0" class="p-8 text-center">
+      <div v-if="workspaceStore.isInfraLoading && credentials.length === 0" class="p-4">
+          <SkeletonLoader variant="list" :count="2" />
+        </div>
+
+        <div v-else-if="credentials.length === 0" class="p-8 text-center">
         <KeyRound class="w-6 h-6 text-zinc-600 mx-auto mb-2" />
         <p class="text-xs text-zinc-500">{{ t('cred.empty') }}</p>
       </div>
@@ -499,6 +507,7 @@
 </template>
 
 <script setup lang="ts">
+import SkeletonLoader from '../common/SkeletonLoader.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import {
   FileSignature, Pencil, Banknote, Scale, Server, Plus, Trash2, Activity, Radar,

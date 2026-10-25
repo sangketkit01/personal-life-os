@@ -24,8 +24,9 @@
     </div>
 
     <!-- Content Section -->
-    <div v-if="isLoading" class="p-12 text-center text-xs font-mono text-zinc-500">
-      Loading debt ledger...
+    <div v-if="isLoading && debts.length === 0" class="space-y-4">
+      <SkeletonLoader variant="metrics" :count="3" />
+      <SkeletonLoader variant="cards" :count="4" />
     </div>
 
     <DebtSection
@@ -78,6 +79,7 @@
 </template>
 
 <script setup lang="ts">
+import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDebts } from '../../composables/finance/useDebts'

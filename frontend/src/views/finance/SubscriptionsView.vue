@@ -26,6 +26,12 @@
     </div>
 
     <!-- Summary KPI Header Cards -->
+    <div v-if="isLoading && subscriptions.length === 0" class="space-y-4">
+      <SkeletonLoader variant="metrics" :count="3" />
+      <SkeletonLoader variant="cards" :count="4" />
+    </div>
+
+    <template v-else>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <!-- 1. Monthly Subscription Burn -->
       <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm hover:shadow-md">
@@ -346,7 +352,9 @@
       </div>
     </div>
 
-    <!-- Confirm Modal -->
+</template>
+
+        <!-- Confirm Modal -->
     <ConfirmModal
       :is-open="confirmModal.isOpen"
       :title="confirmModal.title"
@@ -360,6 +368,7 @@
 </template>
 
 <script setup lang="ts">
+import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useSubscriptions } from '../../composables/finance/useSubscriptions'
 import { useToastStore } from '../../stores/toast'
@@ -377,7 +386,7 @@ import {
   Trash2
 } from 'lucide-vue-next'
 
-const { subscriptions, fetchSubscriptions, cancelTrial, deleteSubscription } = useSubscriptions()
+const { subscriptions, isLoading, fetchSubscriptions, cancelTrial, deleteSubscription } = useSubscriptions()
 const toast = useToastStore()
 
 const searchQuery = ref('')

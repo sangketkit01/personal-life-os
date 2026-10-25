@@ -423,6 +423,31 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return res.data
   }
 
+  async function linkInfraAssetProject(assetId: string, projectId: string) {
+    const res = await apiClient.post<InfrastructureAsset>(
+      `/workspace/infrastructure/${assetId}/link-project/`,
+      { project_id: projectId }
+    )
+    const idx = infraAssets.value.findIndex(a => a.id === assetId)
+    if (idx !== -1) infraAssets.value[idx] = res.data
+    return res.data
+  }
+
+  async function unlinkInfraAssetProject(assetId: string, projectId: string) {
+    const res = await apiClient.post<InfrastructureAsset>(
+      `/workspace/infrastructure/${assetId}/unlink-project/`,
+      { project_id: projectId }
+    )
+    const idx = infraAssets.value.findIndex(a => a.id === assetId)
+    if (idx !== -1) infraAssets.value[idx] = res.data
+    return res.data
+  }
+
+  async function fetchAllUserInfraAssets(): Promise<InfrastructureAsset[]> {
+    const res = await apiClient.get<InfrastructureAsset[]>('/workspace/infrastructure/')
+    return extractList<InfrastructureAsset>(res.data)
+  }
+
   async function deleteInfraAsset(id: string) {
     await apiClient.delete(`/workspace/infrastructure/${id}/`)
     infraAssets.value = infraAssets.value.filter(a => a.id !== id)
@@ -597,6 +622,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     createInfraAsset,
     updateInfraAsset,
     deleteInfraAsset,
+    linkInfraAssetProject,
+    unlinkInfraAssetProject,
+    fetchAllUserInfraAssets,
     probeInfraAsset,
     dockerAction,
     execInfraCommand,

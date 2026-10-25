@@ -508,11 +508,66 @@ class InfrastructureAssetViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = InfrastructureAsset.objects.filter(user=self.request.user).select_related('project')
+        qs = InfrastructureAsset.objects.filter(
+            user=self.request.user
+        ).select_related('project').prefetch_related('shared_projects')
         project_id = _clean_uuid(self.request.query_params.get('project_id'))
         if project_id:
-            qs = qs.filter(project_id=project_id)
+            # Include assets shared into this project, not just primary ones.
+            qs = qs.filter(
+                Q(project_id=project_id) | Q(shared_projects__id=project_id)
+            ).distinct()
         return qs.order_by('name')
+
+    def _get_owned_project_or_404(self, project_id):
+        from django.shortcuts import get_object_or_404
+        return get_object_or_404(WorkspaceProject, id=project_id, user=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='link-project')
+    def link_project(self, request, pk=None):
+        """Share this asset with another project owned by the request user."""
+        asset = self.get_object()
+        project_id = _clean_uuid(request.data.get('project_id'))
+        if not project_id:
+            return response.Response(
+                {'detail': 'project_id is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        project = self._get_owned_project_or_404(project_id)
+        if asset.project_id != project.id:
+            asset.shared_projects.add(project)
+            asset.save(update_fields=['updated_at'])
+        return response.Response(
+            InfrastructureAssetSerializer(asset, context={'request': request}).data
+        )
+
+    @action(detail=True, methods=['post'], url_path='unlink-project')
+    def unlink_project(self, request, pk=None):
+        """Detach a project from this asset without deleting the asset itself."""
+        from .services import sync_infra_asset_obligation
+        asset = self.get_object()
+        project_id = _clean_uuid(request.data.get('project_id'))
+        if not project_id:
+            return response.Response(
+                {'detail': 'project_id is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        project = self._get_owned_project_or_404(project_id)
+        if str(asset.project_id) == str(project.id):
+            # Removing the primary: promote the first shared project (if any)
+            # so the asset always keeps an owner project when possible, and
+            # drop it from the M2M so it is not counted twice.
+            promoted = asset.shared_projects.first()
+            if promoted is not None:
+                asset.shared_projects.remove(promoted)
+            asset.project = promoted
+            asset.save(update_fields=['project', 'updated_at'])
+        else:
+            asset.shared_projects.remove(project)
+        sync_infra_asset_obligation(asset)
+        return response.Response(
+            InfrastructureAssetSerializer(asset, context={'request': request}).data
+        )
 
     @action(detail=True, methods=['post'])
     def probe(self, request, pk=None):

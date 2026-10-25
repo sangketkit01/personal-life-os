@@ -71,6 +71,9 @@ export type ObligationSummary = Record<string, any>
 export interface FinancialObligation {
   id: string
   parent?: string | null
+  project?: string | null
+  project_name?: string | null
+  project_color?: string | null
   title: string
   type: ObligationType
   subtype?: ObligationSubtype

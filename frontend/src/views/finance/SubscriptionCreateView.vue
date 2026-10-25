@@ -249,6 +249,17 @@
         </div>
       </div>
 
+      <div>
+            <label class="block text-xs font-mono text-zinc-400 mb-1">{{ t('fin.linkedProject') }}</label>
+            <select
+              v-model="form.project"
+              class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
+            >
+              <option :value="null">—</option>
+              <option v-for="p in workspaceStore.projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+          </div>
+
       <!-- Actions -->
       <div class="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800">
         <RouterLink
@@ -271,10 +282,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSubscriptions } from '../../composables/finance/useSubscriptions'
 import { useToastStore } from '../../stores/toast'
+import { useWorkspaceStore } from '../../stores/workspace'
+import { t } from '../../i18n'
 import {
   ArrowLeft,
   Repeat,
@@ -285,6 +298,13 @@ import {
 const router = useRouter()
 const { createSubscription } = useSubscriptions()
 const toast = useToastStore()
+const workspaceStore = useWorkspaceStore()
+
+onMounted(async () => {
+  if (workspaceStore.projects.length === 0) {
+    await workspaceStore.fetchProjects().catch(() => { /* select stays empty */ })
+  }
+})
 
 const isSubmitting = ref(false)
 const showAdvanced = ref(false)
@@ -307,6 +327,7 @@ const form = ref({
   alert_days_before: 3,
   account_email: '',
   payment_method: '',
+  project: null as string | null,
   cancel_url: '',
   cancel_steps: ''
 })
@@ -359,6 +380,7 @@ async function handleSubmit() {
       currency: form.value.currency,
       due_date: form.value.due_date,
       billing_day: billingDay,
+      project: form.value.project,
       metadata: {
         plan_name: form.value.plan_name.trim(),
         billing_cycle: form.value.billing_cycle,

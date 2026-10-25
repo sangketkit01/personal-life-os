@@ -1,4 +1,5 @@
 import html as html_lib
+from django.db.models import Q
 import re
 import uuid
 from rest_framework import serializers
@@ -178,7 +179,10 @@ class WorkspaceProjectSerializer(serializers.ModelSerializer):
         return self._annotated(obj, 'attachments_count', obj.attachments)
 
     def get_infra_count(self, obj):
-        return self._annotated(obj, 'infra_count', obj.infrastructure_assets)
+        # Count assets linked either as primary project or via sharing.
+        return InfrastructureAsset.objects.filter(
+            Q(project=obj) | Q(shared_projects=obj)
+        ).distinct().count()
 
     def get_economics(self, obj):
         # Heavy multi-query payload: only computed for the detail endpoint
@@ -653,12 +657,26 @@ class InfrastructureAssetSerializer(serializers.ModelSerializer):
     has_ssh_password = serializers.SerializerMethodField()
     has_ssh_key = serializers.SerializerMethodField()
     has_ssh_passphrase = serializers.SerializerMethodField()
+    shared_projects = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=WorkspaceProject.objects.none(), required=False
+    )
+    project_name = serializers.CharField(source='project.name', read_only=True, default=None)
+    linked_projects = serializers.SerializerMethodField()
+    is_shared = serializers.SerializerMethodField()
+    share_count = serializers.SerializerMethodField()
+    allocated_cost_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = InfrastructureAsset
         fields = (
             'id',
             'project',
+            'project_name',
+            'shared_projects',
+            'linked_projects',
+            'is_shared',
+            'share_count',
+            'allocated_cost_amount',
             'name',
             'asset_type',
             'provider',
@@ -713,6 +731,16 @@ class InfrastructureAssetSerializer(serializers.ModelSerializer):
                     data[field] = None
         return super().to_internal_value(data)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get('request')
+        if request is not None and getattr(request, 'user', None) is not None:
+            # BOLA: only the current user's projects can be share targets.
+            # many=True wraps the field in a ListSerializer - scope the child.
+            shared_field = self.fields['shared_projects']
+            target = getattr(shared_field, 'child_relation', None)                 or getattr(shared_field, 'child', None)                 or shared_field
+            target.queryset = WorkspaceProject.objects.filter(user=request.user)
+
     def get_has_ssh_password(self, obj):
         return bool(obj.ssh_password_encrypted)
 
@@ -721,6 +749,36 @@ class InfrastructureAssetSerializer(serializers.ModelSerializer):
 
     def get_has_ssh_passphrase(self, obj):
         return bool(obj.ssh_passphrase_encrypted)
+
+    def get_linked_projects(self, obj):
+        entries = []
+        seen = set()
+        if obj.project_id:
+            entries.append({
+                'id': str(obj.project_id),
+                'name': obj.project.name,
+                'color': obj.project.color
+            })
+            seen.add(obj.project_id)
+        for p in obj.shared_projects.all():
+            if p.id in seen:
+                continue
+            entries.append({'id': str(p.id), 'name': p.name, 'color': p.color})
+            seen.add(p.id)
+        return entries
+
+    def get_is_shared(self, obj):
+        return len(self.get_linked_projects(obj)) > 1
+
+    def get_share_count(self, obj):
+        return max(1, len(self.get_linked_projects(obj)))
+
+    def get_allocated_cost_amount(self, obj):
+        from decimal import Decimal
+        count = self.get_share_count(obj)
+        return str(
+            (Decimal(str(obj.cost_amount or 0)) / Decimal(count)).quantize(Decimal('0.01'))
+        )
 
     def validate_project(self, value):
         if value and value.user != self.context['request'].user:
@@ -758,20 +816,32 @@ class InfrastructureAssetSerializer(serializers.ModelSerializer):
                 secrets[model_key] = encrypt_token(validated_data.pop(payload_key) or '')
         return secrets
 
+    def _apply_shared_projects(self, asset, shared_projects):
+        """Set the M2M and guarantee a primary project exists when possible."""
+        if shared_projects is not None:
+            asset.shared_projects.set(shared_projects)
+        if not asset.project_id and shared_projects:
+            asset.project = shared_projects[0]
+            asset.save(update_fields=['project', 'updated_at'])
+
     def create(self, validated_data):
         from .services import sync_infra_asset_obligation
         validated_data['user'] = self.context['request'].user
+        shared_projects = validated_data.pop('shared_projects', None)
         secrets = self._pop_and_encrypt_secrets(validated_data)
         asset = InfrastructureAsset.objects.create(**validated_data, **secrets)
+        self._apply_shared_projects(asset, shared_projects)
         sync_infra_asset_obligation(asset)
         return asset
 
     def update(self, instance, validated_data):
         from .services import sync_infra_asset_obligation
+        shared_projects = validated_data.pop('shared_projects', None)
         secrets = self._pop_and_encrypt_secrets(validated_data)
         for field, value in secrets.items():
             setattr(instance, field, value)
         asset = super().update(instance, validated_data)
+        self._apply_shared_projects(asset, shared_projects)
         sync_infra_asset_obligation(asset)
         return asset
 

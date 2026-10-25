@@ -369,6 +369,7 @@ const form = ref({
   due_date: '',
   billing_day: '' as string | number,
   metadata: {} as Record<string, any>,
+  project: null as string | null,
 })
 
 watch(() => props.obligation, (ob) => {
@@ -382,6 +383,7 @@ watch(() => props.obligation, (ob) => {
     direction: ob.direction || 'OUTFLOW',
     due_date: ob.due_date ? ob.due_date.split('T')[0] : '',
     billing_day: ob.billing_day || '',
+    project: ob.project || null,
     metadata: { ...(ob.metadata || {}) }
   }
 }, { immediate: true })
@@ -397,7 +399,8 @@ async function handleSubmit() {
       amount: parseFloat(form.value.amount),
       currency: form.value.currency,
       direction: form.value.direction,
-      metadata: { ...form.value.metadata }
+      metadata: { ...form.value.metadata },
+      project: form.value.project
     }
 
     if (form.value.due_date) {

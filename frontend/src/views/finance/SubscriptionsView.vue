@@ -268,6 +268,14 @@
                   >
                     TRIAL
                   </span>
+                  <span
+                    v-if="sub.project_name"
+                    class="text-[9px] px-1 py-0.2 rounded border border-zinc-700/60 font-normal flex items-center gap-1"
+                    :style="{ backgroundColor: (sub.project_color || '#3B82F6') + '15', borderColor: (sub.project_color || '#3B82F6') + '40' }"
+                  >
+                    <span class="w-1.5 h-1.5 rounded-full shrink-0" :style="{ backgroundColor: sub.project_color || '#3B82F6' }" />
+                    {{ sub.project_name }}
+                  </span>
                 </RouterLink>
               </td>
 

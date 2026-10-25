@@ -52,11 +52,17 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
         from django.db.models import Q
 
         # Scoped strictly to user with prefetching to avoid N+1 queries
-        qs = FinancialObligation.objects.filter(user=self.request.user).prefetch_related(
+        qs = FinancialObligation.objects.filter(user=self.request.user).select_related(
+            'project'
+        ).prefetch_related(
             'payment_histories__attachments',
             'attachments',
             'sub_orders'
         )
+
+        project_id = self.request.query_params.get('project_id')
+        if project_id:
+            qs = qs.filter(project_id=project_id)
 
         # Query parameter filtering: ?type=INSTALLMENT&status=ACTIVE&subtype=BNPL_ACCOUNT&direction=INFLOW&search=...&ordering=...
         type_param = self.request.query_params.get('type')

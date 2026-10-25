@@ -103,6 +103,11 @@
               <p class="text-[9px] font-mono uppercase text-rose-500/90">{{ t('ma.infraCost') }}</p>
               <p class="text-base font-semibold font-mono text-rose-400 mt-1 tabular-nums">{{ currencySymbol }}{{ fmt(eco?.monthly_infra_outflow) }}</p>
               <p class="text-[10px] font-mono text-zinc-500 mt-0.5">{{ t('ma.perMonth') }} · {{ t('ma.selfFunded') }}</p>
+              <p class="text-[9px] font-mono text-zinc-600 mt-1">
+                {{ t('infra.econServers') }}: ฿{{ fmt(eco?.monthly_server_outflow) }} ·
+                {{ t('infra.econServices') }}: ฿{{ fmt(eco?.monthly_service_outflow) }}
+                <span v-if="(eco?.shared_assets_count || 0) > 0" class="text-amber-500/90"> · {{ t('infra.proRataActive') }}</span>
+              </p>
             </div>
           </div>
 
@@ -137,27 +142,37 @@
 
     <!-- ================= Zone 2: Server & Infrastructure Fleet ================= -->
     <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
-      <div class="px-5 py-3.5 border-b border-zinc-800/80 flex items-center justify-between gap-2">
+      <div class="px-3.5 sm:px-5 py-3.5 border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2">
           <Server class="w-3.5 h-3.5 text-zinc-400" />
           <h3 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t('infra.fleetTitle') }}</h3>
-          <span class="text-[10px] font-mono text-zinc-500">{{ assets.length }}</span>
+          <span class="text-[10px] font-mono text-zinc-500">{{ serverAssets.length }}</span>
         </div>
-        <button
-          type="button"
-          @click="openAssetForm(null)"
-          class="px-2.5 py-1 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-[11px] font-semibold transition-colors flex items-center gap-1.5"
-        >
-          <Plus class="w-3 h-3" />
-          {{ t('infra.addServer') }}
-        </button>
+        <div class="flex items-center gap-1.5">
+          <button
+            type="button"
+            @click="openLinkModal('server')"
+            class="px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 hover:border-zinc-600 text-zinc-300 text-[11px] font-medium transition-colors flex items-center gap-1.5"
+          >
+            <Link2 class="w-3 h-3" />
+            {{ t('infra.linkServer') }}
+          </button>
+          <button
+            type="button"
+            @click="openAssetForm(null, 'server')"
+            class="px-2.5 py-1 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-[11px] font-semibold transition-colors flex items-center gap-1.5"
+          >
+            <Plus class="w-3 h-3" />
+            {{ t('infra.addServer') }}
+          </button>
+        </div>
       </div>
 
       <div v-if="workspaceStore.isInfraLoading && assets.length === 0" class="p-4">
           <SkeletonLoader variant="cards" :count="2" />
         </div>
 
-        <div v-else-if="assets.length === 0" class="p-10 text-center">
+        <div v-else-if="serverAssets.length === 0" class="p-10 text-center">
         <Server class="w-7 h-7 text-zinc-600 mx-auto mb-2.5" />
         <p class="text-xs text-zinc-400">{{ t('infra.emptyFleet') }}</p>
         <p class="text-[11px] text-zinc-600 mt-1 font-mono">{{ t('infra.emptyFleetHint') }}</p>
@@ -165,7 +180,7 @@
 
       <div v-else class="p-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div
-          v-for="asset in assets"
+          v-for="asset in serverAssets"
           :key="asset.id"
           class="rounded-lg bg-zinc-950/60 border border-zinc-800/80 overflow-hidden hover:border-zinc-700/80 transition-colors"
         >
@@ -185,11 +200,29 @@
                   <span class="w-1.5 h-1.5 rounded-full" :class="healthDot(asset.health_status)" />
                   {{ asset.health_status }}
                 </span>
+                <span v-if="asset.is_shared" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold uppercase border border-amber-700/60 text-amber-400 bg-amber-950/40">
+                  <Share2 class="w-2.5 h-2.5" />
+                  {{ t('infra.sharedBadge', { n: String(asset.share_count || 1) }) }}
+                </span>
+                <span
+                  v-for="lp in (asset.linked_projects || []).slice(0, 4)"
+                  :key="lp.id"
+                  class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono border border-zinc-700 bg-zinc-900 text-zinc-300"
+                >
+                  <span class="w-1.5 h-1.5 rounded-full shrink-0" :style="{ backgroundColor: lp.color }" />
+                  {{ lp.name }}
+                </span>
                 <span v-if="asset.last_telemetry?.uptime_human" class="text-[10px] font-mono text-zinc-500">
                   up {{ asset.last_telemetry.uptime_human }}
                 </span>
                 <span v-if="asset.next_billing_date && asset.billing_ownership !== 'CLIENT_DIRECT'" class="text-[10px] font-mono text-amber-500/90">
                   {{ t('infra.nextBill') }} {{ formatLocaleDate(asset.next_billing_date, 'short') }}
+                </span>
+                <span class="text-[10px] font-mono text-zinc-400">
+                  <template v-if="asset.is_shared">
+                    ฿{{ fmt(asset.allocated_cost_amount) }}/mo (1/{{ asset.share_count }} {{ t('infra.of') }} ฿{{ fmt(asset.cost_amount) }})
+                  </template>
+                  <template v-else>฿{{ fmt(asset.cost_amount) }}/{{ asset.billing_cycle?.slice(0, 1) === 'M' ? 'mo' : 'cycle' }}</template>
                 </span>
                 <span v-if="asset.expiry_date" class="text-[10px] font-mono text-rose-400/90">
                   {{ t('infra.expires') }} {{ formatLocaleDate(asset.expiry_date, 'short') }}
@@ -324,6 +357,15 @@
               {{ t('infra.runbooks') }} ({{ runbookCount(asset.id) }})
             </button>
             <button
+              v-if="asset.is_shared"
+              type="button"
+              @click="unlinkAsset(asset)"
+              class="px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 hover:border-amber-600/60 text-zinc-400 hover:text-amber-400 text-[11px] font-medium transition-colors flex items-center gap-1.5"
+            >
+              <Share2 class="w-3.5 h-3.5" />
+              {{ t('infra.unlinkFromProject') }}
+            </button>
+            <button
               v-if="asset.console_url"
               type="button"
               @click="copyText(`ssh ${asset.ssh_username}@${asset.ip_address} -p ${asset.ssh_port}`, t('infra.sshCopied'))"
@@ -345,7 +387,114 @@
       </div>
     </div>
 
-    <!-- ================= Zone 3: Encrypted Credentials Vault ================= -->
+    <!-- ================= Zone 3: Project Subscriptions & Cloud Services ================= -->
+    <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
+      <div class="px-3.5 sm:px-5 py-3.5 border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <CreditCard class="w-3.5 h-3.5 text-sky-400" />
+          <h3 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">{{ t('infra.servicesTitle') }}</h3>
+          <span class="text-[10px] font-mono text-zinc-500">{{ serviceAssets.length }}</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button
+            type="button"
+            @click="openLinkModal('service')"
+            class="px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 hover:border-zinc-600 text-zinc-300 text-[11px] font-medium transition-colors flex items-center gap-1.5"
+          >
+            <Link2 class="w-3 h-3" />
+            {{ t('infra.linkService') }}
+          </button>
+          <button
+            type="button"
+            @click="openAssetForm(null, 'service')"
+            class="px-2.5 py-1 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-[11px] font-semibold transition-colors flex items-center gap-1.5"
+          >
+            <Plus class="w-3 h-3" />
+            {{ t('infra.addService') }}
+          </button>
+        </div>
+      </div>
+
+      <div v-if="serviceAssets.length === 0" class="p-8 text-center">
+        <CreditCard class="w-6 h-6 text-zinc-600 mx-auto mb-2" />
+        <p class="text-xs text-zinc-500">{{ t('infra.emptyServices') }}</p>
+        <p class="text-[11px] text-zinc-600 mt-1 font-mono">{{ t('infra.emptyServicesHint') }}</p>
+      </div>
+
+      <div v-else class="divide-y divide-zinc-800/60">
+        <div
+          v-for="asset in serviceAssets"
+          :key="asset.id"
+          class="px-3.5 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-zinc-900/40 transition-colors"
+        >
+          <div class="flex items-center gap-3 min-w-0 flex-1">
+            <div class="w-7 h-7 rounded-md bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0">
+              <component :is="serviceIcon(asset.asset_type)" class="w-3.5 h-3.5 text-sky-400" />
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-medium text-zinc-100 truncate">{{ asset.name }}</span>
+                <span class="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase border border-zinc-700 text-zinc-400 bg-zinc-900 shrink-0">
+                  {{ t(`infra.types.${asset.asset_type}`) }}
+                </span>
+                <span v-if="asset.is_shared" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold uppercase border border-amber-700/60 text-amber-400 bg-amber-950/40 shrink-0">
+                  <Share2 class="w-2.5 h-2.5" />
+                  {{ t('infra.sharedBadge', { n: String(asset.share_count || 1) }) }}
+                </span>
+              </div>
+              <p class="text-[10px] font-mono text-zinc-500 truncate mt-0.5">
+                <span v-if="asset.provider">{{ asset.provider }}</span>
+                <span v-if="asset.primary_domain"> · {{ asset.primary_domain }}</span>
+                <span v-if="asset.next_billing_date"> · {{ t('infra.nextBill') }} {{ formatLocaleDate(asset.next_billing_date, 'short') }}</span>
+                <span v-else-if="asset.expiry_date"> · {{ t('infra.expires') }} {{ formatLocaleDate(asset.expiry_date, 'short') }}</span>
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 shrink-0">
+            <div class="text-right mr-1">
+              <p class="text-[11px] font-mono text-zinc-200">
+                <template v-if="asset.is_shared">฿{{ fmt(asset.allocated_cost_amount) }}<span class="text-zinc-600">/{{ t('infra.proRataShort') }}</span></template>
+                <template v-else>฿{{ fmt(asset.cost_amount) }}/{{ asset.billing_cycle === 'YEARLY' ? 'yr' : 'mo' }}</template>
+              </p>
+              <p class="text-[9px] font-mono text-zinc-600">
+                {{ t(`infra.ownership.${asset.billing_ownership}`) }}
+                <span v-if="asset.sync_to_radar" class="text-emerald-500/80">· Radar</span>
+              </p>
+            </div>
+            <button
+              v-if="asset.is_shared"
+              type="button"
+              @click="unlinkAsset(asset)"
+              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-amber-400 transition-colors"
+              :title="t('infra.unlinkFromProject')"
+            ><Share2 class="w-3.5 h-3.5" /></button>
+            <a
+              v-if="asset.console_url"
+              :href="asset.console_url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
+              :title="t('infra.console')"
+            ><ExternalLink class="w-3.5 h-3.5" /></a>
+            <button
+              type="button"
+              @click="openAssetForm(asset, 'service')"
+              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
+              :title="t('common.edit')"
+            ><Pencil class="w-3.5 h-3.5" /></button>
+            <button
+              type="button"
+              @click="confirmDeleteAsset = asset"
+              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 transition-colors"
+              :title="t('common.delete')"
+            ><Trash2 class="w-3.5 h-3.5" /></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= Zone 4: Encrypted Credentials Vault ================= -->
     <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
       <div class="px-5 py-3.5 border-b border-zinc-800/80 flex items-center justify-between gap-2">
         <div class="flex items-center gap-2">
@@ -440,6 +589,8 @@
       :is-open="assetFormOpen"
       :project-id="project.id"
       :asset="editingAsset"
+      :default-mode="assetFormMode"
+      :projects="linkableProjects"
       @close="assetFormOpen = false"
       @saved="reloadFleet"
     />
@@ -485,6 +636,55 @@
       </div>
     </Teleport>
 
+    <!-- Link Existing Server / Service modal -->
+    <Teleport to="body">
+      <div v-if="linkModal.open" class="fixed inset-0 z-[66] flex items-center justify-center p-4 font-sans">
+        <div class="absolute inset-0 bg-black/75 backdrop-blur-sm" @click="linkModal.open = false" />
+
+        <div class="relative w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden">
+          <div class="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
+            <div class="flex items-center gap-2">
+              <Link2 class="w-4 h-4 text-sky-400" />
+              <h3 class="text-sm font-semibold text-zinc-100">
+                {{ linkModal.mode === 'server' ? t('infra.linkServer') : t('infra.linkService') }}
+              </h3>
+            </div>
+            <button type="button" @click="linkModal.open = false" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-100 transition-colors">
+              <X class="w-4 h-4" />
+            </button>
+          </div>
+          <div class="p-4 max-h-[60dvh] overflow-y-auto space-y-1.5">
+            <p v-if="linkModal.loading" class="text-xs text-zinc-500 font-mono text-center py-6">{{ t('common.loading') }}</p>
+            <p v-else-if="linkModal.candidates.length === 0" class="text-xs text-zinc-500 font-mono text-center py-6">{{ t('infra.noLinkCandidates') }}</p>
+            <button
+              v-for="candidate in linkModal.candidates"
+              :key="candidate.id"
+              type="button"
+              @click="linkAsset(candidate)"
+              class="w-full text-left p-3 rounded-lg bg-zinc-900/50 border border-zinc-800 hover:border-zinc-600 transition-colors flex items-center justify-between gap-3"
+            >
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-medium text-zinc-100 truncate">{{ candidate.name }}</span>
+                  <span class="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase border border-zinc-700 text-zinc-500 shrink-0">
+                    {{ t(`infra.types.${candidate.asset_type}`) }}
+                  </span>
+                </div>
+                <p class="text-[10px] font-mono text-zinc-500 truncate mt-0.5">
+                  {{ candidate.project_name || t('infra.noPrimaryProject') }}
+                  <span v-if="candidate.is_shared"> · {{ t('infra.sharedBadge', { n: String(candidate.share_count || 1) }) }}</span>
+                </p>
+              </div>
+              <div class="text-right shrink-0">
+                <p class="text-[11px] font-mono text-zinc-300">฿{{ fmt(candidate.cost_amount) }}</p>
+                <p class="text-[9px] font-mono text-emerald-400/80 flex items-center gap-1 justify-end"><Plus class="w-2.5 h-2.5" /> {{ t('infra.linkAction') }}</p>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <ConfirmModal
       :is-open="!!confirmDeleteAsset"
       :title="t('infra.deleteTitle')"
@@ -512,8 +712,9 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import {
   FileSignature, Pencil, Banknote, Scale, Server, Plus, Trash2, Activity, Radar,
   Container, ChevronDown, Play, Square, RotateCw, FileText, TerminalSquare, Zap,
+  Share2, Link2, CreditCard, Globe, Mail, HardDrive, Code2,
   Copy, ExternalLink, ShieldCheck, KeyRound, Eye, X,
-  Database, Code2, Lock
+  Database, Lock
 } from 'lucide-vue-next'
 import { t, formatLocaleDate } from '../../i18n'
 import { useWorkspaceStore } from '../../stores/workspace'
@@ -555,7 +756,79 @@ const revealed = ref<Record<string, string>>({})
 const expandedDocker = reactive<Record<string, boolean>>({})
 const logsViewer = reactive({ open: false, title: '', content: '' })
 
+const COMPUTE_TYPES: string[] = ['VPS', 'DEDICATED', 'MANAGED_DB', 'PAAS']
+
+const serverAssets = computed(() =>
+  assets.value.filter(a => COMPUTE_TYPES.includes(a.asset_type))
+)
+const serviceAssets = computed(() =>
+  assets.value.filter(a => !COMPUTE_TYPES.includes(a.asset_type))
+)
+
+type LinkMode = 'server' | 'service'
+const linkModal = reactive({
+  open: false,
+  mode: 'server' as LinkMode,
+  loading: false,
+  candidates: [] as InfrastructureAsset[]
+})
+
+function openLinkModal(mode: LinkMode) {
+  linkModal.open = true
+  linkModal.mode = mode
+  linkModal.loading = true
+  linkModal.candidates = []
+  workspaceStore.fetchAllUserInfraAssets().then(all => {
+    linkModal.candidates = all.filter(a => {
+      const isCompute = COMPUTE_TYPES.includes(a.asset_type)
+      const bucketOk = mode === 'server' ? isCompute : !isCompute
+      if (!bucketOk) return false
+      const alreadyLinked = (a.linked_projects || []).some(
+        lp => lp.id === props.project.id
+      ) || a.project === props.project.id
+      return !alreadyLinked
+    })
+  }).finally(() => {
+    linkModal.loading = false
+  })
+}
+
+async function linkAsset(asset: InfrastructureAsset) {
+  try {
+    await workspaceStore.linkInfraAssetProject(asset.id, props.project.id)
+    toast.success(t('infra.linkSuccess'))
+    linkModal.open = false
+    await reloadFleet()
+  } catch (err: any) {
+    toast.error(err?.response?.data?.detail || t('infra.linkFailed'))
+  }
+}
+
+async function unlinkAsset(asset: InfrastructureAsset) {
+  try {
+    await workspaceStore.unlinkInfraAssetProject(asset.id, props.project.id)
+    toast.success(t('infra.unlinkSuccess'))
+    await reloadFleet()
+  } catch (err: any) {
+    toast.error(err?.response?.data?.detail || t('infra.unlinkFailed'))
+  }
+}
+
 const eco = computed(() => props.project.economics || null)
+
+const linkableProjects = computed(() => {
+  const own = workspaceStore.projects.map(p => ({ id: p.id, name: p.name, color: p.color }))
+  const seen = new Set(own.map(p => p.id))
+  for (const a of assets.value) {
+    for (const lp of a.linked_projects || []) {
+      if (!seen.has(lp.id)) {
+        own.push(lp)
+        seen.add(lp.id)
+      }
+    }
+  }
+  return own
+})
 const currencySymbol = computed(() => (props.project.ma_currency === 'USD' ? '$' : '฿'))
 const marginPositive = computed(() => Number(eco.value?.projected_monthly_margin || 0) >= 0)
 const hasSla = computed(() => {
@@ -634,6 +907,17 @@ function assetName(assetId: string | null): string {
   return assets.value.find(a => a.id === assetId)?.name || ''
 }
 
+function serviceIcon(assetType: string) {
+  switch (assetType) {
+    case 'DOMAIN': return Globe
+    case 'EMAIL_SMTP': return Mail
+    case 'STORAGE': return HardDrive
+    case 'API_SERVICE': return Code2
+    case 'LICENSE': return FileText
+    default: return CreditCard
+  }
+}
+
 function credIcon(category: string) {
   switch (category) {
     case 'DATABASE': return Database
@@ -645,8 +929,11 @@ function credIcon(category: string) {
   }
 }
 
-function openAssetForm(asset: InfrastructureAsset | null) {
+const assetFormMode = ref<'server' | 'service'>('server')
+
+function openAssetForm(asset: InfrastructureAsset | null, mode: 'server' | 'service' = 'server') {
   editingAsset.value = asset
+  assetFormMode.value = mode
   assetFormOpen.value = true
 }
 
@@ -752,5 +1039,9 @@ function reloadProject() {
 onMounted(() => {
   reloadFleet()
   reloadCredentials()
+  // Projects list powers the Shared Projects picker in the asset form
+  if (workspaceStore.projects.length === 0) {
+    workspaceStore.fetchProjects().catch(() => { /* picker stays empty */ })
+  }
 })
 </script>

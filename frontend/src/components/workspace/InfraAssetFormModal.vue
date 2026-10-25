@@ -41,23 +41,33 @@
                 <input v-model="form.provider" type="text" placeholder="DigitalOcean / AWS / Cloudflare"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
               </label>
-              <label class="block">
+              <label v-if="!isServiceType" class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.region') }}</span>
                 <input v-model="form.region" type="text" placeholder="sgp1 / ap-southeast-1"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
               </label>
-              <label class="block">
+              <label v-if="!isServiceType" class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.os') }}</span>
                 <input v-model="form.os_name" type="text" placeholder="Ubuntu 24.04 LTS"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
               </label>
-              <label v-if="form.asset_type === 'DOMAIN' || form.asset_type === 'SSL_CERT'" class="block">
+              <label v-if="isServiceType" class="block">
+                <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.domain') }}</span>
+                <input v-model="form.primary_domain" type="text" placeholder="example.com / account"
+                  class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
+              </label>
+              <label v-if="isServiceType" class="block">
+                <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.consoleUrl') }}</span>
+                <input v-model="form.console_url" type="url" placeholder="https://dash.cloudflare.com/..."
+                  class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
+              </label>
+              <label v-if="isServiceType" class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.expiry') }}</span>
                 <input v-model="form.expiry_date" type="date"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
               </label>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div v-if="!isServiceType" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <label class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">vCPU</span>
                 <input v-model.number="specs.vcpu" type="number" min="1"
@@ -77,7 +87,7 @@
           </section>
 
           <!-- Network & SSH -->
-          <section class="space-y-3">
+          <section v-if="!isServiceType" class="space-y-3">
             <p class="text-[10px] font-mono uppercase tracking-wider text-zinc-500 border-b border-zinc-800/70 pb-1.5">{{ t('infra.form.networkSsh') }}</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label class="block">
@@ -196,7 +206,7 @@
           </section>
 
           <!-- Watchdog -->
-          <section class="space-y-3">
+          <section v-if="!isServiceType" class="space-y-3">
             <p class="text-[10px] font-mono uppercase tracking-wider text-zinc-500 border-b border-zinc-800/70 pb-1.5">{{ t('infra.form.watchdog') }}</p>
             <label class="flex items-start gap-2.5 p-2.5 rounded-md bg-zinc-900/60 border border-zinc-800 cursor-pointer">
               <input v-model="form.watchdog_enabled" type="checkbox" class="mt-0.5 accent-amber-500" />
@@ -224,6 +234,31 @@
             </div>
           </section>
 
+          <!-- Shared projects pill picker -->
+          <section v-if="otherProjects.length > 0" class="space-y-2">
+            <p class="text-[10px] font-mono uppercase tracking-wider text-zinc-500 border-b border-zinc-800/70 pb-1.5">{{ t('infra.form.sharedProjects') }}</p>
+            <div class="flex flex-wrap gap-1.5">
+              <button
+                v-for="p in otherProjects"
+                :key="p.id"
+                type="button"
+                @click="toggleSharedProject(p.id)"
+                class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] border transition-colors"
+                :class="form.shared_projects.includes(p.id)
+                  ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
+                  : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-600'"
+              >
+                <span class="w-1.5 h-1.5 rounded-full shrink-0" :style="{ backgroundColor: p.color }" />
+                {{ p.name }}
+                <Check v-if="form.shared_projects.includes(p.id)" class="w-3 h-3 text-emerald-400" />
+              </button>
+            </div>
+            <p class="text-[10px] text-zinc-500 font-mono flex items-start gap-1.5">
+              <Info class="w-3 h-3 mt-0.5 shrink-0 text-sky-400/80" />
+              {{ t('infra.form.sharedProjectsHint') }}
+            </p>
+          </section>
+
           <label class="block">
             <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.notes') }}</span>
             <textarea v-model="form.notes" rows="2"
@@ -249,7 +284,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, watch, computed } from 'vue'
-import { Server, X, Save } from 'lucide-vue-next'
+import { Server, X, Save, Check, Info } from 'lucide-vue-next'
 import { t } from '../../i18n'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
@@ -259,6 +294,8 @@ const props = defineProps<{
   isOpen: boolean
   projectId: string
   asset: InfrastructureAsset | null
+  defaultMode?: 'server' | 'service'
+  projects?: Array<{ id: string; name: string; color: string }>
 }>()
 
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved'): void }>()
@@ -266,10 +303,25 @@ const emit = defineEmits<{ (e: 'close'): void; (e: 'saved'): void }>()
 const workspaceStore = useWorkspaceStore()
 const toast = useToastStore()
 
-const ASSET_TYPES: InfraAssetType[] = ['VPS', 'DEDICATED', 'MANAGED_DB', 'DOMAIN', 'CDN_DNS', 'PAAS', 'SSL_CERT', 'OTHER']
+const ASSET_TYPES: InfraAssetType[] = [
+  'VPS', 'DEDICATED', 'MANAGED_DB', 'PAAS',
+  'SAAS', 'API_SERVICE', 'DOMAIN', 'CDN_DNS', 'SSL_CERT',
+  'STORAGE', 'EMAIL_SMTP', 'LICENSE', 'OTHER'
+]
 const OWNERSHIPS: BillingOwnership[] = ['SELF_FUNDED', 'CLIENT_REIMBURSED', 'CLIENT_DIRECT']
 
 const editing = computed(() => !!props.asset)
+
+// Service/subscription asset types hide SSH, specs and watchdog sections.
+const SERVICE_TYPES: InfraAssetType[] = [
+  'SAAS', 'API_SERVICE', 'DOMAIN', 'CDN_DNS', 'SSL_CERT',
+  'STORAGE', 'EMAIL_SMTP', 'LICENSE', 'OTHER'
+]
+const isServiceType = computed(() => SERVICE_TYPES.includes(form.value.asset_type))
+const primaryProjectId = computed(() => props.asset?.project || props.projectId)
+const otherProjects = computed(() =>
+  (props.projects || []).filter(p => p.id !== primaryProjectId.value)
+)
 
 const isSaving = ref(false)
 const specs = reactive({ vcpu: undefined as number | undefined, ram_gb: undefined as number | undefined, disk_gb: undefined as number | undefined })
@@ -278,6 +330,7 @@ const secrets = reactive({ ssh_password: '', ssh_private_key: '', ssh_passphrase
 const emptyForm = () => ({
   name: '',
   asset_type: 'VPS' as InfraAssetType,
+  shared_projects: [] as string[],
   provider: '',
   region: '',
   os_name: '',
@@ -313,6 +366,7 @@ watch(() => props.isOpen, (open) => {
     form.value = {
       name: a.name,
       asset_type: a.asset_type,
+      shared_projects: (a.shared_projects || []).slice(),
       provider: a.provider,
       region: a.region,
       os_name: a.os_name,
@@ -341,19 +395,32 @@ watch(() => props.isOpen, (open) => {
     specs.disk_gb = a.specs?.disk_gb
   } else {
     form.value = emptyForm()
+    if (props.defaultMode === 'service') {
+      form.value.asset_type = 'SAAS'
+    }
     specs.vcpu = undefined
     specs.ram_gb = undefined
     specs.disk_gb = undefined
   }
 })
 
+function toggleSharedProject(projectId: string) {
+  const idx = form.value.shared_projects.indexOf(projectId)
+  if (idx === -1) {
+    form.value.shared_projects.push(projectId)
+  } else {
+    form.value.shared_projects.splice(idx, 1)
+  }
+}
+
 async function save() {
   if (!form.value.name.trim()) return
   isSaving.value = true
   try {
     const payload: Record<string, any> = {
-      project: props.projectId,
+      project: props.asset ? (props.asset.project ?? props.projectId) : props.projectId,
       ...form.value,
+      shared_projects: form.value.shared_projects,
       expiry_date: form.value.expiry_date || null,
       next_billing_date: form.value.next_billing_date || null,
       cost_amount: form.value.cost_amount === '' ? '0' : String(form.value.cost_amount),

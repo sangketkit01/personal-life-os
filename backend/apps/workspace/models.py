@@ -75,11 +75,27 @@ class InfraAssetType(models.TextChoices):
     VPS = 'VPS', 'Virtual Private Server (VPS)'
     DEDICATED = 'DEDICATED', 'Dedicated Server'
     MANAGED_DB = 'MANAGED_DB', 'Managed Database'
+    PAAS = 'PAAS', 'PaaS / App Hosting'
+    SAAS = 'SAAS', 'SaaS / Subscription Service'
+    API_SERVICE = 'API_SERVICE', 'API / AI / Usage Service'
     DOMAIN = 'DOMAIN', 'Domain Name'
     CDN_DNS = 'CDN_DNS', 'CDN / DNS / Edge'
-    PAAS = 'PAAS', 'PaaS / App Hosting'
     SSL_CERT = 'SSL_CERT', 'SSL Certificate'
+    STORAGE = 'STORAGE', 'Cloud Object Storage / Backup'
+    EMAIL_SMTP = 'EMAIL_SMTP', 'Email / SMTP / Messaging'
+    LICENSE = 'LICENSE', 'Software License / Seat'
     OTHER = 'OTHER', 'Other Infrastructure'
+
+
+# Compute assets carry SSH/telemetry; everything else is a subscription-style
+# service (SaaS, domain, API, storage, license...).
+COMPUTE_ASSET_TYPES = {
+    InfraAssetType.VPS,
+    InfraAssetType.DEDICATED,
+    InfraAssetType.MANAGED_DB,
+    InfraAssetType.PAAS,
+}
+SERVICE_ASSET_TYPES = set(InfraAssetType.values) - COMPUTE_ASSET_TYPES
 
 
 class BillingOwnership(models.TextChoices):
@@ -463,9 +479,17 @@ class InfrastructureAsset(models.Model):
     )
     project = models.ForeignKey(
         WorkspaceProject,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='infrastructure_assets',
         verbose_name="Project"
+    )
+    shared_projects = models.ManyToManyField(
+        WorkspaceProject,
+        blank=True,
+        related_name='shared_infrastructure_assets',
+        verbose_name="Shared Across Projects"
     )
 
     # General & Specs
@@ -551,6 +575,20 @@ class InfrastructureAsset(models.Model):
         ordering = ['name']
         verbose_name = 'Infrastructure Asset'
         verbose_name_plural = 'Infrastructure Assets'
+
+    def linked_project_ids(self) -> list:
+        """All projects this asset is linked to (primary first, deduplicated)."""
+        ids = []
+        if self.project_id:
+            ids.append(self.project_id)
+        for pid in self.shared_projects.values_list('id', flat=True):
+            if pid not in ids:
+                ids.append(pid)
+        return ids
+
+    def project_share_count(self) -> int:
+        """Number of projects splitting this asset's cost (minimum 1)."""
+        return max(1, len(self.linked_project_ids()))
 
     def __str__(self):
         return f"{self.name} [{self.get_asset_type_display()}]"

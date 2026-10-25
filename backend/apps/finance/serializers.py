@@ -11,6 +11,7 @@ from .models import (
     ObligationStatus,
     AttachmentType
 )
+from apps.workspace.models import WorkspaceProject
 from .strategies import ObligationStrategyFactory
 
 
@@ -104,11 +105,22 @@ class FinancialObligationSerializer(serializers.ModelSerializer):
         help_text="Ledger account to immediately deduct down payment"
     )
 
+    project = serializers.PrimaryKeyRelatedField(
+        queryset=WorkspaceProject.objects.none(),
+        required=False,
+        allow_null=True
+    )
+    project_name = serializers.CharField(source='project.name', read_only=True, default=None)
+    project_color = serializers.CharField(source='project.color', read_only=True, default=None)
+
     class Meta:
         model = FinancialObligation
         fields = (
             'id',
             'parent',
+            'project',
+            'project_name',
+            'project_color',
             'title',
             'type',
             'subtype',
@@ -133,8 +145,18 @@ class FinancialObligationSerializer(serializers.ModelSerializer):
         super().__init__(*args, **kwargs)
         # BOLA Protection: scope parent FK exclusively to current user's obligations
         request = self.context.get('request')
+        if request is not None and getattr(request, 'user', None) is not None:
+            self.fields['project'].queryset = WorkspaceProject.objects.filter(
+                user=request.user
+            )
         if request and hasattr(request, 'user') and request.user.is_authenticated:
             self.fields['parent'].queryset = FinancialObligation.objects.filter(user=request.user)
+
+    def to_internal_value(self, data):
+        # HTML forms submit an unset project select as an empty string.
+        if isinstance(data, dict) and data.get('project') == '':
+            data = {**data, 'project': None}
+        return super().to_internal_value(data)
 
     def get_summary(self, obj):
         try:

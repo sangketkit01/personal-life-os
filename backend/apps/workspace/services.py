@@ -4,6 +4,7 @@ from typing import Dict, Any, List
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from .models import (
+    COMPUTE_ASSET_TYPES,
     WorkspaceProject,
     TaskDocument,
     TaskStatus,
@@ -138,7 +139,7 @@ def sync_infra_asset_obligation(asset: InfrastructureAsset):
         'billing_cycle': str(asset.billing_cycle).upper(),
         'source_type': 'INFRA_ASSET',
         'asset_id': str(asset.id),
-        'project_id': str(asset.project_id),
+        'project_id': str(asset.project_id) if asset.project_id else '',
         'plan_name': f"Infrastructure - {asset.name}",
         'notes': 'Auto-synced from Infrastructure Asset'
     }
@@ -227,19 +228,56 @@ def get_project_economics(project: WorkspaceProject) -> Dict[str, Any]:
         monthly_inflow = zero
         annual_inflow = zero
 
-    # --- Projected infrastructure cost (self-funded OUTFLOW only) ---
-    assets = list(project.infrastructure_assets.filter(
-        billing_ownership=BillingOwnership.SELF_FUNDED
-    ))
+    # --- Projected infrastructure cost (self-funded, primary + shared) ---
+    # A shared server/service splits its cost equally (1/N) across every
+    # project it is linked to, so each project sees only its pro-rata share.
+    assets = list(
+        InfrastructureAsset.objects.filter(billing_ownership=BillingOwnership.SELF_FUNDED)
+        .filter(Q(project=project) | Q(shared_projects=project))
+        .distinct()
+        .prefetch_related('shared_projects')
+    )
     monthly_outflow = zero
     annual_outflow = zero
+    monthly_server_outflow = zero
+    monthly_service_outflow = zero
+    shared_assets_count = 0
     for asset in assets:
         cycle = str(asset.billing_cycle or 'MONTHLY').upper()
         if cycle not in RECURRING_CYCLES:
             continue
         cost = Decimal(str(asset.cost_amount or 0))
-        monthly_outflow += _normalize_monthly(cost, cycle)
-        annual_outflow += _normalize_annual(cost, cycle)
+        share = Decimal(asset.project_share_count())
+        monthly_alloc = (_normalize_monthly(cost, cycle) / share).quantize(Decimal('0.01'))
+        annual_alloc = (_normalize_annual(cost, cycle) / share).quantize(Decimal('0.01'))
+        monthly_outflow += monthly_alloc
+        annual_outflow += annual_alloc
+        if asset.asset_type in COMPUTE_ASSET_TYPES:
+            monthly_server_outflow += monthly_alloc
+        else:
+            monthly_service_outflow += monthly_alloc
+        if asset.project_share_count() > 1:
+            shared_assets_count += 1
+
+    # --- Direct project subscriptions (created in Financial Radar without an
+    # InfrastructureAsset wrapper) count fully toward this project. ---
+    from apps.finance.models import FinancialObligation
+    direct_obligations = FinancialObligation.objects.filter(
+        project=project,
+        direction=FlowDirection.OUTFLOW,
+        status=ObligationStatus.ACTIVE,
+        linked_infra_assets__isnull=True,
+    )
+    for ob in direct_obligations:
+        meta = ob.metadata or {}
+        cycle = str(meta.get('billing_cycle', 'MONTHLY')).upper()
+        if cycle not in RECURRING_CYCLES:
+            continue
+        amount = Decimal(str(ob.amount or 0))
+        monthly_alloc = _normalize_monthly(amount, cycle)
+        monthly_service_outflow += monthly_alloc
+        monthly_outflow += monthly_alloc
+        annual_outflow += _normalize_annual(amount, cycle)
 
     # --- Realized cash movements via PaymentHistory on linked obligations ---
     obligation_ids = list(project.financial_obligations.exclude(
@@ -295,6 +333,9 @@ def get_project_economics(project: WorkspaceProject) -> Dict[str, Any]:
         'projected_monthly_margin': str(projected_monthly_margin),
         'realized_net_margin': str(realized_net_margin),
         'margin_pct': str(margin_pct),
+        'monthly_server_outflow': str(monthly_server_outflow),
+        'monthly_service_outflow': str(monthly_service_outflow),
+        'shared_assets_count': shared_assets_count,
         'self_funded_asset_count': len(assets)
     }
 

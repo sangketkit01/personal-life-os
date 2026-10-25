@@ -1725,3 +1725,194 @@ class BatchedProbeTests(InfrastructureBaseTestCase):
         self.assertIsNone(telemetry['error'])
         self.asset.refresh_from_db()
         self.assertEqual(self.asset.health_status, 'ONLINE')
+
+
+# ---------------------------------------------------------------------------
+# Shared VPS & Project Subscriptions: sharing, pro-rata economics, linking
+# ---------------------------------------------------------------------------
+from apps.workspace.models import InfrastructureAsset, ProjectType, COMPUTE_ASSET_TYPES
+from apps.finance.models import FinancialObligation, ObligationType, FlowDirection
+
+
+class SharedInfraAssetTests(InfrastructureBaseTestCase):
+    """Sharing one server/service across multiple projects with pro-rata cost."""
+
+    def setUp(self):
+        super().setUp()
+        self.project_b = WorkspaceProject.objects.create(
+            user=self.user, name='Second Project', color='#8B5CF6'
+        )
+        self.project_c = WorkspaceProject.objects.create(
+            user=self.user, name='Third Project', color='#EC4899'
+        )
+
+    def _link(self, asset, project):
+        return self.client.post(
+            f'/api/workspace/infrastructure/{asset.id}/link-project/',
+            {'project_id': str(project.id)}
+        )
+
+    def _unlink(self, asset, project):
+        return self.client.post(
+            f'/api/workspace/infrastructure/{asset.id}/unlink-project/',
+            {'project_id': str(project.id)}
+        )
+
+    def test_link_unlink_project_endpoints(self):
+        res = self._link(self.asset, self.project_b)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data['is_shared'])
+        self.assertEqual(res.data['share_count'], 2)
+        self.assertEqual(res.data['allocated_cost_amount'], '325.00')  # 650 / 2
+        linked_ids = {p['id'] for p in res.data['linked_projects']}
+        self.assertEqual(linked_ids, {str(self.project.id), str(self.project_b.id)})
+
+        # Sharing again with the same project is idempotent
+        res = self._link(self.asset, self.project_b)
+        self.assertEqual(res.data['share_count'], 2)
+
+        # Linking the primary project itself is a no-op
+        res = self._link(self.asset, self.project)
+        self.assertEqual(res.data['share_count'], 2)
+
+        # Unlink the shared project
+        res = self._unlink(self.asset, self.project_b)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertFalse(res.data['is_shared'])
+        self.assertEqual(res.data['share_count'], 1)
+
+    def test_unlink_primary_promotes_first_shared(self):
+        self._link(self.asset, self.project_b)
+        res = self._unlink(self.asset, self.project)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.project_id, self.project_b.id)
+        self.assertEqual(self.asset.shared_projects.count(), 0)
+        self.assertEqual(res.data['share_count'], 1)
+
+    def test_cannot_link_foreign_project(self):
+        friend_project = WorkspaceProject.objects.create(
+            user=self.friend, name='Friend Only Project'
+        )
+        res = self.client.post(
+            f'/api/workspace/infrastructure/{self.asset.id}/link-project/',
+            {'project_id': str(friend_project.id)}
+        )
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_query_returns_primary_and_shared_assets(self):
+        shared_asset = InfrastructureAsset.objects.create(
+            user=self.user,
+            project=self.project_b,
+            name='b-only-server',
+            asset_type='VPS',
+            billing_ownership=BillingOwnership.SELF_FUNDED,
+            cost_amount=Decimal('100.00'),
+            billing_cycle='MONTHLY'
+        )
+        self._link(shared_asset, self.project)
+
+        res = self.client.get('/api/workspace/infrastructure/', {
+            'project_id': str(self.project.id)
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        rows = _results(res)
+        names = {r['name'] for r in rows}
+        # primary asset of this project + the asset shared INTO it
+        self.assertEqual(names, {'prod-web-01', 'b-only-server'})
+
+        # project_b sees its own primary too
+        res_b = self.client.get('/api/workspace/infrastructure/', {
+            'project_id': str(self.project_b.id)
+        })
+        self.assertIn('b-only-server', {r['name'] for r in _results(res_b)})
+
+    def test_project_infra_count_includes_shared(self):
+        self._link(self.asset, self.project_b)
+        res = self.client.get(f'/api/workspace/projects/{self.project_b.id}/')
+        self.assertEqual(res.data['infra_count'], 1)
+
+    def test_serializer_write_shared_projects(self):
+        res = self.client.patch(f'/api/workspace/infrastructure/{self.asset.id}/', {
+            'shared_projects': [str(self.project_b.id), str(self.project_c.id)]
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.shared_projects.count(), 2)
+        self.assertEqual(res.data['share_count'], 3)
+        # 650 / 3 = 216.67
+        self.assertEqual(res.data['allocated_cost_amount'], '216.67')
+
+    def test_economics_pro_rata_split(self):
+        # 900/mo VPS shared across 3 projects -> 300/mo per project
+        self.asset.cost_amount = Decimal('900.00')
+        self.asset.billing_cycle = 'MONTHLY'
+        self.asset.save()
+        self._link(self.asset, self.project_b)
+        self._link(self.asset, self.project_c)
+
+        for proj in (self.project, self.project_b, self.project_c):
+            eco = get_project_economics(proj)
+            self.assertEqual(Decimal(eco['monthly_infra_outflow']), Decimal('300.00'))
+            self.assertEqual(Decimal(eco['annual_infra_outflow']), Decimal('3600.00'))
+            self.assertEqual(Decimal(eco['monthly_server_outflow']), Decimal('300.00'))
+            self.assertEqual(Decimal(eco['monthly_service_outflow']), Decimal('0.00'))
+            self.assertEqual(eco['shared_assets_count'], 1)
+
+    def test_economics_service_and_direct_obligation_split(self):
+        # Shared SAAS service 60/mo across 2 projects -> 30 each
+        service = InfrastructureAsset.objects.create(
+            user=self.user, project=self.project,
+            name='figma-team', asset_type='SAAS',
+            billing_ownership=BillingOwnership.SELF_FUNDED,
+            cost_amount=Decimal('60.00'), billing_cycle='MONTHLY'
+        )
+        self._link(service, self.project_b)
+
+        # Direct Financial Radar subscription linked to this project only
+        FinancialObligation.objects.create(
+            user=self.user, title='Vercel Pro', type=ObligationType.SUBSCRIPTION,
+            direction=FlowDirection.OUTFLOW, amount=Decimal('20.00'),
+            status='ACTIVE', project=self.project,
+            metadata={'billing_cycle': 'MONTHLY'}
+        )
+
+        eco = get_project_economics(self.project)
+        # server 650 + service 30 + direct 20 = 700
+        self.assertEqual(Decimal(eco['monthly_infra_outflow']), Decimal('700.00'))
+        self.assertEqual(Decimal(eco['monthly_server_outflow']), Decimal('650.00'))
+        self.assertEqual(Decimal(eco['monthly_service_outflow']), Decimal('50.00'))
+        self.assertEqual(eco['shared_assets_count'], 1)
+
+        eco_b = get_project_economics(self.project_b)
+        # only its pro-rata share of the shared SAAS service
+        self.assertEqual(Decimal(eco_b['monthly_infra_outflow']), Decimal('30.00'))
+        self.assertEqual(Decimal(eco_b['monthly_service_outflow']), Decimal('30.00'))
+        self.assertEqual(Decimal(eco_b['monthly_server_outflow']), Decimal('0.00'))
+
+    def test_economics_excludes_synced_obligation_wrapper(self):
+        """The synced infra obligation must not be double-counted as a direct
+        subscription (it is attached to the asset, not standalone)."""
+        self.asset.sync_to_radar = True
+        self.asset.next_billing_date = date.today()
+        self.asset.save()
+        from apps.workspace.services import sync_infra_asset_obligation
+        sync_infra_asset_obligation(self.asset)
+
+        eco = get_project_economics(self.project)
+        # 650 server only - synced wrapper excluded from the direct bucket
+        self.assertEqual(Decimal(eco['monthly_infra_outflow']), Decimal('650.00'))
+        self.assertEqual(Decimal(eco['monthly_service_outflow']), Decimal('0.00'))
+
+    def test_deleting_primary_project_keeps_shared_asset(self):
+        self._link(self.asset, self.project_b)
+        self.project.delete()
+        self.asset.refresh_from_db()
+        # SET_NULL: the asset survives, keeps its shared link, and still
+        # resolves its linked projects via the M2M.
+        self.assertIsNotNone(self.asset)
+        self.assertIsNone(self.asset.project_id)
+        self.assertEqual(
+            [pid for pid in self.asset.linked_project_ids()],
+            [self.project_b.id]
+        )

@@ -41,6 +41,18 @@
         {{ errorMessage }}
       </div>
 
+        <!-- Linked Project (SUBSCRIPTION & FREE_TRIAL only) -->
+        <div v-if="selectedType === 'SUBSCRIPTION' || selectedType === 'FREE_TRIAL'" class="space-y-1.5">
+          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400">{{ t('fin.linkedProject') }}</label>
+          <select
+            v-model="form.project"
+            class="w-full bg-zinc-900 border border-zinc-800 rounded-md px-2.5 py-2 text-xs text-zinc-100 outline-none focus:border-zinc-600"
+          >
+            <option :value="null">—</option>
+            <option v-for="p in workspaceStore.projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+        </div>
+
       <!-- Form -->
       <form @submit.prevent="handleSubmit" class="space-y-3.5">
         <!-- Subtype Switcher for INSTALLMENT -->
@@ -443,9 +455,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useFinanceStore } from '../../stores/finance'
 import type { ObligationType, ObligationSubtype } from '../../types/finance'
+import { useWorkspaceStore } from '../../stores/workspace'
+import { t } from '../../i18n'
 import {
   CalendarClock,
   ShieldAlert,
@@ -464,6 +478,7 @@ const emit = defineEmits<{
 }>()
 
 const financeStore = useFinanceStore()
+const workspaceStore = useWorkspaceStore()
 
 const typeOptions: Array<{ value: ObligationType; label: string; icon: any }> = [
   { value: 'INSTALLMENT', label: 'Installment', icon: CalendarClock },
@@ -485,7 +500,8 @@ const form = ref({
   due_date: '',
   billing_day: '' as string | number,
   metadata: {} as Record<string, any>,
-})
+  project: null as string | null,
+  })
 
 const titlePlaceholder = computed(() => {
   if (selectedType.value === 'INSTALLMENT') {
@@ -499,6 +515,12 @@ const titlePlaceholder = computed(() => {
     return form.value.direction === 'INFLOW' ? 'e.g. Friend loan receivable' : 'e.g. Personal bank loan'
   }
   return ''
+})
+
+onMounted(async () => {
+  if (workspaceStore.projects.length === 0) {
+    await workspaceStore.fetchProjects().catch(() => {})
+  }
 })
 
 watch(selectedType, (newType) => {
@@ -581,6 +603,7 @@ async function handleSubmit() {
       direction: form.value.direction || 'OUTFLOW',
       currency: form.value.currency || 'THB',
       amount: parseFloat(form.value.amount),
+      project: form.value.project,
       metadata: { ...form.value.metadata, subtype: selectedSubtype.value },
     }
 

@@ -6,7 +6,20 @@ export type CalendarEventType = 'APPOINTMENT' | 'MEETING' | 'REMINDER' | 'MILEST
 export type NoteColor = 'DEFAULT' | 'AMBER' | 'EMERALD' | 'SKY' | 'VIOLET' | 'ROSE'
 
 export type ProjectType = 'INTERNAL' | 'CLIENT_DEV' | 'MA_CONTRACT'
-export type InfraAssetType = 'VPS' | 'DEDICATED' | 'MANAGED_DB' | 'DOMAIN' | 'CDN_DNS' | 'PAAS' | 'SSL_CERT' | 'OTHER'
+export type InfraAssetType =
+  | 'VPS'
+  | 'DEDICATED'
+  | 'MANAGED_DB'
+  | 'PAAS'
+  | 'SAAS'
+  | 'API_SERVICE'
+  | 'DOMAIN'
+  | 'CDN_DNS'
+  | 'SSL_CERT'
+  | 'STORAGE'
+  | 'EMAIL_SMTP'
+  | 'LICENSE'
+  | 'OTHER'
 export type BillingOwnership = 'SELF_FUNDED' | 'CLIENT_REIMBURSED' | 'CLIENT_DIRECT'
 export type SshAuthType = 'PASSWORD' | 'PRIVATE_KEY' | 'NONE'
 export type CredentialCategory = 'SSH' | 'DATABASE' | 'API_KEY' | 'ENV_VARS' | 'ADMIN_PANEL' | 'OTHER'
@@ -31,6 +44,9 @@ export interface ProjectEconomics {
   projected_monthly_margin: string
   realized_net_margin: string
   margin_pct: string
+  monthly_server_outflow?: string
+  monthly_service_outflow?: string
+  shared_assets_count?: number
   self_funded_asset_count: number
 }
 
@@ -61,9 +77,21 @@ export interface InfraTelemetry {
   probe_ms?: number
 }
 
+export interface LinkedProjectRef {
+  id: string
+  name: string
+  color: string
+}
+
 export interface InfrastructureAsset {
   id: string
   project: string
+  shared_projects?: string[]
+  project_name?: string | null
+  linked_projects?: LinkedProjectRef[]
+  is_shared?: boolean
+  share_count?: number
+  allocated_cost_amount?: string
   name: string
   asset_type: InfraAssetType
   provider: string

@@ -206,7 +206,7 @@
         <!-- Pagination Controls -->
         <div
           v-if="totalPages > 1"
-          class="px-5 py-3 border-t border-zinc-800/80 bg-zinc-950/40 flex items-center justify-between font-mono text-xs"
+          class="px-5 py-3 border-t border-zinc-800/80 bg-zinc-950/40 flex flex-wrap items-center justify-between gap-2 font-mono text-xs"
         >
           <span class="text-zinc-500">
             Page <strong class="text-zinc-300">{{ currentPage }}</strong> of <strong class="text-zinc-300">{{ totalPages }}</strong> ({{ ledgerStore.totalTransactionsCount }} items)

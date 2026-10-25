@@ -95,7 +95,7 @@
           </div>
 
           <!-- Financed Parameters Grid -->
-          <div class="grid grid-cols-3 gap-2 p-2.5 rounded-lg bg-zinc-950 border border-zinc-800/80 font-mono text-xs">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 p-2.5 rounded-lg bg-zinc-950 border border-zinc-800/80 font-mono text-xs">
             <div>
               <span class="text-[9px] text-zinc-500 block uppercase">Financed Principal</span>
               <span class="text-zinc-200 font-semibold">฿{{ Number(hp.metadata?.financed_amount || hp.metadata?.total_principal || 0).toLocaleString('en-US') }}</span>

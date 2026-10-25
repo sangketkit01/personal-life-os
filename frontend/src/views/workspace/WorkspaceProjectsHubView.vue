@@ -204,7 +204,7 @@
             />
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">{{ t('ws.modal.status') }}</label>
               <select
@@ -260,7 +260,7 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">{{ t('ws.modal.startDate') }}</label>
               <input

@@ -4,7 +4,7 @@
     class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 font-sans"
     @click.self="emit('close')"
   >
-    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md p-5 shadow-2xl relative">
+    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md max-h-[90dvh] overflow-y-auto p-5 shadow-2xl relative">
       <button
         @click="emit('close')"
         class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -124,6 +124,23 @@
             class="bg-zinc-900 border border-zinc-800 rounded-md px-2.5 py-2 text-xs text-zinc-100 outline-none focus:border-zinc-600 font-mono disabled:opacity-40"
           />
         </div>
+        <div>
+          <p class="text-[10px] font-mono uppercase tracking-wider text-zinc-500 mb-1">Ends (optional — leave blank for same-day)</p>
+          <div class="grid grid-cols-2 gap-3">
+            <input
+              v-model="eventForm.endDate"
+              type="date"
+              :disabled="eventForm.is_all_day"
+              class="bg-zinc-900 border border-zinc-800 rounded-md px-2.5 py-2 text-xs text-zinc-100 outline-none focus:border-zinc-600 font-mono disabled:opacity-40"
+            />
+            <input
+              v-model="eventForm.endTime"
+              type="time"
+              :disabled="eventForm.is_all_day"
+              class="bg-zinc-900 border border-zinc-800 rounded-md px-2.5 py-2 text-xs text-zinc-100 outline-none focus:border-zinc-600 font-mono disabled:opacity-40"
+            />
+          </div>
+        </div>
         <label class="flex items-center gap-2 px-1 cursor-pointer w-fit">
           <input v-model="eventForm.is_all_day" type="checkbox" class="accent-zinc-100" />
           <span class="text-xs text-zinc-300">All day</span>
@@ -197,6 +214,8 @@ const eventForm = reactive({
   project: null as string | null,
   date: '',
   time: '09:00',
+  endDate: '',
+  endTime: '',
   is_all_day: false,
   notes: ''
 })
@@ -217,6 +236,8 @@ watch(
       eventForm.project = props.fixedProjectId || null
       eventForm.date = props.initialDate || new Date().toISOString().slice(0, 10)
       eventForm.time = '09:00'
+      eventForm.endDate = ''
+      eventForm.endTime = ''
       eventForm.is_all_day = false
       eventForm.notes = ''
 
@@ -269,13 +290,19 @@ async function submit() {
     return
   }
   const date = eventForm.date || todayIso()
+  const endDate = eventForm.endDate || date
+  if (endDate < date) {
+    toast.error('End date cannot be before the start date')
+    return
+  }
+  const hasEnd = !eventForm.is_all_day && (eventForm.endDate !== '' || eventForm.endTime !== '')
   try {
     const created = await workspaceStore.createEvent({
       title,
       event_type: eventForm.event_type,
       project: props.fixedProjectId || eventForm.project,
       start_at: buildLocalIso(date, eventForm.is_all_day ? '12:00' : (eventForm.time || '09:00')),
-      end_at: null,
+      end_at: hasEnd ? buildLocalIso(endDate, eventForm.endTime || eventForm.time || '09:00') : null,
       is_all_day: eventForm.is_all_day,
       notes: eventForm.notes
     })

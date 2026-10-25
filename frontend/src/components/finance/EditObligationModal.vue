@@ -58,7 +58,7 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Currency</label>
             <select
@@ -84,7 +84,7 @@
         <!-- 1. HIRE PURCHASE -->
         <div v-if="obligation.type === 'INSTALLMENT' && (obligation.subtype === 'HIRE_PURCHASE' || form.metadata.subtype === 'HIRE_PURCHASE')" class="space-y-3 p-3.5 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
           <div class="text-[11px] font-semibold text-zinc-200 uppercase tracking-wider">Hire Purchase Parameters</div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Total Terms (Months)</label>
               <input
@@ -105,7 +105,7 @@
               />
             </div>
           </div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Financed Principal (฿)</label>
               <input
@@ -125,7 +125,7 @@
               />
             </div>
           </div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Vehicle Model / Plate</label>
               <input
@@ -148,7 +148,7 @@
         <!-- 2. BNPL ACCOUNT -->
         <div v-else-if="obligation.type === 'INSTALLMENT' && (obligation.subtype === 'BNPL_ACCOUNT' || form.metadata.subtype === 'BNPL_ACCOUNT')" class="space-y-3 p-3.5 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
           <div class="text-[11px] font-semibold text-zinc-200 uppercase tracking-wider">BNPL Account Parameters</div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Credit Limit (฿)</label>
               <input
@@ -167,7 +167,7 @@
               />
             </div>
           </div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Cutoff Day (1-31)</label>
               <input
@@ -194,7 +194,7 @@
         <!-- 3. STANDARD INSTALLMENT -->
         <div v-else-if="obligation.type === 'INSTALLMENT'" class="space-y-3 p-3.5 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
           <div class="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Installment Parameters</div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Total Terms</label>
               <input
@@ -215,7 +215,7 @@
               />
             </div>
           </div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Billing Day of Month (1-31)</label>
               <input
@@ -240,7 +240,7 @@
         <!-- 4. SUBSCRIPTION -->
         <div v-else-if="obligation.type === 'SUBSCRIPTION'" class="space-y-3 p-3.5 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
           <div class="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Subscription Schedule</div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Billing Cycle</label>
               <select
@@ -267,7 +267,7 @@
         <!-- 5. DEBT -->
         <div v-else-if="obligation.type === 'DEBT'" class="space-y-3 p-3.5 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
           <div class="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Debt Settlement Details</div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Counterparty / Name</label>
               <input
@@ -287,7 +287,7 @@
               />
             </div>
           </div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Contact Phone</label>
               <input

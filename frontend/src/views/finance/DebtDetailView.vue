@@ -222,6 +222,7 @@
           </div>
 
           <div v-else class="rounded-lg border border-zinc-800 overflow-hidden bg-zinc-950/60">
+            <div class="overflow-x-auto">
             <table class="w-full text-left text-xs font-mono">
               <thead>
                 <tr class="border-b border-zinc-800 text-[10px] text-zinc-500 uppercase tracking-wider bg-zinc-950">
@@ -258,6 +259,7 @@
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       </div>

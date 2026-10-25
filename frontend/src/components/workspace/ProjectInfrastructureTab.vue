@@ -166,7 +166,7 @@
           class="rounded-lg bg-zinc-950/60 border border-zinc-800/80 overflow-hidden hover:border-zinc-700/80 transition-colors"
         >
           <!-- Card header -->
-          <div class="px-4 py-3 border-b border-zinc-800/70 flex items-start justify-between gap-2">
+          <div class="px-3.5 sm:px-4 py-3 border-b border-zinc-800/70 flex flex-wrap items-start justify-between gap-2">
             <div class="min-w-0">
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-sm font-semibold text-zinc-100 truncate">{{ asset.name }}</span>
@@ -192,7 +192,7 @@
                 </span>
               </div>
             </div>
-            <div class="flex items-center gap-1 shrink-0">
+            <div class="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
               <button
                 v-if="asset.ip_address"
                 type="button"
@@ -323,9 +323,9 @@
               v-if="asset.console_url"
               type="button"
               @click="copyText(`ssh ${asset.ssh_username}@${asset.ip_address} -p ${asset.ssh_port}`, t('infra.sshCopied'))"
-              class="ml-auto px-2 py-1 rounded text-[10px] font-mono text-zinc-500 hover:text-zinc-200 transition-colors flex items-center gap-1"
+              class="sm:ml-auto max-w-full px-2 py-1 rounded bg-zinc-950/80 border border-zinc-800/80 text-[10px] font-mono text-zinc-500 hover:text-zinc-200 flex items-center gap-1 transition-colors min-w-0"
             >
-              <Copy class="w-3 h-3" /> ssh {{ asset.ssh_username }}@{{ asset.ip_address || '—' }} -p {{ asset.ssh_port }}
+              <Copy class="w-2.5 h-2.5 shrink-0" /> <span class="truncate">ssh {{ asset.ssh_username }}@{{ asset.ip_address || '—' }} -p {{ asset.ssh_port }}</span>
             </button>
             <a
               v-if="asset.console_url"
@@ -367,9 +367,10 @@
         <div
           v-for="cred in credentials"
           :key="cred.id"
-          class="px-5 py-3 flex items-center justify-between gap-3 hover:bg-zinc-900/40 transition-colors"
+          class="px-3.5 sm:px-5 py-3 space-y-2 hover:bg-zinc-900/40 transition-colors"
         >
-          <div class="min-w-0 flex items-center gap-3">
+          <div class="flex items-start sm:items-center justify-between gap-2">
+          <div class="min-w-0 flex-1 flex items-center gap-3">
             <div class="w-7 h-7 rounded-md bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0">
               <component :is="credIcon(cred.category)" class="w-3.5 h-3.5 text-zinc-400" />
             </div>
@@ -382,8 +383,7 @@
               </div>
               <p class="text-[10px] font-mono text-zinc-500 truncate mt-0.5">
                 <span v-if="cred.username">{{ cred.username }}@</span>{{ cred.host_or_url || assetName(cred.asset) }}
-                <span v-if="revealed[cred.id]" class="text-emerald-400/90"> · {{ revealed[cred.id] }}</span>
-                <span v-else-if="cred.has_secret" class="text-zinc-600"> · ••••••••••••</span>
+                <span v-if="cred.has_secret && !revealed[cred.id]" class="text-zinc-600"> · ••••••••••••</span>
               </p>
             </div>
           </div>
@@ -416,6 +416,12 @@
               :title="t('common.delete')"
             ><Trash2 class="w-3.5 h-3.5" /></button>
           </div>
+          </div>
+
+          <pre
+            v-if="revealed[cred.id]"
+            class="p-2.5 rounded-md bg-zinc-950 border border-zinc-800 text-[11px] font-mono text-amber-300 break-all whitespace-pre-wrap max-h-40 overflow-y-auto select-all"
+          >{{ revealed[cred.id] }}</pre>
         </div>
       </div>
     </div>

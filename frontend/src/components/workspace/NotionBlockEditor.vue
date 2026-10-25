@@ -128,6 +128,9 @@
 
         <!-- Mobile hover controls -->
         <div v-if="block.type !== 'divider'" class="sm:hidden absolute right-0 top-0 flex items-center gap-0.5 opacity-40">
+          <button type="button" class="p-0.5 text-zinc-400" title="Insert block below" @click="insertBlock('paragraph', index + 1); focusBlock(index + 1)">
+            <Plus class="w-3 h-3" />
+          </button>
           <button type="button" @click="moveBlock(index, -1)" :disabled="index === 0" class="p-0.5 text-zinc-500 disabled:opacity-30">
             <ChevronUp class="w-3 h-3" />
           </button>
@@ -349,7 +352,7 @@
                   />
 
                   <!-- Floating image toolbar -->
-                  <div v-if="blobUrls.get(block.drive_file_id!)" class="absolute top-1.5 right-1.5 hidden group-hover/img:flex items-center gap-0.5 p-0.5 rounded-md bg-zinc-950/90 border border-zinc-700/80 select-none">
+                  <div v-if="blobUrls.get(block.drive_file_id!)" class="absolute top-1.5 right-1.5 flex opacity-100 sm:opacity-0 sm:group-hover/img:opacity-100 items-center gap-0.5 p-0.5 rounded-md bg-zinc-950/90 border border-zinc-700/80 select-none">
                     <button v-for="w in WIDTH_OPTIONS" :key="w" type="button" class="px-1 py-0.5 rounded text-[9px] font-mono transition-colors" :class="block.width === w ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:text-zinc-100'" :title="`Width ${w}`" @mousedown.prevent @click="setImageWidth(block, w)">{{ w }}</button>
                     <span class="w-px h-3.5 bg-zinc-700 mx-0.5" />
                     <button type="button" class="p-1 rounded text-zinc-400 hover:text-zinc-100" :class="block.align === 'left' ? 'bg-zinc-800 text-zinc-100' : ''" title="Align left" @mousedown.prevent @click="setImageAlign(block, 'left')">

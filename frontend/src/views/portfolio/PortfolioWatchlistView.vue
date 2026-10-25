@@ -61,16 +61,26 @@
               </div>
               <div class="text-[11px] text-zinc-400 font-sans truncate mt-0.5 max-w-[260px]">{{ item.name }}</div>
             </div>
-            <div class="text-right font-mono">
-              <span class="text-xs text-zinc-200">
-                {{ (item.currency || '').toUpperCase() === 'USD' ? '$' : '฿' }}{{ formatPrice(item.price) }}
-              </span>
+            <div class="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                class="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
+                :title="`Open ${item.ticker} chart & analytics`"
+                @click.stop="goToAssetDetail(item.ticker)"
+              >
+                <LineChart class="w-3.5 h-3.5" />
+              </button>
+              <div class="text-right font-mono">
+                <span class="text-xs text-zinc-200">
+                  {{ (item.currency || '').toUpperCase() === 'USD' ? '$' : '฿' }}{{ formatPrice(item.price) }}
+                </span>
               <div
                 v-if="item.change_pct !== undefined && item.change_pct !== null"
                 class="text-[10px] font-semibold"
                 :class="item.change_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'"
               >
                 {{ item.change_pct >= 0 ? '+' : '' }}{{ item.change_pct.toFixed(2) }}%
+              </div>
               </div>
             </div>
           </div>
@@ -284,6 +294,7 @@ import {
   Trash2,
   ArrowRight,
   TrendingUp,
+  LineChart,
   TrendingDown
 } from 'lucide-vue-next'
 
@@ -298,6 +309,7 @@ const showAutocomplete = ref(false)
 const isAdding = ref(false)
 const searchContainerRef = ref<HTMLElement | null>(null)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let searchSeq = 0
 
 const showAddModal = ref(false)
 const prefillTicker = ref('')
@@ -337,14 +349,20 @@ function handleSearchInput() {
     return
   }
   isSearching.value = true
+  // Sequence guard: a slow response from an EARLIER keystroke must never
+  // overwrite the results of the current one (made the first search feel
+  // like it "did not run" until the user typed again).
+  const seq = ++searchSeq
   debounceTimer = setTimeout(async () => {
     try {
-      searchResults.value = await portfolioStore.searchAssets(q)
+      const results = await portfolioStore.searchAssets(q)
+      if (seq !== searchSeq) return
+      searchResults.value = results
       showAutocomplete.value = true
     } catch {
-      searchResults.value = []
+      if (seq === searchSeq) searchResults.value = []
     } finally {
-      isSearching.value = false
+      if (seq === searchSeq) isSearching.value = false
     }
   }, 160)
 }

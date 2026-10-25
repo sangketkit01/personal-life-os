@@ -146,7 +146,7 @@
                 <button
                   type="button"
                   @click="removeChecklistItem(idx)"
-                  class="p-0.5 rounded text-zinc-600 hover:text-rose-400 opacity-0 group-hover/checklist:opacity-100 transition-all"
+                  class="p-0.5 rounded text-zinc-600 hover:text-rose-400 opacity-100 sm:opacity-0 sm:group-hover/checklist:opacity-100 transition-all"
                 >
                   <Trash2 class="w-3 h-3" />
                 </button>
@@ -187,7 +187,7 @@
                 <button
                   type="button"
                   @click="removeLink(idx)"
-                  class="p-0.5 rounded text-zinc-600 hover:text-rose-400 opacity-0 group-hover/link:opacity-100 transition-all"
+                  class="p-0.5 rounded text-zinc-600 hover:text-rose-400 opacity-100 sm:opacity-0 sm:group-hover/link:opacity-100 transition-all"
                 >
                   <Trash2 class="w-3 h-3" />
                 </button>
@@ -294,7 +294,7 @@
                   <button
                     type="button"
                     @click="attachmentToDelete = attachment"
-                    class="p-1 rounded text-zinc-600 hover:text-rose-400 opacity-0 group-hover/attach:opacity-100 transition-all shrink-0"
+                    class="p-1 rounded text-zinc-600 hover:text-rose-400 opacity-100 sm:opacity-0 sm:group-hover/attach:opacity-100 transition-all shrink-0"
                     title="Delete"
                   >
                     <Trash2 class="w-3 h-3" />

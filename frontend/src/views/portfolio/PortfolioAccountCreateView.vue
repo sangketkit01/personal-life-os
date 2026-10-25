@@ -60,7 +60,7 @@
         <label class="block text-xs font-mono text-zinc-400 mb-1.5">
           Base Account Currency <span class="text-rose-400">*</span>
         </label>
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <button
             type="button"
             @click="form.currency = 'USD'"

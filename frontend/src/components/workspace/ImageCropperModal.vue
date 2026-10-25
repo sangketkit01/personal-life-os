@@ -131,8 +131,12 @@ const crop = reactive({ x: 0, y: 0, w: 0, h: 0 })
 const dragging = ref<'move' | Corner | null>(null)
 let dragStart = { x: 0, y: 0, cx: 0, cy: 0, cw: 0, ch: 0 }
 
-const MAX_W = 640
-const MAX_H = 420
+// Canvas box clamps to the viewport so the crop area never overflows a
+// phone screen (fixed 640x420 used to spill past a 360px display).
+const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1024
+const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800
+const MAX_W = Math.min(640, Math.max(240, viewportW - 96))
+const MAX_H = Math.min(420, Math.max(220, Math.floor(viewportH * 0.45)))
 
 // Rotated natural dimensions (90° steps swap width/height)
 const rotatedW = computed(() => (rotation.value % 180 === 0 ? natural.w : natural.h))

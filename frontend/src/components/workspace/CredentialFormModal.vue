@@ -5,7 +5,7 @@
 
       <form
         @submit.prevent="save"
-        class="relative w-full max-w-lg rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden"
+        class="relative w-full max-w-lg max-h-[90dvh] overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl"
       >
         <div class="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
           <div class="flex items-center gap-2">

@@ -80,7 +80,7 @@
         <div
           v-for="cell in calendarCells"
           :key="cell.key"
-          class="min-h-[92px] border-b border-r border-zinc-800/50 p-1.5 group/cell relative transition-colors"
+          class="min-h-[68px] sm:min-h-[92px] border-b border-r border-zinc-800/50 p-1 sm:p-1.5 group/cell relative transition-colors"
           :class="cell.isCurrentMonth ? 'bg-zinc-950/40' : 'bg-zinc-950/80'"
           @click="emit('create-on-date', cell.key)"
         >
@@ -107,15 +107,21 @@
           <!-- Event pills (standalone schedules, not tied to the task pipeline) -->
           <div class="space-y-1">
             <button
-              v-for="event in cell.events.slice(0, 2)"
-              :key="event.id"
+              v-for="es in cell.eventSegments.slice(0, 2)"
+              :key="es.event.id"
               type="button"
-              @click.stop="emit('select-event', event)"
-              class="w-full text-left px-1.5 py-0.5 rounded text-[10px] truncate flex items-center gap-1 border bg-violet-500/10 border-violet-500/30 text-violet-300 transition-colors hover:bg-violet-500/20"
-              :title="`${EVENT_TYPE_LABEL[event.event_type] || t('cal.event')}${event.is_all_day ? ' (' + t('cal.allDay') + ')' : ''}`"
+              @click.stop="emit('select-event', es.event)"
+              class="w-full text-left px-1.5 py-0.5 text-[10px] truncate flex items-center gap-1 border bg-violet-500/10 border-violet-500/30 text-violet-300 transition-colors hover:bg-violet-500/20"
+              :class="{
+                'rounded': es.seg === 'single',
+                'rounded-l rounded-r-none': es.seg === 'start',
+                'rounded-none': es.seg === 'mid',
+                'rounded-r rounded-l-none': es.seg === 'end'
+              }"
+              :title="`${EVENT_TYPE_LABEL[es.event.event_type] || t('cal.event')}${es.event.is_all_day ? ' (' + t('cal.allDay') + ')' : ''}`"
             >
-              <Clock v-if="!event.is_all_day" class="w-2.5 h-2.5 shrink-0" />
-              <span class="truncate">{{ event.title }}</span>
+              <Clock v-if="!es.event.is_all_day && (es.seg === 'single' || es.seg === 'start')" class="w-2.5 h-2.5 shrink-0 hidden sm:inline" />
+              <span class="truncate">{{ es.event.title }}</span>
             </button>
 
             <!-- Task pills -->
@@ -350,6 +356,11 @@ const monthEvents = computed(() => {
   })
 })
 
+interface EventSegment {
+  event: CalendarEvent
+  seg: 'start' | 'mid' | 'end' | 'single'
+}
+
 interface CalendarCell {
   key: string
   dayNumber: number
@@ -357,6 +368,7 @@ interface CalendarCell {
   isToday: boolean
   tasks: TaskDocument[]
   events: CalendarEvent[]
+  eventSegments: EventSegment[]
 }
 
 const calendarCells = computed<CalendarCell[]>(() => {
@@ -377,10 +389,21 @@ const calendarCells = computed<CalendarCell[]>(() => {
   }
 
   const eventsByDate = new Map<string, CalendarEvent[]>()
+  const segmentsByDate = new Map<string, EventSegment[]>()
   for (const event of monthEvents.value) {
+    const startKey = toDateKey(new Date(event.start_at))
+    const endKey = event.end_at ? toDateKey(new Date(event.end_at)) : startKey
     for (const key of eventDates(event)) {
       if (!eventsByDate.has(key)) eventsByDate.set(key, [])
       eventsByDate.get(key)!.push(event)
+      // One continuous bar across days: start cap, straight middle, end cap.
+      const seg: EventSegment['seg'] =
+        key === startKey && key === endKey ? 'single'
+        : key === startKey ? 'start'
+        : key === endKey ? 'end'
+        : 'mid'
+      if (!segmentsByDate.has(key)) segmentsByDate.set(key, [])
+      segmentsByDate.get(key)!.push({ event, seg })
     }
   }
 
@@ -395,7 +418,8 @@ const calendarCells = computed<CalendarCell[]>(() => {
       isCurrentMonth: d.getMonth() === month,
       isToday: key === todayKey,
       tasks: (tasksByDate.get(key) || []).sort((a, b) => (a.deadline ? new Date(a.deadline).getTime() : 0) - (b.deadline ? new Date(b.deadline).getTime() : 0)),
-      events: (eventsByDate.get(key) || []).sort((a, b) => a.start_at.localeCompare(b.start_at))
+      events: (eventsByDate.get(key) || []).sort((a, b) => a.start_at.localeCompare(b.start_at)),
+      eventSegments: (segmentsByDate.get(key) || []).sort((a, b) => a.event.start_at.localeCompare(b.event.start_at))
     })
   }
   return cells

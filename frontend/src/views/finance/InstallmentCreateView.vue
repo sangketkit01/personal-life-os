@@ -152,7 +152,7 @@
       </div>
 
       <!-- Real-Time Loan Calculation Strip -->
-      <div class="p-3.5 rounded-lg bg-zinc-900/50 border border-zinc-800/80 grid grid-cols-3 gap-3 text-xs font-mono">
+      <div class="p-3.5 rounded-lg bg-zinc-900/50 border border-zinc-800/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono">
         <div>
           <span class="text-[10px] text-zinc-500 uppercase block">Monthly Installment</span>
           <span class="text-sm font-bold text-zinc-100 tabular-nums">

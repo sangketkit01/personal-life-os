@@ -1,7 +1,10 @@
 <template>
   <div class="flex flex-col lg:flex-row h-[calc(100vh-6.5rem)] md:h-[calc(100vh-7.5rem)] min-h-[520px] gap-4 font-sans">
     <!-- ============ 1. Left Pane: Folders & Smart Views ============ -->
-    <aside class="w-full lg:w-60 shrink-0 flex flex-col gap-1 bg-zinc-950/60 border border-zinc-800/80 rounded-xl p-3 lg:overflow-y-auto">
+    <aside
+      class="w-full lg:w-60 shrink-0 flex flex-col gap-1 bg-zinc-950/60 border border-zinc-800/80 rounded-xl p-3 lg:overflow-y-auto"
+      :class="{ 'hidden lg:flex': viewMode === 'split' && !!activeNote }"
+    >
       <div class="flex items-center justify-between gap-2 mb-2">
         <div class="flex items-center gap-2">
           <StickyNote class="w-4 h-4 text-amber-400" />
@@ -109,10 +112,16 @@
           </template>
           <template v-else>
             <span class="flex-1 truncate font-medium">{{ folder.name }}</span>
-            <span class="text-[10px] font-mono text-zinc-500 group-hover/folder:hidden">{{ folderNoteCount(folder.id) }}</span>
+            <span
+              class="text-[10px] font-mono text-zinc-500"
+              :class="activeFolderId === folder.id ? 'hidden lg:inline lg:group-hover/folder:hidden' : ' lg:group-hover/folder:hidden'"
+            >{{ folderNoteCount(folder.id) }}</span>
           </template>
 
-          <span class="hidden group-hover/folder:flex items-center gap-0.5 shrink-0">
+          <span
+            class="items-center gap-0.5 shrink-0"
+            :class="activeFolderId === folder.id ? 'flex' : 'hidden lg:group-hover/folder:flex'"
+          >
             <button
               type="button"
               class="p-0.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
@@ -164,7 +173,10 @@
     <!-- ============ 2. Middle / Main Area ============ -->
     <section class="flex-1 min-w-0 min-h-0 flex flex-col">
       <!-- Top Context & Filter Bar -->
-      <div class="flex items-center justify-between gap-2 pb-3 flex-wrap">
+      <div
+      class="flex items-center justify-between gap-2 pb-3 flex-wrap"
+      :class="{ 'hidden md:flex': viewMode === 'split' && !!activeNote }"
+    >
         <!-- Active Folder / View Title -->
         <div class="flex items-center gap-2 mr-2">
           <h2 class="text-sm font-semibold text-zinc-100 tracking-tight flex items-center gap-1.5">

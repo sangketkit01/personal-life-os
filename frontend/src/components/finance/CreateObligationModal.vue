@@ -18,7 +18,7 @@
       </div>
 
       <!-- Type Selector Tabs -->
-      <div class="grid grid-cols-4 gap-1.5 p-1 bg-zinc-900 border border-zinc-800 rounded-lg mb-4">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-zinc-900 border border-zinc-800 rounded-lg mb-4">
         <button
           v-for="t in typeOptions"
           :key="t.value"
@@ -75,7 +75,7 @@
         </div>
 
         <!-- Flow Direction & Subtype for DEBT -->
-        <div v-if="selectedType === 'DEBT'" class="grid grid-cols-2 gap-3">
+        <div v-if="selectedType === 'DEBT'" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Debt Direction</label>
             <select
@@ -126,7 +126,7 @@
         </div>
 
         <!-- Currency -->
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Currency</label>
             <select
@@ -153,7 +153,7 @@
         <!-- 1. HIRE PURCHASE FIELDS -->
         <div v-if="selectedType === 'INSTALLMENT' && selectedSubtype === 'HIRE_PURCHASE'" class="space-y-3 p-3.5 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
           <div class="text-[11px] font-semibold text-zinc-200 uppercase tracking-wider">Hire Purchase Parameters (Vehicle Loan)</div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Financed Principal (฿)</label>
               <input
@@ -176,7 +176,7 @@
               />
             </div>
           </div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Total Terms (Months)</label>
               <input
@@ -199,7 +199,7 @@
               />
             </div>
           </div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Vehicle Model / Plate</label>
               <input
@@ -224,7 +224,7 @@
         <!-- 2. BNPL ACCOUNT FIELDS -->
         <div v-else-if="selectedType === 'INSTALLMENT' && selectedSubtype === 'BNPL_ACCOUNT'" class="space-y-3 p-3.5 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
           <div class="text-[11px] font-semibold text-zinc-200 uppercase tracking-wider">BNPL Credit Line (Revolving Credit)</div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Total Credit Limit (฿)</label>
               <input
@@ -246,7 +246,7 @@
               />
             </div>
           </div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Statement Cutoff Day of Month</label>
               <input
@@ -275,7 +275,7 @@
         <!-- 3. STANDARD INSTALLMENT -->
         <div v-else-if="selectedType === 'INSTALLMENT'" class="space-y-3 p-3.5 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
           <div class="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Installment Parameters</div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Total Terms (e.g. 10)</label>
               <input
@@ -310,7 +310,7 @@
         <!-- 4. DEBTS -->
         <div v-else-if="selectedType === 'DEBT'" class="space-y-3 p-3.5 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
           <div class="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Counterparty & Settlement Details</div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Counterparty / Name</label>
               <input
@@ -330,7 +330,7 @@
               />
             </div>
           </div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Contact Phone / Line</label>
               <input
@@ -355,7 +355,7 @@
         <!-- 5. FREE TRIAL -->
         <div v-else-if="selectedType === 'FREE_TRIAL'" class="space-y-3 p-3.5 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
           <div class="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Trial Hunter Configuration</div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Expiration / Renewal Date</label>
               <input
@@ -389,7 +389,7 @@
         <!-- 6. SUBSCRIPTION -->
         <div v-else-if="selectedType === 'SUBSCRIPTION'" class="space-y-3 p-3.5 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
           <div class="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Subscription Schedule</div>
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Billing Cycle</label>
               <select

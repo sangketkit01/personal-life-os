@@ -131,7 +131,7 @@
       </div>
 
       <div class="p-4">
-        <div v-if="authStore.user?.is_telegram_connected" class="p-3 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono flex items-center justify-between gap-3">
+        <div v-if="authStore.user?.is_telegram_connected" class="p-3 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div class="flex items-center gap-2">
             <span class="text-zinc-400">{{ t('st.tg.linkedChat') }} <strong class="text-zinc-100 font-semibold">{{ authStore.user.telegram_chat_id }}</strong></span>
             <span class="text-[11px] text-emerald-400">{{ t('st.tg.active') }}</span>
@@ -157,7 +157,7 @@
           </div>
         </div>
 
-        <div v-else class="flex items-center justify-between p-3 rounded-md bg-zinc-900/60 border border-zinc-800">
+        <div v-else class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-md bg-zinc-900/60 border border-zinc-800">
           <span class="text-xs text-zinc-400">{{ t('st.tg.authorizeBot') }}</span>
           <button
             @click="handleConnectTelegram"
@@ -322,15 +322,15 @@
         <div
           v-for="session in sessions"
           :key="session.id"
-          class="p-3 rounded-md bg-zinc-900/60 border border-zinc-800 flex items-center justify-between gap-4 font-mono text-xs"
+          class="p-3 rounded-md bg-zinc-900/60 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-mono text-xs"
         >
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-3 min-w-0 flex-1">
             <div class="w-7 h-7 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
               <Laptop class="w-3.5 h-3.5" />
             </div>
-            <div>
+            <div class="min-w-0 flex-1">
               <div class="text-xs font-medium text-zinc-200 flex items-center gap-2">
-                <span>{{ session.device_name }}</span>
+                <span class="truncate">{{ session.device_name }}</span>
                 <span
                   v-if="session.is_current"
                   class="text-[9px] font-mono px-1 py-0.2 rounded bg-zinc-800 text-zinc-300 border border-zinc-700/60"

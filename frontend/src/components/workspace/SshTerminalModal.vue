@@ -2,17 +2,17 @@
   <Teleport to="body">
     <div
       v-if="isOpen"
-      class="fixed inset-0 z-[70] flex items-center justify-center p-4 font-sans"
+      class="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4 font-sans"
       :class="isMaximized ? 'p-0' : ''"
     >
       <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" @click="requestClose" />
 
       <div
         class="relative flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden shadow-2xl"
-        :class="isMaximized ? 'w-full h-full rounded-none' : 'w-full max-w-5xl h-[76vh]'"
+        :class="isMaximized ? 'w-full h-full rounded-none' : 'w-full max-w-5xl h-[85dvh] sm:h-[76vh]'"
       >
         <!-- Header -->
-        <div class="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-zinc-800 bg-zinc-900/60 shrink-0">
+        <div class="px-3 sm:px-4 py-2.5 border-b border-zinc-800 bg-zinc-900/80 flex flex-wrap items-center justify-between gap-2 shrink-0">
           <div class="flex items-center gap-2.5 min-w-0">
             <TerminalSquare class="w-4 h-4 text-emerald-400 shrink-0" />
             <span class="text-xs font-mono text-zinc-200 truncate">
@@ -47,7 +47,7 @@
             <button
               type="button"
               @click="toggleRunbookBar"
-              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors hidden md:block"
+              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors flex items-center"
               :class="{ 'text-sky-400 border-sky-700/60': showRunbookBar }"
               :title="t('term.runbookBar')"
             >
@@ -73,12 +73,12 @@
         </div>
 
         <!-- Body: terminal + quick runbooks sidebar -->
-        <div class="flex-1 min-h-0 flex">
+        <div class="flex-1 min-h-0 flex relative">
           <div ref="terminalHost" class="flex-1 min-w-0 p-2 bg-[#0d0f14]" />
 
           <div
             v-if="showRunbookBar"
-            class="hidden md:flex w-60 shrink-0 border-l border-zinc-800 bg-zinc-950 flex-col"
+            class="absolute inset-y-0 right-0 z-20 md:static flex w-64 sm:w-60 shrink-0 border-l border-zinc-800 bg-zinc-950/95 md:bg-zinc-900/40 backdrop-blur-md md:backdrop-blur-none flex-col"
           >
             <div class="px-3 py-2 border-b border-zinc-800/80 flex items-center gap-1.5">
               <Zap class="w-3.5 h-3.5 text-amber-400" />

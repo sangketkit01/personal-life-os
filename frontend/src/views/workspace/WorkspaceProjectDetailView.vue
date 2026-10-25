@@ -2,12 +2,12 @@
   <div class="space-y-5 max-w-7xl mx-auto font-sans">
     <!-- ============ 1. Project Header & Properties Bar ============ -->
     <div class="pb-4 border-b border-zinc-800/80 space-y-3">
-      <div class="flex items-center gap-1.5 text-[11px] font-mono text-zinc-500">
+      <div class="flex items-center gap-1.5 text-[11px] font-mono text-zinc-500 min-w-0">
         <RouterLink to="/workspace" class="hover:text-zinc-300 transition-colors">Workspace</RouterLink>
         <span class="text-zinc-700">/</span>
         <RouterLink to="/workspace" class="hover:text-zinc-300 transition-colors">Projects</RouterLink>
         <span class="text-zinc-700">/</span>
-        <span class="text-zinc-300">{{ project?.name || '...' }}</span>
+        <span class="text-zinc-300 truncate">{{ project?.name || '...' }}</span>
       </div>
 
       <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
@@ -124,7 +124,7 @@
         v-for="tab in TABS"
         :key="tab.key"
         @click="switchTab(tab.key)"
-        class="px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap"
+        class="shrink-0 px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap"
         :class="activeTab === tab.key ? 'bg-zinc-800 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'"
       >
         <component :is="tab.icon" class="w-3.5 h-3.5" />
@@ -135,7 +135,7 @@
 
     <!-- ======== Tab 1: Kanban Board ======== -->
     <div v-if="activeTab === 'board'">
-      <div class="flex items-center justify-between mb-3">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
         <p class="text-[11px] font-mono text-zinc-500">{{ t('pd.dragHint') }}</p>
         <button
           @click="openQuickCreate(null, 'TODO')"
@@ -179,7 +179,7 @@
           <span>New Page</span>
         </button>
 
-        <div class="space-y-1.5 max-h-[600px] overflow-y-auto pr-1">
+        <div class="space-y-1.5 max-h-48 lg:max-h-[600px] overflow-y-auto pr-0.5">
           <div
             v-for="note in workspaceStore.notes"
             :key="note.id"
@@ -392,7 +392,7 @@
                     <button
                       type="button"
                       @click="attachmentToDelete = attachment"
-                      class="p-1 rounded text-zinc-600 hover:text-rose-400 opacity-0 group-hover/row:opacity-100 transition-all"
+                      class="p-1 rounded text-zinc-600 hover:text-rose-400 opacity-100 sm:opacity-0 sm:group-hover/row:opacity-100 transition-all"
                       title="Delete"
                     >
                       <Trash2 class="w-3.5 h-3.5" />
@@ -483,7 +483,7 @@
                     <button
                       type="button"
                       @click="openLinkModal(link)"
-                      class="p-1 rounded text-zinc-500 hover:text-zinc-200 opacity-0 group-hover/row:opacity-100 transition-all"
+                      class="p-1 rounded text-zinc-500 hover:text-zinc-200 opacity-100 sm:opacity-0 sm:group-hover/row:opacity-100 transition-all"
                       title="Edit"
                     >
                       <Pencil class="w-3.5 h-3.5" />
@@ -491,7 +491,7 @@
                     <button
                       type="button"
                       @click="linkToDelete = link"
-                      class="p-1 rounded text-zinc-600 hover:text-rose-400 opacity-0 group-hover/row:opacity-100 transition-all"
+                      class="p-1 rounded text-zinc-600 hover:text-rose-400 opacity-100 sm:opacity-0 sm:group-hover/row:opacity-100 transition-all"
                       title="Delete"
                     >
                       <Trash2 class="w-3.5 h-3.5" />
@@ -598,7 +598,7 @@
             placeholder="https://..."
             class="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-600"
           />
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <select
               v-model="linkForm.link_type"
               class="bg-zinc-900 border border-zinc-800 rounded-md px-2.5 py-2 text-xs text-zinc-100 outline-none focus:border-zinc-600"
@@ -663,7 +663,7 @@
             />
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">Status</label>
               <select
@@ -719,7 +719,7 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">Start Date</label>
               <input

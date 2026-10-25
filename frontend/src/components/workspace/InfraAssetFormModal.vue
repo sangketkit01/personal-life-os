@@ -57,7 +57,7 @@
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
               </label>
             </div>
-            <div class="grid grid-cols-3 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <label class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">vCPU</span>
                 <input v-model.number="specs.vcpu" type="number" min="1"
@@ -205,7 +205,7 @@
                 <span class="block text-[10px] text-zinc-500 mt-0.5">{{ t('infra.form.watchdogHint') }}</span>
               </span>
             </label>
-            <div v-if="form.watchdog_enabled" class="grid grid-cols-3 gap-3">
+            <div v-if="form.watchdog_enabled" class="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <label class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">CPU %</span>
                 <input v-model.number="form.alert_cpu_threshold" type="number" min="1" max="100"

@@ -216,6 +216,7 @@
 
             <!-- Itemized Orders Due in this Month -->
             <div class="rounded-lg border border-zinc-800/80 overflow-hidden bg-zinc-950/60">
+              <div class="overflow-x-auto">
               <table class="w-full text-left text-xs font-mono">
                 <thead>
                   <tr class="border-b border-zinc-800 text-[10px] text-zinc-500 uppercase tracking-wider bg-zinc-950">
@@ -247,6 +248,7 @@
                   </tr>
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
         </div>
@@ -288,6 +290,7 @@
 
         <div v-else class="rounded-xl border border-zinc-800/80 overflow-hidden bg-zinc-900/30 shadow-sm">
           <div class="overflow-x-auto">
+            <div class="overflow-x-auto">
             <table class="w-full text-left text-xs font-mono">
               <thead>
                 <tr class="border-b border-zinc-800/80 text-[10px] text-zinc-500 uppercase tracking-wider font-semibold bg-zinc-950/40">
@@ -359,6 +362,7 @@
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       </div>

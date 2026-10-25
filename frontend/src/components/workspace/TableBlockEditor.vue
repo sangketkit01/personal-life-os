@@ -68,7 +68,7 @@
     </div>
 
     <!-- Table controls bar -->
-    <div class="flex items-center gap-1.5 opacity-0 group-hover/block:opacity-100 transition-opacity">
+    <div class="flex items-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover/block:opacity-100 transition-opacity">
       <button
         type="button"
         class="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] font-mono text-zinc-400 hover:text-zinc-100 hover:border-zinc-600 transition-colors"

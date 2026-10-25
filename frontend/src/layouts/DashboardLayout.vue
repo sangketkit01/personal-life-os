@@ -484,7 +484,7 @@
     <div class="flex-1 flex flex-col min-w-0">
       <!-- Topbar Header with Breadcrumbs & Utilities -->
       <header class="h-14 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur px-4 md:px-6 flex items-center justify-between shrink-0">
-        <div class="flex items-center gap-3 min-w-0">
+        <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 mr-2">
           <!-- Mobile Hamburger Toggle -->
           <button
             @click="isMobileMenuOpen = true"
@@ -504,15 +504,15 @@
           <!-- Quick Search command pill -->
           <button
             @click="isCommandPaletteOpen = true"
-            class="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-900/60 border border-zinc-800/80 px-3 py-1.5 rounded-md w-44 sm:w-64 hover:border-zinc-700 transition cursor-pointer text-left ml-2"
+            class="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-900/60 border border-zinc-800/80 px-3 py-1.5 rounded-md flex-1 max-w-[180px] sm:max-w-none sm:w-64 sm:flex-none hover:border-zinc-700 transition cursor-pointer text-left ml-1 sm:ml-2"
           >
             <Search class="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-            <span class="text-[11px] text-zinc-400 truncate">{{ t('shell.search') }} ({{ shortcutKey }})</span>
+            <span class="text-[11px] text-zinc-400 truncate">{{ t('shell.search') }} <span class="hidden sm:inline">({{ shortcutKey }})</span></span>
           </button>
         </div>
 
         <!-- Right Utilities -->
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-1.5 sm:gap-3 shrink-0">
           <!-- Telegram Bot Connection Status -->
           <button
             @click="showTelegramModal = true"

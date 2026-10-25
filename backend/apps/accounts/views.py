@@ -402,6 +402,57 @@ class TelegramConnectTokenView(views.APIView):
         })
 
 
+class TelegramTestAlertView(views.APIView):
+    """Send a test alert to the connected Telegram chat (one-click check)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        if not user.telegram_chat_id:
+            return response.Response(
+                {'detail': 'Telegram is not connected. Pair the bot from Settings first.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        bot_token = getattr(settings, 'TELEGRAM_BOT_TOKEN', '') or os.getenv('TELEGRAM_BOT_TOKEN', '')
+        if not bot_token:
+            return response.Response(
+                {'detail': 'TELEGRAM_BOT_TOKEN is not configured on the server.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from telegram import Bot
+        from apps.bot.i18n import bot_msg
+
+        text = (
+            f"{bot_msg(user, 'test.title')}\n\n"
+            f"{bot_msg(user, 'test.body', username=user.username)}"
+        )
+
+        async def _send():
+            bot = Bot(bot_token)
+            try:
+                await bot.send_message(
+                    chat_id=user.telegram_chat_id,
+                    text=text,
+                    parse_mode='Markdown'
+                )
+            finally:
+                await bot.shutdown()
+
+        try:
+            import asyncio
+            asyncio.run(_send())
+        except Exception as exc:
+            return response.Response(
+                {'detail': f'Failed to deliver Telegram message: {exc}'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+
+        log_activity(user, 'AUTH', 'TELEGRAM_TEST_ALERT', 'Sent Telegram test alert', request=request)
+        return response.Response({'message': 'Test alert delivered to your Telegram chat.'})
+
+
 class TelegramDisconnectView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 

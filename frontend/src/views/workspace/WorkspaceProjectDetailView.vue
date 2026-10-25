@@ -505,6 +505,16 @@
       </div>
     </div>
 
+
+    <!-- ======== Tab 5: MA & Infrastructure ======== -->
+    <div v-else-if="activeTab === 'infrastructure'">
+      <ProjectInfrastructureTab
+        v-if="project"
+        :project="project"
+        @project-updated="loadProject"
+      />
+    </div>
+
     <!-- ============ Drawers & Modals ============ -->
     <!-- Task Side Peek Drawer -->
     <TaskSidePeekDrawer
@@ -818,7 +828,8 @@ import {
   Plus,
   Trash2,
   Upload,
-  X
+  X,
+  ServerCog,
 } from 'lucide-vue-next'
 import { PROJECT_ICON_PRESETS, iconComponentFor } from '../../utils/iconPresets'
 import { t } from '../../i18n'
@@ -828,6 +839,7 @@ import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import WorkspaceKanbanBoard from '../../components/workspace/WorkspaceKanbanBoard.vue'
+import ProjectInfrastructureTab from '../../components/workspace/ProjectInfrastructureTab.vue'
 import WorkspaceCalendarGrid from '../../components/workspace/WorkspaceCalendarGrid.vue'
 import TaskSidePeekDrawer from '../../components/workspace/TaskSidePeekDrawer.vue'
 import EmbedPreviewModal from '../../components/workspace/EmbedPreviewModal.vue'
@@ -865,11 +877,12 @@ const TABS = [
   { key: 'board', labelKey: 'pd.tabs.board', icon: Columns3, count: () => projectTasks.value.length },
   { key: 'calendar', labelKey: 'pd.tabs.calendar', icon: Calendar, count: () => projectTasks.value.length + workspaceStore.events.length },
   { key: 'pages', labelKey: 'pd.tabs.pages', icon: BookOpen, count: () => workspaceStore.notes.length },
-  { key: 'files', labelKey: 'pd.tabs.files', icon: HardDrive, count: () => projectAttachments.value.length + workspaceStore.links.length }
+  { key: 'files', labelKey: 'pd.tabs.files', icon: HardDrive, count: () => projectAttachments.value.length + workspaceStore.links.length },
+  { key: 'infrastructure', labelKey: 'pd.tabs.infra', icon: ServerCog, count: () => workspaceStore.infraAssets.length || project.value?.infra_count || 0 }
 ]
 
 // ===== Tab state (synced with ?tab=) =====
-const activeTab = ref<string>(['board', 'calendar', 'pages', 'files'].includes(String(route.query.tab)) ? String(route.query.tab) : 'board')
+const activeTab = ref<string>(['board', 'calendar', 'pages', 'files', 'infrastructure'].includes(String(route.query.tab)) ? String(route.query.tab) : 'board')
 
 function switchTab(tab: string) {
   activeTab.value = tab
@@ -886,6 +899,7 @@ async function loadAllProjectData() {
     workspaceStore.fetchLinks(projectId.value),
     workspaceStore.fetchAttachments(projectId.value),
     workspaceStore.fetchEvents({ project_id: projectId.value }),
+    workspaceStore.fetchInfraAssets(projectId.value),
     storageStore.fetchStatus()
   ])
 }

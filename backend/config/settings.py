@@ -25,6 +25,9 @@ else:
 
 # Application definition
 INSTALLED_APPS = [
+    # Must stay first so `manage.py runserver` serves ASGI (HTTP + WebSocket).
+    'daphne',
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -35,6 +38,7 @@ INSTALLED_APPS = [
     # Third-party apps
     'rest_framework',
     'corsheaders',
+    'channels',
 
     # Local apps
     'apps.accounts',
@@ -47,6 +51,15 @@ INSTALLED_APPS = [
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
+
+# ASGI application (daphne + channels) - interactive SSH terminal WebSocket.
+ASGI_APPLICATION = 'config.asgi.application'
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer'
+    }
+}
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',

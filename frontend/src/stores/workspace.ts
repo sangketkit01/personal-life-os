@@ -10,7 +10,12 @@ import type {
   TaskStatus,
   ProjectLink,
   ProjectAttachment,
-  CalendarEvent
+  CalendarEvent,
+  InfrastructureAsset,
+  ServerCredential,
+  ServerRunbook,
+  RemoteCommandResult,
+  InfraTelemetry,
 } from '../types/workspace'
 
 export const useWorkspaceStore = defineStore('workspace', () => {
@@ -25,6 +30,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const trashedNotes = ref<Note[]>([])
   const standalonePinnedCount = ref(0)
   const folders = ref<NoteFolder[]>([])
+  const infraAssets = ref<InfrastructureAsset[]>([])
+  const serverCredentials = ref<ServerCredential[]>([])
+  const serverRunbooks = ref<ServerRunbook[]>([])
   const isLoading = ref<boolean>(false)
   const selectedProjectId = ref<string | null>(null)
 
@@ -363,6 +371,131 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     folders.value = folders.value.filter(f => f.id !== id)
   }
 
+
+  // ===== MA & Infrastructure =====
+  async function fetchInfraAssets(projectId: string) {
+    const res = await apiClient.get<InfrastructureAsset[]>('/workspace/infrastructure/', {
+      params: { project_id: projectId }
+    })
+    infraAssets.value = extractList<InfrastructureAsset>(res.data)
+    return infraAssets.value
+  }
+
+  async function createInfraAsset(payload: Record<string, any>) {
+    const res = await apiClient.post<InfrastructureAsset>('/workspace/infrastructure/', payload)
+    infraAssets.value.push(res.data)
+    return res.data
+  }
+
+  async function updateInfraAsset(id: string, payload: Record<string, any>) {
+    const res = await apiClient.patch<InfrastructureAsset>(`/workspace/infrastructure/${id}/`, payload)
+    const idx = infraAssets.value.findIndex(a => a.id === id)
+    if (idx !== -1) infraAssets.value[idx] = res.data
+    return res.data
+  }
+
+  async function deleteInfraAsset(id: string) {
+    await apiClient.delete(`/workspace/infrastructure/${id}/`)
+    infraAssets.value = infraAssets.value.filter(a => a.id !== id)
+    serverRunbooks.value = serverRunbooks.value.filter(rb => rb.asset !== id)
+  }
+
+  async function probeInfraAsset(id: string) {
+    const res = await apiClient.post<{
+      health_status: string
+      telemetry: InfraTelemetry
+      asset: InfrastructureAsset
+    }>(`/workspace/infrastructure/${id}/probe/`)
+    const idx = infraAssets.value.findIndex(a => a.id === id)
+    if (idx !== -1) infraAssets.value[idx] = res.data.asset
+    return res.data
+  }
+
+  async function dockerAction(id: string, containerId: string, action: string, tail = 100) {
+    const res = await apiClient.post<RemoteCommandResult>(
+      `/workspace/infrastructure/${id}/docker/`,
+      { container_id: containerId, action, tail }
+    )
+    return res.data
+  }
+
+  async function execInfraCommand(id: string, command: string, workingDir = '', timeout = 60) {
+    const res = await apiClient.post<RemoteCommandResult>(
+      `/workspace/infrastructure/${id}/exec/`,
+      { command, working_dir: workingDir, timeout }
+    )
+    return res.data
+  }
+
+  async function fetchServerCredentials(projectId: string) {
+    const res = await apiClient.get<ServerCredential[]>('/workspace/credentials/', {
+      params: { project_id: projectId }
+    })
+    serverCredentials.value = extractList<ServerCredential>(res.data)
+    return serverCredentials.value
+  }
+
+  async function createServerCredential(payload: Record<string, any>) {
+    const res = await apiClient.post<ServerCredential>('/workspace/credentials/', payload)
+    serverCredentials.value.push(res.data)
+    return res.data
+  }
+
+  async function updateServerCredential(id: string, payload: Record<string, any>) {
+    const res = await apiClient.patch<ServerCredential>(`/workspace/credentials/${id}/`, payload)
+    const idx = serverCredentials.value.findIndex(c => c.id === id)
+    if (idx !== -1) serverCredentials.value[idx] = res.data
+    return res.data
+  }
+
+  async function deleteServerCredential(id: string) {
+    await apiClient.delete(`/workspace/credentials/${id}/`)
+    serverCredentials.value = serverCredentials.value.filter(c => c.id !== id)
+  }
+
+  async function revealServerCredential(id: string) {
+    const res = await apiClient.post<{ id: string; secret: string }>(
+      `/workspace/credentials/${id}/reveal/`
+    )
+    return res.data.secret
+  }
+
+  async function fetchServerRunbooks(projectId?: string, assetId?: string) {
+    const params: Record<string, string> = {}
+    if (projectId) params.project_id = projectId
+    if (assetId) params.asset_id = assetId
+    const res = await apiClient.get<ServerRunbook[]>('/workspace/runbooks/', { params })
+    serverRunbooks.value = extractList<ServerRunbook>(res.data)
+    return serverRunbooks.value
+  }
+
+  async function createServerRunbook(payload: Record<string, any>) {
+    const res = await apiClient.post<ServerRunbook>('/workspace/runbooks/', payload)
+    serverRunbooks.value.push(res.data)
+    return res.data
+  }
+
+  async function updateServerRunbook(id: string, payload: Record<string, any>) {
+    const res = await apiClient.patch<ServerRunbook>(`/workspace/runbooks/${id}/`, payload)
+    const idx = serverRunbooks.value.findIndex(rb => rb.id === id)
+    if (idx !== -1) serverRunbooks.value[idx] = res.data
+    return res.data
+  }
+
+  async function deleteServerRunbook(id: string) {
+    await apiClient.delete(`/workspace/runbooks/${id}/`)
+    serverRunbooks.value = serverRunbooks.value.filter(rb => rb.id !== id)
+  }
+
+  async function executeServerRunbook(id: string) {
+    const res = await apiClient.post<{ result: RemoteCommandResult; runbook: ServerRunbook }>(
+      `/workspace/runbooks/${id}/execute/`
+    )
+    const idx = serverRunbooks.value.findIndex(rb => rb.id === id)
+    if (idx !== -1) serverRunbooks.value[idx] = res.data.runbook
+    return res.data
+  }
+
   return {
     overview,
     projects,
@@ -414,6 +547,26 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     copyNoteToProject,
     folders,
     fetchFolders,
+    infraAssets,
+    serverCredentials,
+    serverRunbooks,
+    fetchInfraAssets,
+    createInfraAsset,
+    updateInfraAsset,
+    deleteInfraAsset,
+    probeInfraAsset,
+    dockerAction,
+    execInfraCommand,
+    fetchServerCredentials,
+    createServerCredential,
+    updateServerCredential,
+    deleteServerCredential,
+    revealServerCredential,
+    fetchServerRunbooks,
+    createServerRunbook,
+    updateServerRunbook,
+    deleteServerRunbook,
+    executeServerRunbook,
     createFolder,
     updateFolder,
     deleteFolder,

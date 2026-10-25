@@ -10,11 +10,17 @@ from apps.bot.handlers.start import (
     help_handler,
     portfolio_handler,
     brief_handler,
-    news_handler
+    news_handler,
+    servers_handler,
+    ma_handler
 )
 from apps.bot.handlers.callbacks import callback_query_handler
 from apps.bot.handlers.messages import text_message_handler
-from apps.bot.dispatcher import dispatch_daily_alerts, dispatch_morning_briefings
+from apps.bot.dispatcher import (
+    dispatch_daily_alerts,
+    dispatch_morning_briefings,
+    dispatch_vps_watchdog_alerts
+)
 
 
 async def scheduled_morning_briefing(context):
@@ -27,6 +33,12 @@ async def scheduled_daily_job(context):
     """Job queue callback for 10:00 AM daily alerts (bills and task deadlines)."""
     print(f"[{datetime.datetime.now()}] Running 10:00 AM daily alert check...")
     await dispatch_daily_alerts(context.bot)
+
+
+async def scheduled_vps_watchdog(context):
+    """Job queue callback for the 15-minute VPS watchdog sweep."""
+    print(f"[{datetime.datetime.now()}] Running VPS Watchdog sweep...")
+    await dispatch_vps_watchdog_alerts(context.bot)
 
 
 async def scheduled_hourly_news_sync(context):
@@ -58,6 +70,8 @@ class Command(BaseCommand):
         app.add_handler(CommandHandler("portfolio", portfolio_handler))
         app.add_handler(CommandHandler("brief", brief_handler))
         app.add_handler(CommandHandler("news", news_handler))
+        app.add_handler(CommandHandler("servers", servers_handler))
+        app.add_handler(CommandHandler("ma", ma_handler))
         app.add_handler(CommandHandler("help", help_handler))
 
         # 2. Inline Keyboard Callback Handler
@@ -84,6 +98,10 @@ class Command(BaseCommand):
             # Hourly News Ingestion & Translation
             job_queue.run_repeating(scheduled_hourly_news_sync, interval=3600, first=10, name="hourly_news_sync")
             self.stdout.write(self.style.SUCCESS("[OK] Hourly News Sync & Translation Scheduler registered"))
+
+            # VPS / MA Watchdog every 15 minutes
+            job_queue.run_repeating(scheduled_vps_watchdog, interval=900, first=30, name="vps_watchdog_15min")
+            self.stdout.write(self.style.SUCCESS("[OK] VPS Watchdog Scheduler registered (every 15 min)"))
         else:
             self.stdout.write(self.style.WARNING("JobQueue is not enabled; install python-telegram-bot[job-queue]"))
 

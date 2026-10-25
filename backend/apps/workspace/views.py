@@ -18,7 +18,10 @@ from .models import (
     NoteColor,
     ProjectLink,
     ProjectAttachment,
-    CalendarEvent
+    CalendarEvent,
+    InfrastructureAsset,
+    ServerCredential,
+    ServerRunbook
 )
 from .serializers import (
     WorkspaceProjectSerializer,
@@ -28,9 +31,19 @@ from .serializers import (
     NoteFolderSerializer,
     ProjectLinkSerializer,
     ProjectAttachmentSerializer,
-    CalendarEventSerializer
+    CalendarEventSerializer,
+    InfrastructureAssetSerializer,
+    ServerCredentialSerializer,
+    ServerRunbookSerializer
 )
 from .services import get_workspace_overview, transition_task_status, normalize_task_status
+from .ssh_service import (
+    probe_server_telemetry,
+    manage_docker_container,
+    execute_remote_command,
+    SshConnectionError
+)
+from apps.storage.encryption import decrypt_token
 
 
 def _clean_uuid(val):
@@ -95,7 +108,8 @@ class WorkspaceProjectViewSet(viewsets.ModelViewSet):
             ),
             notes_count=Count('notes', filter=Q(notes__is_trashed=False), distinct=True),
             links_count=Count('links', distinct=True),
-            attachments_count=Count('attachments', distinct=True)
+            attachments_count=Count('attachments', distinct=True),
+            infra_count=Count('infrastructure_assets', distinct=True)
         )
         is_archived = self.request.query_params.get('archived')
         if is_archived is not None:
@@ -104,6 +118,13 @@ class WorkspaceProjectViewSet(viewsets.ModelViewSet):
         if status_param:
             qs = qs.filter(status=status_param.upper())
         return qs.order_by('name')
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        # MA economics is a multi-query payload: detail + PATCH responses only.
+        if self.action in ('retrieve', 'update', 'partial_update'):
+            context['include_economics'] = True
+        return context
 
 
 class TaskDocumentViewSet(viewsets.ModelViewSet):
@@ -479,3 +500,158 @@ class CalendarEventViewSet(viewsets.ModelViewSet):
             qs = qs.filter(start_at__date__gte=end_date)
 
         return qs.order_by('start_at')
+
+
+class InfrastructureAssetViewSet(viewsets.ModelViewSet):
+    """CRUD + SSH actions for infrastructure assets (VPS, DB, domain, ...)."""
+    serializer_class = InfrastructureAssetSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = InfrastructureAsset.objects.filter(user=self.request.user).select_related('project')
+        project_id = _clean_uuid(self.request.query_params.get('project_id'))
+        if project_id:
+            qs = qs.filter(project_id=project_id)
+        return qs.order_by('name')
+
+    @action(detail=True, methods=['post'])
+    def probe(self, request, pk=None):
+        """Live agentless SSH probe: uptime, CPU, RAM, disk, docker containers."""
+        asset = self.get_object()
+        telemetry = probe_server_telemetry(asset)
+        try:
+            log_activity(
+                request.user, 'WORKSPACE', 'INFRA_PROBE',
+                f'SSH probe on {asset.name}: {asset.health_status}', request=request
+            )
+        except Exception:
+            pass
+        return response.Response({
+            'health_status': asset.health_status,
+            'telemetry': telemetry,
+            'asset': InfrastructureAssetSerializer(asset).data
+        })
+
+    @action(detail=True, methods=['post'])
+    def docker(self, request, pk=None):
+        """Start / stop / restart a docker container or fetch its logs."""
+        asset = self.get_object()
+        container_id = request.data.get('container_id', '')
+        docker_action = request.data.get('action', '')
+        tail = request.data.get('tail', 100)
+        try:
+            result = manage_docker_container(asset, container_id, docker_action, tail)
+        except ValueError as ve:
+            return response.Response({'detail': str(ve)}, status=status.HTTP_400_BAD_REQUEST)
+        except SshConnectionError as sce:
+            return response.Response({'detail': str(sce)}, status=status.HTTP_502_BAD_GATEWAY)
+        try:
+            log_activity(
+                request.user, 'WORKSPACE', 'DOCKER_ACTION',
+                f'Docker {docker_action} on {asset.name} (container {container_id})', request=request
+            )
+        except Exception:
+            pass
+        return response.Response(result)
+
+    @action(detail=True, methods=['post'], url_path='exec')
+    def exec_command(self, request, pk=None):
+        """Run a quick one-shot command on the asset over SSH."""
+        asset = self.get_object()
+        command = request.data.get('command', '')
+        working_dir = request.data.get('working_dir', '')
+        timeout = request.data.get('timeout', 60)
+        try:
+            result = execute_remote_command(asset, command, working_dir, timeout)
+        except ValueError as ve:
+            return response.Response({'detail': str(ve)}, status=status.HTTP_400_BAD_REQUEST)
+        except SshConnectionError as sce:
+            return response.Response({'detail': str(sce)}, status=status.HTTP_502_BAD_GATEWAY)
+        try:
+            log_activity(
+                request.user, 'WORKSPACE', 'SSH_EXEC',
+                f'Command executed on {asset.name} (exit {result.get("exit_status")})', request=request
+            )
+        except Exception:
+            pass
+        return response.Response(result)
+
+
+class ServerCredentialViewSet(viewsets.ModelViewSet):
+    """Encrypted secret vault CRUD + audited single-entry reveal."""
+    serializer_class = ServerCredentialSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ServerCredential.objects.filter(user=self.request.user).select_related('project', 'asset')
+        project_id = _clean_uuid(self.request.query_params.get('project_id'))
+        if project_id:
+            qs = qs.filter(project_id=project_id)
+        asset_id = _clean_uuid(self.request.query_params.get('asset_id'))
+        if asset_id:
+            qs = qs.filter(asset_id=asset_id)
+        return qs.order_by('title')
+
+    @action(detail=True, methods=['post'])
+    def reveal(self, request, pk=None):
+        """Decrypt and return the plaintext secret for one vault entry."""
+        credential = self.get_object()
+        secret = decrypt_token(credential.secret_encrypted)
+        try:
+            log_activity(
+                request.user, 'WORKSPACE', 'REVEAL_CREDENTIAL',
+                f'Secret revealed: {credential.title}', request=request
+            )
+        except Exception:
+            pass
+        return response.Response({'id': str(credential.id), 'secret': secret})
+
+
+class ServerRunbookViewSet(viewsets.ModelViewSet):
+    """User-defined runbook CRUD + remote execution."""
+    serializer_class = ServerRunbookSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ServerRunbook.objects.filter(user=self.request.user).select_related('project', 'asset')
+        project_id = _clean_uuid(self.request.query_params.get('project_id'))
+        if project_id:
+            qs = qs.filter(project_id=project_id)
+        asset_id = _clean_uuid(self.request.query_params.get('asset_id'))
+        if asset_id:
+            qs = qs.filter(asset_id=asset_id)
+        return qs.order_by('title')
+
+    @action(detail=True, methods=['post'])
+    def execute(self, request, pk=None):
+        """Execute the runbook on its bound asset and persist the last result."""
+        runbook = self.get_object()
+        if not (runbook.command or '').strip():
+            return response.Response(
+                {'detail': 'Runbook has no command to execute.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            result = execute_remote_command(
+                runbook.asset, runbook.command, runbook.working_dir, runbook.timeout_seconds
+            )
+        except SshConnectionError as sce:
+            return response.Response({'detail': str(sce)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        combined_output = result['stdout']
+        if result['stderr']:
+            combined_output = (combined_output + '\n' + result['stderr']) if combined_output else result['stderr']
+        runbook.last_run_at = timezone.now()
+        runbook.last_exit_code = result['exit_status']
+        runbook.last_output = combined_output[:20000]
+        runbook.save(update_fields=['last_run_at', 'last_exit_code', 'last_output', 'updated_at'])
+
+        try:
+            log_activity(
+                request.user, 'WORKSPACE', 'RUNBOOK_EXEC',
+                f'Runbook {runbook.title} on {runbook.asset.name} (exit {result["exit_status"]})',
+                request=request
+            )
+        except Exception:
+            pass
+        return response.Response({'result': result, 'runbook': ServerRunbookSerializer(runbook).data})

@@ -24,7 +24,7 @@ class SubscriptionStrategy(BaseObligationStrategy):
         except (ValueError, TypeError):
             alert_days = 3
 
-        return {
+        validated = {
             'billing_cycle': cycle,
             'plan_name': str(metadata.get('plan_name', '')).strip(),
             'account_email': str(metadata.get('account_email', '')).strip(),
@@ -36,6 +36,21 @@ class SubscriptionStrategy(BaseObligationStrategy):
             'documents': metadata.get('documents', []) if isinstance(metadata.get('documents'), list) else [],
             'notes': str(metadata.get('notes', '')).strip()
         }
+
+        # Preserve workspace bridge keys (MA contracts / infrastructure assets)
+        # so linking metadata survives serializer round-trips.
+        source_type = str(metadata.get('source_type', '')).strip().upper()
+        if source_type in ('INFRA_ASSET', 'MA_CONTRACT'):
+            validated['source_type'] = source_type
+            for aux_key in ('asset_id', 'project_id'):
+                aux_val = str(metadata.get(aux_key, '')).strip()
+                if aux_val:
+                    validated[aux_key] = aux_val
+            client_name = str(metadata.get('client_name', '')).strip()
+            if client_name:
+                validated['client_name'] = client_name
+
+        return validated
 
     def get_summary(self, obligation) -> Dict[str, Any]:
         metadata = obligation.metadata or {}

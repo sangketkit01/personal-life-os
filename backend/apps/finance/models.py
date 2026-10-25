@@ -100,6 +100,14 @@ class FinancialObligation(models.Model):
         blank=True,
         verbose_name="Metadata"
     )
+    project = models.ForeignKey(
+        'workspace.WorkspaceProject',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='financial_obligations',
+        verbose_name="Linked Workspace Project"
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated At")
 

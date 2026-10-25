@@ -267,7 +267,10 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
 
                     if obligation.direction == 'INFLOW':
                         tx_type = TransactionType.INFLOW
-                        tx_title = f"Debt Repayment: {obligation.title}"
+                        if obligation.project_id or (obligation.metadata or {}).get('source_type') == 'MA_CONTRACT':
+                            tx_title = f"MA / Project Income: {obligation.title}"
+                        else:
+                            tx_title = f"Debt Repayment: {obligation.title}"
                         Account.objects.filter(id=account.id).update(
                             current_balance=models.F('current_balance') + actual_paid,
                             updated_at=timezone.now()
@@ -297,6 +300,12 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
 
                 # Sync with linked Split Bill ONLY if obligation is COMPLETED
                 obligation.refresh_from_db()
+
+                # Keep workspace billing mirrors (MA contract / infra asset) in
+                # step with the freshly advanced obligation due date.
+                from apps.workspace.services import sync_billing_dates_from_obligation
+                sync_billing_dates_from_obligation(obligation)
+
                 if obligation.status == ObligationStatus.COMPLETED:
                     unsettled_splits = obligation.origin_split.filter(is_settled=False)
                     for s in unsettled_splits:

@@ -8,8 +8,10 @@ class PortfolioConfig(AppConfig):
     name = 'apps.portfolio'
 
     def ready(self):
-        # Avoid running scheduler during migrate, test, or CLI management commands
-        skip_commands = ['migrate', 'makemigrations', 'test', 'collectstatic', 'shell']
+        # Avoid running scheduler during migrate, test, or CLI management commands.
+        # 'run_bot' is skipped too: the bot worker schedules the same hourly news
+        # sync via its own job_queue, so running both would double-ingest (P1-BOT-04).
+        skip_commands = ['migrate', 'makemigrations', 'test', 'collectstatic', 'shell', 'run_bot']
         if any(cmd in sys.argv for cmd in skip_commands):
             return
 

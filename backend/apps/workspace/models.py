@@ -11,6 +11,12 @@ class ProjectStatus(models.TextChoices):
     ARCHIVED = 'ARCHIVED', 'Archived'
 
 
+class ProjectType(models.TextChoices):
+    INTERNAL = 'INTERNAL', 'Internal / Personal'
+    CLIENT_DEV = 'CLIENT_DEV', 'Client Development'
+    MA_CONTRACT = 'MA_CONTRACT', 'Maintenance Agreement (MA)'
+
+
 class TaskStatus(models.TextChoices):
     TODO = 'TODO', 'To Do'
     DOING = 'DOING', 'Doing'
@@ -65,6 +71,38 @@ class NoteColor(models.TextChoices):
     ROSE = 'ROSE', 'Rose Pink'
 
 
+class InfraAssetType(models.TextChoices):
+    VPS = 'VPS', 'Virtual Private Server (VPS)'
+    DEDICATED = 'DEDICATED', 'Dedicated Server'
+    MANAGED_DB = 'MANAGED_DB', 'Managed Database'
+    DOMAIN = 'DOMAIN', 'Domain Name'
+    CDN_DNS = 'CDN_DNS', 'CDN / DNS / Edge'
+    PAAS = 'PAAS', 'PaaS / App Hosting'
+    SSL_CERT = 'SSL_CERT', 'SSL Certificate'
+    OTHER = 'OTHER', 'Other Infrastructure'
+
+
+class BillingOwnership(models.TextChoices):
+    SELF_FUNDED = 'SELF_FUNDED', 'Self-Funded / Included in MA'
+    CLIENT_REIMBURSED = 'CLIENT_REIMBURSED', 'Client Reimbursed'
+    CLIENT_DIRECT = 'CLIENT_DIRECT', 'Paid Directly by Client'
+
+
+class SshAuthType(models.TextChoices):
+    PASSWORD = 'PASSWORD', 'Password'
+    PRIVATE_KEY = 'PRIVATE_KEY', 'SSH Private Key'
+    NONE = 'NONE', 'No SSH (Console Only)'
+
+
+class CredentialCategory(models.TextChoices):
+    SSH = 'SSH', 'SSH Login'
+    DATABASE = 'DATABASE', 'Database URI / Login'
+    API_KEY = 'API_KEY', 'API Key / Token'
+    ENV_VARS = 'ENV_VARS', 'Environment Variables'
+    ADMIN_PANEL = 'ADMIN_PANEL', 'Admin Panel Login'
+    OTHER = 'OTHER', 'Other Secret'
+
+
 class WorkspaceProject(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
@@ -89,6 +127,35 @@ class WorkspaceProject(models.Model):
     target_date = models.DateField(null=True, blank=True, verbose_name="Target Date")
     metadata = models.JSONField(default=dict, blank=True, verbose_name="Project Metadata")
     is_archived = models.BooleanField(default=False, verbose_name="Is Archived")
+    # --- MA Contract & Client Info ---
+    project_type = models.CharField(
+        max_length=20,
+        choices=ProjectType.choices,
+        default=ProjectType.INTERNAL,
+        db_index=True,
+        verbose_name="Project Type"
+    )
+    client_name = models.CharField(max_length=150, blank=True, default='', verbose_name="Client Name")
+    client_contact = models.CharField(max_length=255, blank=True, default='', verbose_name="Client Contact Channel")
+    ma_start_date = models.DateField(null=True, blank=True, verbose_name="MA Contract Start")
+    ma_end_date = models.DateField(null=True, blank=True, db_index=True, verbose_name="MA Contract End")
+    ma_billing_cycle = models.CharField(max_length=20, blank=True, default='MONTHLY', verbose_name="MA Billing Cycle")
+    ma_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name="MA Fee per Cycle"
+    )
+    ma_currency = models.CharField(max_length=3, default='THB', verbose_name="MA Currency")
+    ma_next_billing_date = models.DateField(null=True, blank=True, db_index=True, verbose_name="MA Next Billing Date")
+    sla_details = models.JSONField(
+        default=dict, blank=True, verbose_name="SLA Details (uptime, response, backup, quota)"
+    )
+    ma_obligation = models.ForeignKey(
+        'finance.FinancialObligation',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ma_projects',
+        verbose_name="Linked Financial Radar MA Obligation"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -380,3 +447,205 @@ class CalendarEvent(models.Model):
 
     def __str__(self):
         return f"{self.title} @ {self.start_at:%Y-%m-%d %H:%M}"
+
+
+class InfrastructureAsset(models.Model):
+    """
+    Server / cloud resource owned by the user, optionally attached to a project.
+    SSH credentials are encrypted at rest and never returned by the API.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='infrastructure_assets',
+        verbose_name="User"
+    )
+    project = models.ForeignKey(
+        WorkspaceProject,
+        on_delete=models.CASCADE,
+        related_name='infrastructure_assets',
+        verbose_name="Project"
+    )
+
+    # General & Specs
+    name = models.CharField(max_length=150, verbose_name="Asset Name")
+    asset_type = models.CharField(
+        max_length=20,
+        choices=InfraAssetType.choices,
+        default=InfraAssetType.VPS,
+        db_index=True,
+        verbose_name="Asset Type"
+    )
+    provider = models.CharField(max_length=100, blank=True, default='', verbose_name="Provider (DigitalOcean, AWS, ...)")
+    region = models.CharField(max_length=100, blank=True, default='', verbose_name="Region")
+    os_name = models.CharField(max_length=100, blank=True, default='', verbose_name="Operating System")
+    specs = models.JSONField(default=dict, blank=True, verbose_name="Specs (vcpu, ram_gb, disk_gb)")
+    notes = models.TextField(blank=True, default='', verbose_name="Notes")
+
+    # Network & Domain
+    ip_address = models.CharField(max_length=64, blank=True, default='', verbose_name="Public IP Address")
+    private_ip = models.CharField(max_length=64, blank=True, default='', verbose_name="Private IP Address")
+    hostname = models.CharField(max_length=255, blank=True, default='', verbose_name="Hostname")
+    ssh_port = models.PositiveIntegerField(default=22, verbose_name="SSH Port")
+    primary_domain = models.CharField(max_length=255, blank=True, default='', verbose_name="Primary Domain")
+    console_url = models.URLField(blank=True, default='', verbose_name="Provider Console URL")
+    expiry_date = models.DateField(
+        null=True, blank=True, db_index=True, verbose_name="Expiry Date (Domain / SSL / Contract)"
+    )
+
+    # Encrypted SSH Auth (Fernet via apps.storage.encryption)
+    ssh_auth_type = models.CharField(
+        max_length=20,
+        choices=SshAuthType.choices,
+        default=SshAuthType.PASSWORD,
+        verbose_name="SSH Auth Type"
+    )
+    ssh_username = models.CharField(max_length=64, default='root', verbose_name="SSH Username")
+    ssh_password_encrypted = models.TextField(blank=True, default='', verbose_name="SSH Password (Encrypted)")
+    ssh_private_key_encrypted = models.TextField(blank=True, default='', verbose_name="SSH Private Key (Encrypted)")
+    ssh_passphrase_encrypted = models.TextField(blank=True, default='', verbose_name="SSH Key Passphrase (Encrypted)")
+
+    # Watchdog & Live Telemetry Snapshot
+    watchdog_enabled = models.BooleanField(default=False, verbose_name="Bot Watchdog Enabled")
+    alert_cpu_threshold = models.PositiveSmallIntegerField(default=90, verbose_name="CPU Alert Threshold (%)")
+    alert_ram_threshold = models.PositiveSmallIntegerField(default=90, verbose_name="RAM Alert Threshold (%)")
+    alert_disk_threshold = models.PositiveSmallIntegerField(default=85, verbose_name="Disk Alert Threshold (%)")
+    health_status = models.CharField(
+        max_length=10,
+        default='UNKNOWN',
+        db_index=True,
+        verbose_name="Health Status"
+    )
+    last_checked_at = models.DateTimeField(null=True, blank=True, verbose_name="Last Probe At")
+    last_alerted_at = models.DateTimeField(null=True, blank=True, verbose_name="Last Watchdog Alert At")
+    last_telemetry = models.JSONField(default=dict, blank=True, verbose_name="Last Telemetry Snapshot")
+
+    # Billing & Financial Radar Link
+    billing_ownership = models.CharField(
+        max_length=20,
+        choices=BillingOwnership.choices,
+        default=BillingOwnership.SELF_FUNDED,
+        verbose_name="Billing Ownership"
+    )
+    cost_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name="Cost per Cycle"
+    )
+    cost_currency = models.CharField(max_length=3, default='THB', verbose_name="Cost Currency")
+    billing_cycle = models.CharField(max_length=20, default='MONTHLY', verbose_name="Billing Cycle")
+    next_billing_date = models.DateField(null=True, blank=True, db_index=True, verbose_name="Next Billing Date")
+    sync_to_radar = models.BooleanField(default=False, verbose_name="Sync Cost to Financial Radar")
+    financial_obligation = models.ForeignKey(
+        'finance.FinancialObligation',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='linked_infra_assets',
+        verbose_name="Linked Financial Radar Obligation"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'workspace_infrastructure_assets'
+        ordering = ['name']
+        verbose_name = 'Infrastructure Asset'
+        verbose_name_plural = 'Infrastructure Assets'
+
+    def __str__(self):
+        return f"{self.name} [{self.get_asset_type_display()}]"
+
+
+class ServerCredential(models.Model):
+    """
+    Encrypted secret vault entry for a project / server
+    (database URI, API keys, .env payload, admin panel login, ...).
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='server_credentials',
+        verbose_name="User"
+    )
+    project = models.ForeignKey(
+        WorkspaceProject,
+        on_delete=models.CASCADE,
+        related_name='credentials',
+        verbose_name="Project"
+    )
+    asset = models.ForeignKey(
+        InfrastructureAsset,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='credentials',
+        verbose_name="Infrastructure Asset"
+    )
+    title = models.CharField(max_length=150, verbose_name="Credential Title")
+    category = models.CharField(
+        max_length=20,
+        choices=CredentialCategory.choices,
+        default=CredentialCategory.OTHER,
+        verbose_name="Category"
+    )
+    username = models.CharField(max_length=150, blank=True, default='', verbose_name="Username")
+    host_or_url = models.CharField(max_length=255, blank=True, default='', verbose_name="Host / URL")
+    secret_encrypted = models.TextField(blank=True, default='', verbose_name="Secret (Encrypted)")
+    notes = models.TextField(blank=True, default='', verbose_name="Notes")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'workspace_server_credentials'
+        ordering = ['title']
+        verbose_name = 'Server Credential'
+        verbose_name_plural = 'Server Credentials'
+
+    def __str__(self):
+        return f"{self.title} ({self.project.name})"
+
+
+class ServerRunbook(models.Model):
+    """
+    Fully user-defined saved command / bash script bound to a server.
+    No preset runbooks are shipped - users create, edit, delete and run their own.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='server_runbooks',
+        verbose_name="User"
+    )
+    project = models.ForeignKey(
+        WorkspaceProject,
+        on_delete=models.CASCADE,
+        related_name='runbooks',
+        verbose_name="Project"
+    )
+    asset = models.ForeignKey(
+        InfrastructureAsset,
+        on_delete=models.CASCADE,
+        related_name='runbooks',
+        verbose_name="Infrastructure Asset"
+    )
+    title = models.CharField(max_length=150, verbose_name="Runbook Title")
+    description = models.CharField(max_length=300, blank=True, default='', verbose_name="Description")
+    command = models.TextField(blank=True, default='', verbose_name="Command / Bash Script")
+    working_dir = models.CharField(max_length=255, blank=True, default='', verbose_name="Working Directory")
+    timeout_seconds = models.PositiveSmallIntegerField(default=60, verbose_name="Timeout (seconds)")
+    last_run_at = models.DateTimeField(null=True, blank=True, verbose_name="Last Run At")
+    last_exit_code = models.IntegerField(null=True, blank=True, verbose_name="Last Exit Code")
+    last_output = models.TextField(blank=True, default='', verbose_name="Last Output")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'workspace_server_runbooks'
+        ordering = ['title']
+        verbose_name = 'Server Runbook'
+        verbose_name_plural = 'Server Runbooks'
+
+    def __str__(self):
+        return f"{self.title} @ {self.asset.name}"

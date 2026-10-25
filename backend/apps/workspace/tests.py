@@ -888,3 +888,724 @@ class WorkspaceTestCase(TestCase):
         self.assertEqual(blocks[3]['type'], 'file')
         self.assertEqual(blocks[3]['file_name'], 'report.pdf')
         self.assertIn('report.pdf', res.data['content'])
+
+
+# ---------------------------------------------------------------------------
+# Round 1: MA contracts, infrastructure assets, credentials vault, SSH engine
+# ---------------------------------------------------------------------------
+import asyncio
+import json as _json
+import io
+from decimal import Decimal
+from unittest.mock import MagicMock, patch
+
+from django.test import TransactionTestCase
+
+from apps.finance.models import (
+    FinancialObligation,
+    FlowDirection,
+    PaymentHistory,
+)
+from apps.storage.encryption import decrypt_token, encrypt_token
+from apps.workspace.models import (
+    ProjectType,
+    InfrastructureAsset,
+    BillingOwnership,
+    ServerCredential,
+    ServerRunbook,
+)
+from apps.workspace.services import (
+    sync_project_ma_obligation,
+    sync_infra_asset_obligation,
+    sync_billing_dates_from_obligation,
+    get_project_economics,
+)
+
+
+class InfrastructureBaseTestCase(TestCase):
+    """Shared fixture: user + friend + project + one VPS asset."""
+
+    def setUp(self):
+        from apps.workspace.models import InfraAssetType, SshAuthType
+        self.user = User.objects.create_user(
+            username='maowner', email='maowner@test.com', password='Password123!'
+        )
+        self.friend = User.objects.create_user(
+            username='mafriend', email='mafriend@test.com', password='Password123!'
+        )
+        self.project = WorkspaceProject.objects.create(
+            user=self.user, name='Client Shop Platform', color='#3B82F6'
+        )
+        self.asset = InfrastructureAsset.objects.create(
+            user=self.user,
+            project=self.project,
+            name='prod-web-01',
+            asset_type=InfraAssetType.VPS,
+            provider='DigitalOcean',
+            ip_address='203.0.113.10',
+            ssh_port=22,
+            ssh_username='root',
+            ssh_auth_type=SshAuthType.PASSWORD,
+            ssh_password_encrypted=encrypt_token('S3cretPass!'),
+            billing_ownership=BillingOwnership.SELF_FUNDED,
+            cost_amount=Decimal('650.00'),
+            billing_cycle='MONTHLY'
+        )
+        self.client = APIClient()
+        self.client.cookies['access_token'] = generate_access_token(self.user)
+
+
+class ProjectMASyncTests(InfrastructureBaseTestCase):
+
+    def test_sync_creates_inflow_obligation(self):
+        self.project.project_type = ProjectType.MA_CONTRACT
+        self.project.client_name = 'ACME Corp'
+        self.project.ma_amount = Decimal('12000.00')
+        self.project.ma_billing_cycle = 'QUARTERLY'
+        self.project.ma_next_billing_date = date.today() + timedelta(days=10)
+        self.project.save()
+
+        obligation = sync_project_ma_obligation(self.project)
+
+        self.assertIsNotNone(obligation)
+        self.assertEqual(obligation.direction, FlowDirection.INFLOW)
+        self.assertEqual(obligation.type, 'SUBSCRIPTION')
+        self.assertEqual(obligation.user, self.user)
+        self.assertEqual(obligation.metadata.get('source_type'), 'MA_CONTRACT')
+        self.assertEqual(obligation.metadata.get('client_name'), 'ACME Corp')
+        self.assertEqual(obligation.title, 'MA: Client Shop Platform')
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.ma_obligation_id, obligation.id)
+
+    def test_sync_updates_existing_obligation(self):
+        self.project.ma_amount = Decimal('1000.00')
+        self.project.ma_next_billing_date = date.today() + timedelta(days=5)
+        self.project.save()
+        first = sync_project_ma_obligation(self.project)
+
+        self.project.ma_amount = Decimal('1500.00')
+        self.project.ma_next_billing_date = date.today() + timedelta(days=35)
+        self.project.save()
+        second = sync_project_ma_obligation(self.project)
+
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(second.amount, Decimal('1500.00'))
+        self.assertEqual(FinancialObligation.objects.filter(user=self.user).count(), 1)
+
+    def test_disabling_ma_cancels_obligation(self):
+        self.project.ma_amount = Decimal('1000.00')
+        self.project.ma_next_billing_date = date.today()
+        self.project.save()
+        obligation = sync_project_ma_obligation(self.project)
+        self.assertEqual(obligation.status, 'ACTIVE')
+
+        self.project.ma_amount = Decimal('0.00')
+        self.project.save()
+        result = sync_project_ma_obligation(self.project)
+        self.assertIsNone(result)
+
+        obligation.refresh_from_db()
+        self.assertEqual(obligation.status, 'CANCELLED')
+        self.project.refresh_from_db()
+        self.assertIsNone(self.project.ma_obligation)
+
+
+class InfraAssetSyncTests(InfrastructureBaseTestCase):
+
+    def test_sync_creates_outflow_obligation(self):
+        self.asset.sync_to_radar = True
+        self.asset.next_billing_date = date.today() + timedelta(days=3)
+        self.asset.save()
+
+        obligation = sync_infra_asset_obligation(self.asset)
+
+        self.assertIsNotNone(obligation)
+        self.assertEqual(obligation.direction, FlowDirection.OUTFLOW)
+        self.assertEqual(obligation.metadata.get('source_type'), 'INFRA_ASSET')
+        self.assertEqual(obligation.metadata.get('asset_id'), str(self.asset.id))
+        self.assertIn('prod-web-01', obligation.title)
+        self.assertIn('DigitalOcean', obligation.title)
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.financial_obligation_id, obligation.id)
+
+    def test_client_direct_billing_never_syncs(self):
+        self.asset.sync_to_radar = True
+        self.asset.billing_ownership = BillingOwnership.CLIENT_DIRECT
+        self.asset.next_billing_date = date.today()
+        self.asset.save()
+        self.assertIsNone(sync_infra_asset_obligation(self.asset))
+
+    def test_disabling_sync_cancels_obligation(self):
+        self.asset.sync_to_radar = True
+        self.asset.next_billing_date = date.today()
+        self.asset.save()
+        obligation = sync_infra_asset_obligation(self.asset)
+
+        self.asset.sync_to_radar = False
+        self.asset.save()
+        self.assertIsNone(sync_infra_asset_obligation(self.asset))
+        obligation.refresh_from_db()
+        self.assertEqual(obligation.status, 'CANCELLED')
+
+
+class BillingDateMirrorTests(InfrastructureBaseTestCase):
+
+    def test_ma_obligation_roll_updates_project(self):
+        self.project.ma_amount = Decimal('5000.00')
+        self.project.ma_next_billing_date = date.today()
+        self.project.save()
+        obligation = sync_project_ma_obligation(self.project)
+
+        new_due = date.today() + timedelta(days=30)
+        obligation.due_date = new_due
+        obligation.save()
+
+        sync_billing_dates_from_obligation(obligation)
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.ma_next_billing_date, new_due)
+
+    def test_infra_obligation_roll_updates_asset(self):
+        self.asset.sync_to_radar = True
+        self.asset.next_billing_date = date.today()
+        self.asset.save()
+        obligation = sync_infra_asset_obligation(self.asset)
+
+        new_due = date.today() + timedelta(days=30)
+        obligation.due_date = new_due
+        obligation.save()
+
+        sync_billing_dates_from_obligation(obligation)
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.next_billing_date, new_due)
+
+
+class ProjectEconomicsTests(InfrastructureBaseTestCase):
+
+    def _make_ma(self):
+        self.project.project_type = ProjectType.MA_CONTRACT
+        self.project.ma_amount = Decimal('12000.00')
+        self.project.ma_billing_cycle = 'QUARTERLY'
+        self.project.ma_next_billing_date = date.today()
+        self.project.save()
+        return sync_project_ma_obligation(self.project)
+
+    def test_margin_projection_and_realized(self):
+        self._make_ma()
+        # Self-funded server 650/mo + a client-direct one that must be ignored
+        InfrastructureAsset.objects.create(
+            user=self.user, project=self.project, name='client-paid-db',
+            billing_ownership=BillingOwnership.CLIENT_DIRECT,
+            cost_amount=Decimal('999.00'), billing_cycle='MONTHLY'
+        )
+
+        ma_obligation = self.project.ma_obligation
+        PaymentHistory.objects.create(
+            user=self.user, obligation=ma_obligation,
+            paid_amount=Decimal('12000.00'), note='Q1 MA payment'
+        )
+
+        eco = get_project_economics(self.project)
+
+        self.assertEqual(Decimal(eco['monthly_ma_inflow']), Decimal('4000.00'))
+        self.assertEqual(Decimal(eco['annual_ma_inflow']), Decimal('48000.00'))
+        self.assertEqual(Decimal(eco['monthly_infra_outflow']), Decimal('650.00'))
+        self.assertEqual(Decimal(eco['annual_infra_outflow']), Decimal('7800.00'))
+        self.assertEqual(Decimal(eco['realized_inflow']), Decimal('12000.00'))
+        self.assertEqual(Decimal(eco['realized_net_margin']), Decimal('12000.00'))
+        self.assertEqual(Decimal(eco['projected_monthly_margin']), Decimal('3350.00'))
+        self.assertEqual(Decimal(eco['margin_pct']), Decimal('100.00'))
+
+    def test_zero_inflow_margin_pct_is_zero(self):
+        eco = get_project_economics(self.project)
+        self.assertEqual(Decimal(eco['margin_pct']), Decimal('0.00'))
+        self.assertEqual(Decimal(eco['monthly_ma_inflow']), Decimal('0.00'))
+
+
+class CredentialsVaultTests(InfrastructureBaseTestCase):
+
+    def test_secret_never_serialized_and_encrypted_at_rest(self):
+        res = self.client.post('/api/workspace/credentials/', {
+            'project': str(self.project.id),
+            'asset': str(self.asset.id),
+            'title': 'Prod DB URI',
+            'category': 'DATABASE',
+            'username': 'appuser',
+            'host_or_url': 'postgres://prod-db:5432/shop',
+            'secret': 'postgres://appuser:hunter2@prod-db:5432/shop',
+            'notes': 'primary connection string'
+        })
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(res.data.get('has_secret'))
+        self.assertNotIn('secret', res.data)
+        self.assertNotIn('secret_encrypted', res.data)
+
+        credential = ServerCredential.objects.get(id=res.data['id'])
+        self.assertNotIn('hunter2', credential.secret_encrypted)
+        self.assertEqual(
+            decrypt_token(credential.secret_encrypted),
+            'postgres://appuser:hunter2@prod-db:5432/shop'
+        )
+
+    def test_reveal_returns_plaintext(self):
+        credential = ServerCredential.objects.create(
+            user=self.user, project=self.project, title='Admin Login',
+            secret_encrypted=encrypt_token('adm1n-p4ss')
+        )
+        res = self.client.post(f'/api/workspace/credentials/{credential.id}/reveal/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['secret'], 'adm1n-p4ss')
+
+    def test_reveal_blocked_for_other_user(self):
+        credential = ServerCredential.objects.create(
+            user=self.user, project=self.project, title='Admin Login',
+            secret_encrypted=encrypt_token('adm1n-p4ss')
+        )
+        friend_client = APIClient()
+        friend_client.cookies['access_token'] = generate_access_token(self.friend)
+        res = friend_client.post(f'/api/workspace/credentials/{credential.id}/reveal/')
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_cross_user_project_rejected(self):
+        friend_project = WorkspaceProject.objects.create(
+            user=self.friend, name='Friend Project'
+        )
+        res = self.client.post('/api/workspace/credentials/', {
+            'project': str(friend_project.id),
+            'title': 'Evil Entry',
+            'secret': 'nope'
+        })
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class InfrastructureAPITests(InfrastructureBaseTestCase):
+
+    def test_list_isolated_by_user_and_project_filter(self):
+        res = self.client.get('/api/workspace/infrastructure/', {
+            'project_id': str(self.project.id)
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        rows = _results(res)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['name'], 'prod-web-01')
+        self.assertTrue(rows[0]['has_ssh_password'])
+        self.assertNotIn('ssh_password_encrypted', rows[0])
+
+        friend_client = APIClient()
+        friend_client.cookies['access_token'] = generate_access_token(self.friend)
+        self.assertEqual(len(_results(friend_client.get('/api/workspace/infrastructure/'))), 0)
+
+    def test_write_secret_via_write_only_field(self):
+        res = self.client.patch(f'/api/workspace/infrastructure/{self.asset.id}/', {
+            'ssh_password': 'NewPass456!'
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.asset.refresh_from_db()
+        self.assertEqual(decrypt_token(self.asset.ssh_password_encrypted), 'NewPass456!')
+
+    @patch('apps.workspace.ssh_service.open_ssh_client')
+    def test_probe_reports_offline_on_unreachable(self, mock_open):
+        from apps.workspace.ssh_service import SshConnectionError
+        mock_open.side_effect = SshConnectionError('Cannot reach 203.0.113.10:22.')
+        res = self.client.post(f'/api/workspace/infrastructure/{self.asset.id}/probe/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['health_status'], 'OFFLINE')
+        self.assertIsNotNone(res.data['telemetry'].get('error'))
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.health_status, 'OFFLINE')
+
+    def test_project_detail_includes_economics_and_infra_count(self):
+        res = self.client.get(f'/api/workspace/projects/{self.project.id}/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['infra_count'], 1)
+        eco = res.data['economics']
+        self.assertIsNotNone(eco)
+        self.assertEqual(Decimal(eco['monthly_infra_outflow']), Decimal('650.00'))
+
+        listing = self.client.get('/api/workspace/projects/')
+        rows = _results(listing)
+        mine = next(r for r in rows if r['id'] == str(self.project.id))
+        self.assertIsNone(mine['economics'])
+
+
+class RunbookAPITests(InfrastructureBaseTestCase):
+
+    def test_full_crud_and_execute_requires_command(self):
+        res = self.client.post('/api/workspace/runbooks/', {
+            'project': str(self.project.id),
+            'asset': str(self.asset.id),
+            'title': 'Restart nginx',
+            'command': 'systemctl restart nginx',
+            'working_dir': '/etc/nginx',
+            'timeout_seconds': 30
+        })
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+
+        runbook = ServerRunbook.objects.get(id=res.data['id'])
+        self.assertEqual(runbook.user, self.user)
+
+        res = self.client.post(f'/api/workspace/runbooks/{runbook.id}/execute/')
+        self.assertEqual(res.status_code, status.HTTP_502_BAD_GATEWAY)
+
+        runbook.command = '   '
+        runbook.save()
+        res = self.client.post(f'/api/workspace/runbooks/{runbook.id}/execute/')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cross_user_asset_rejected(self):
+        friend_asset = InfrastructureAsset.objects.create(
+            user=self.friend,
+            project=WorkspaceProject.objects.create(user=self.friend, name='Friend P'),
+            name='friend-box'
+        )
+        res = self.client.post('/api/workspace/runbooks/', {
+            'project': str(self.project.id),
+            'asset': str(friend_asset.id),
+            'title': 'Evil',
+            'command': 'ls'
+        })
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+TELEMETRY_OUTPUTS = {
+    'cat /proc/uptime': ('987654.32 100000\n', '', 0),
+    'cat /proc/loadavg': ('0.80 0.50 0.30 1/150 9000\n', '', 0),
+    'nproc': ('2\n', '', 0),
+    "free -m | awk 'NR==2{printf \"%s %s\", $3,$2}'": ('800 1600', '', 0),
+    "df -BM / | awk 'NR==2{printf \"%s %s %s\", $3,$2,$5}'": ('10240M 20480M 51%\n', '', 0),
+    'uname -sr': ('Linux 5.15.0-generic\n', '', 0),
+    "docker ps -a --format '{{json .}}' 2>/dev/null": (
+        '{"ID":"abc123","Names":"web","Image":"nginx:latest","State":"running",'
+        '"Status":"Up 3 hours","Ports":"0.0.0.0:80-\u003e80/tcp"}\n'
+        '{"ID":"def456","Names":"worker","Image":"redis:7","State":"exited",'
+        '"Status":"Exited (0) 5 minutes ago","Ports":""}\n',
+        '',
+        0
+    ),
+}
+
+
+def _fake_run_command(client, command, timeout=15):
+    return TELEMETRY_OUTPUTS.get(command, ('', '', 1))
+
+
+class SshEngineTests(InfrastructureBaseTestCase):
+
+    @patch('apps.workspace.ssh_service._run_command', side_effect=_fake_run_command)
+    @patch('apps.workspace.ssh_service.open_ssh_client')
+    def test_probe_parses_telemetry_and_containers(self, mock_open, mock_run):
+        mock_open.return_value = MagicMock()
+        from apps.workspace.ssh_service import probe_server_telemetry
+
+        telemetry = probe_server_telemetry(self.asset)
+
+        self.assertEqual(telemetry['error'], None)
+        self.assertEqual(telemetry['ram_pct'], 50.0)
+        self.assertEqual(telemetry['disk_pct'], 51.0)
+        self.assertEqual(telemetry['cpu_pct'], 40.0)  # load 0.8 / 2 cores
+        self.assertEqual(len(telemetry['containers']), 2)
+        self.assertEqual(telemetry['containers'][0]['Names'], 'web')
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.health_status, 'ONLINE')
+        self.assertIsNotNone(self.asset.last_checked_at)
+
+    @patch('apps.workspace.ssh_service._run_command', side_effect=_fake_run_command)
+    @patch('apps.workspace.ssh_service.open_ssh_client')
+    def test_probe_flags_warning_over_threshold(self, mock_open, mock_run):
+        self.asset.alert_ram_threshold = 45  # ram 50% breaches
+        self.asset.save()
+        mock_open.return_value = MagicMock()
+        from apps.workspace.ssh_service import probe_server_telemetry
+
+        telemetry = probe_server_telemetry(self.asset)
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.health_status, 'WARNING')
+        self.assertEqual(telemetry['error'], None)
+
+    def test_docker_container_id_injection_blocked(self):
+        from apps.workspace.ssh_service import manage_docker_container
+        with self.assertRaises(ValueError):
+            manage_docker_container(self.asset, 'web; rm -rf /', 'restart')
+        with self.assertRaises(ValueError):
+            manage_docker_container(self.asset, 'web$(whoami)', 'logs')
+        with self.assertRaises(ValueError):
+            manage_docker_container(self.asset, 'web', 'exec')
+
+    @patch('apps.workspace.ssh_service._run_command')
+    @patch('apps.workspace.ssh_service.open_ssh_client')
+    def test_docker_logs_command_shape(self, mock_open, mock_run):
+        mock_open.return_value = MagicMock()
+        mock_run.return_value = ('log line 1\nlog line 2\n', '', 0)
+        from apps.workspace.ssh_service import manage_docker_container
+
+        result = manage_docker_container(self.asset, 'shop-web-1', 'logs', tail=50)
+        sent_commands = [c.args[1] for c in mock_run.call_args_list]
+        self.assertIn('docker logs --tail 50 shop-web-1 2>&1', sent_commands)
+        self.assertIn('log line 1', result['output'])
+
+    @patch('apps.workspace.ssh_service.open_ssh_client')
+    def test_execute_quotes_working_dir(self, mock_open):
+        mock_client = MagicMock()
+        mock_open.return_value = mock_client
+
+        fake_stdout = MagicMock()
+        fake_stdout.read.return_value = b'ok'
+        fake_stderr = MagicMock()
+        fake_stderr.read.return_value = b''
+        fake_stdout.channel.recv_exit_status.return_value = 0
+        mock_client.exec_command.return_value = (MagicMock(), fake_stdout, fake_stderr)
+
+        from apps.workspace.ssh_service import execute_remote_command
+        result = execute_remote_command(self.asset, 'deploy.sh --env prod', '/var/www/my app', 30)
+
+        sent_command = mock_client.exec_command.call_args[0][0]
+        self.assertEqual(sent_command, "cd '/var/www/my app' && deploy.sh --env prod")
+        self.assertEqual(result['exit_status'], 0)
+        self.assertEqual(result['stdout'], 'ok')
+
+    def test_open_client_requires_host(self):
+        from apps.workspace.ssh_service import open_ssh_client, SshConnectionError
+        self.asset.ip_address = ''
+        self.asset.hostname = ''
+        self.asset.save()
+        with self.assertRaises(SshConnectionError):
+            open_ssh_client(self.asset)
+
+    def test_private_key_loaded_from_memory_only(self):
+        import paramiko
+        from apps.workspace.ssh_service import _load_private_key_from_memory
+
+        key = paramiko.RSAKey.generate(2048)
+        buffer = io.StringIO()
+        key.write_private_key(buffer)
+        material = buffer.getvalue()
+
+        loaded = _load_private_key_from_memory(material, '')
+        self.assertIsInstance(loaded, paramiko.RSAKey)
+        self.assertEqual(loaded.get_fingerprint(), key.get_fingerprint())
+
+
+class _FakePtyChannel:
+    def __init__(self):
+        self.sent = []
+        self.resized = []
+        self._stream = [b'welcome to ws-box\r\n', b'$ ']
+
+    def recv(self, nbytes):
+        if self._stream:
+            return self._stream.pop(0)
+        return b''
+
+    def send(self, data):
+        self.sent.append(data)
+        return len(data)
+
+    def resize_pty(self, width, height, width_pixels=0, height_pixels=0):
+        self.resized.append((width, height))
+
+    def close(self):
+        pass
+
+
+class SshTerminalConsumerTests(TransactionTestCase):
+    """WebSocket auth / BOLA / PTY IO via channels testing utilities."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='wsterm', email='wsterm@test.com', password='Password123!'
+        )
+        self.friend = User.objects.create_user(
+            username='wsfriend', email='wsfriend@test.com', password='Password123!'
+        )
+        self.project = WorkspaceProject.objects.create(
+            user=self.user, name='WS Project'
+        )
+        self.asset = InfrastructureAsset.objects.create(
+            user=self.user, project=self.project, name='ws-box',
+            ip_address='198.51.100.7',
+            ssh_password_encrypted=encrypt_token('pass')
+        )
+
+    def _communicator(self, token=None, asset_id=None):
+        from channels.testing import WebsocketCommunicator
+        from config.asgi import application
+
+        url = f'/ws/workspace/ssh/{asset_id or self.asset.id}/'
+        headers = [(b'cookie', f'access_token={token}'.encode())] if token else []
+        return WebsocketCommunicator(application, url, headers=headers)
+
+    def test_unauthenticated_closed_4401(self):
+        communicator = self._communicator()
+        connected, close_code = asyncio.run(communicator.connect())
+        self.assertFalse(connected)
+        self.assertEqual(close_code, 4401)
+
+    def test_non_owner_closed_4403(self):
+        from channels.db import database_sync_to_async
+        from django.db import connections
+        communicator = self._communicator(token=generate_access_token(self.friend))
+
+        async def scenario():
+            connected, close_code = await communicator.connect()
+            assert not connected
+            assert close_code == 4403
+            # Close ORM connections opened on the thread-sensitive worker so
+            # teardown can drop the test database afterwards.
+            await database_sync_to_async(connections.close_all)()
+
+        asyncio.run(scenario())
+
+    def test_owner_gets_output_stream_and_input_roundtrip(self):
+        from channels.db import database_sync_to_async
+        from django.db import connections
+
+        fake_channel = _FakePtyChannel()
+        fake_client = MagicMock()
+        fake_client.invoke_shell.return_value = fake_channel
+
+        communicator = self._communicator(token=generate_access_token(self.user))
+
+        async def scenario():
+            with patch('apps.workspace.consumers.open_ssh_client', return_value=fake_client):
+                connected, _subprotocol = await communicator.connect()
+                assert connected
+
+                first = await communicator.receive_from()
+                payload = _json.loads(first)
+                assert payload['type'] == 'output'
+                assert 'welcome to ws-box' in payload['data']
+
+                await communicator.send_to(text_data=_json.dumps({
+                    'type': 'input', 'data': 'uptime\r'
+                }))
+                await communicator.send_to(text_data=_json.dumps({
+                    'type': 'resize', 'cols': 200, 'rows': 50
+                }))
+                await asyncio.sleep(0.2)
+
+                assert b'uptime\r' in fake_channel.sent
+                assert (200, 50) in fake_channel.resized
+
+                await communicator.disconnect(timeout=10)
+                # The consumer's disconnect hook writes an audit log row on
+                # the worker thread - close that thread's connections after.
+                await database_sync_to_async(connections.close_all)()
+
+        asyncio.run(scenario())
+
+
+# ---------------------------------------------------------------------------
+# Audit Round: PATCH project MA sync, economics consistency, margin fallback
+# ---------------------------------------------------------------------------
+from apps.workspace.models import ProjectType
+
+
+class ProjectMAApiSyncTests(InfrastructureBaseTestCase):
+
+    def test_patch_project_creates_and_links_inflow_obligation(self):
+        res = self.client.patch(f'/api/workspace/projects/{self.project.id}/', {
+            'project_type': 'MA_CONTRACT',
+            'client_name': 'ACME Corp',
+            'ma_amount': '5000.00',
+            'ma_billing_cycle': 'MONTHLY',
+            'ma_next_billing_date': str(date.today() + timedelta(days=5))
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        self.project.refresh_from_db()
+        obligation = self.project.ma_obligation
+        self.assertIsNotNone(obligation)
+        self.assertEqual(obligation.direction, 'INFLOW')
+        self.assertEqual(obligation.amount, Decimal('5000.00'))
+        self.assertEqual(obligation.user, self.user)
+        self.assertEqual(obligation.metadata.get('source_type'), 'MA_CONTRACT')
+
+        # PATCH response must carry freshly computed economics (context fix)
+        self.assertIsNotNone(res.data.get('economics'))
+        self.assertEqual(Decimal(res.data['economics']['monthly_ma_inflow']), Decimal('5000.00'))
+
+    def test_patch_clearing_ma_cancels_obligation(self):
+        self.client.patch(f'/api/workspace/projects/{self.project.id}/', {
+            'ma_amount': '1000.00',
+            'ma_next_billing_date': str(date.today())
+        })
+        self.project.refresh_from_db()
+        first_id = self.project.ma_obligation_id
+        self.assertIsNotNone(first_id)
+
+        self.client.patch(
+            f'/api/workspace/projects/{self.project.id}/',
+            {'ma_amount': '0.00', 'ma_next_billing_date': None},
+            format='json'
+        )
+        self.project.refresh_from_db()
+        self.assertIsNone(self.project.ma_obligation)
+        obligation = FinancialObligation.objects.get(id=first_id)
+        self.assertEqual(obligation.status, 'CANCELLED')
+
+    def test_create_project_with_ma_syncs_immediately(self):
+        res = self.client.post('/api/workspace/projects/', {
+            'name': 'Born With MA',
+            'ma_amount': '2500.00',
+            'ma_billing_cycle': 'MONTHLY',
+            'ma_next_billing_date': str(date.today() + timedelta(days=10))
+        })
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        project = WorkspaceProject.objects.get(id=res.data['id'])
+        self.assertIsNotNone(project.ma_obligation)
+        self.assertEqual(project.ma_obligation.direction, 'INFLOW')
+
+
+class ProjectEconomicsConsistencyTests(InfrastructureBaseTestCase):
+
+    def test_non_ma_contract_with_fee_counts_as_revenue(self):
+        # CLIENT_DEV project that simply has a recurring fee configured
+        self.project.project_type = ProjectType.CLIENT_DEV
+        self.project.ma_amount = Decimal('3000.00')
+        self.project.ma_billing_cycle = 'MONTHLY'
+        self.project.ma_next_billing_date = date.today()
+        self.project.save()
+
+        eco = get_project_economics(self.project)
+        self.assertEqual(Decimal(eco['monthly_ma_inflow']), Decimal('3000.00'))
+        self.assertEqual(Decimal(eco['annual_ma_inflow']), Decimal('36000.00'))
+
+    def test_margin_pct_falls_back_to_projection_without_history(self):
+        # MA fee 5000/mo, self-funded server 650/mo, no payments yet
+        self.project.project_type = ProjectType.MA_CONTRACT
+        self.project.ma_amount = Decimal('5000.00')
+        self.project.ma_billing_cycle = 'MONTHLY'
+        self.project.ma_next_billing_date = date.today()
+        self.project.save()
+        sync_project_ma_obligation(self.project)
+
+        eco = get_project_economics(self.project)
+        self.assertEqual(Decimal(eco['realized_inflow']), Decimal('0.00'))
+        # fallback: (5000 - 650) / 5000 * 100 = 87.00
+        self.assertEqual(Decimal(eco['margin_pct']), Decimal('87.00'))
+
+    def test_margin_pct_prefers_realized_when_available(self):
+        self.project.project_type = ProjectType.MA_CONTRACT
+        self.project.ma_amount = Decimal('5000.00')
+        self.project.ma_billing_cycle = 'MONTHLY'
+        self.project.ma_next_billing_date = date.today()
+        self.project.save()
+        obligation = sync_project_ma_obligation(self.project)
+        PaymentHistory.objects.create(
+            user=self.user, obligation=obligation,
+            paid_amount=Decimal('2500.00'), note='half payment'
+        )
+        # 650 self-funded infra outflow realized via its synced obligation
+        self.asset.sync_to_radar = True
+        self.asset.next_billing_date = date.today()
+        self.asset.save()
+        infra_ob = sync_infra_asset_obligation(self.asset)
+        PaymentHistory.objects.create(
+            user=self.user, obligation=infra_ob,
+            paid_amount=Decimal('650.00'), note='server bill'
+        )
+
+        eco = get_project_economics(self.project)
+        # realized: (2500 - 650) / 2500 * 100 = 74.00
+        self.assertEqual(Decimal(eco['realized_inflow']), Decimal('2500.00'))
+        self.assertEqual(Decimal(eco['realized_outflow']), Decimal('650.00'))
+        self.assertEqual(Decimal(eco['margin_pct']), Decimal('74.00'))

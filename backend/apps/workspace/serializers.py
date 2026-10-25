@@ -14,7 +14,10 @@ from .models import (
     ProjectLinkType,
     ProjectAttachment,
     CalendarEvent,
-    CalendarEventType
+    CalendarEventType,
+    InfrastructureAsset,
+    ServerCredential,
+    ServerRunbook
 )
 from .services import calculate_deadline_info, normalize_task_status, transition_task_status
 
@@ -82,6 +85,8 @@ class WorkspaceProjectSerializer(serializers.ModelSerializer):
     notes_count = serializers.SerializerMethodField()
     links_count = serializers.SerializerMethodField()
     attachments_count = serializers.SerializerMethodField()
+    infra_count = serializers.SerializerMethodField()
+    economics = serializers.SerializerMethodField()
 
     class Meta:
         model = WorkspaceProject
@@ -97,6 +102,17 @@ class WorkspaceProjectSerializer(serializers.ModelSerializer):
             'target_date',
             'is_archived',
             'metadata',
+            'project_type',
+            'client_name',
+            'client_contact',
+            'ma_start_date',
+            'ma_end_date',
+            'ma_billing_cycle',
+            'ma_amount',
+            'ma_currency',
+            'ma_next_billing_date',
+            'sla_details',
+            'ma_obligation',
             'pending_tasks_count',
             'total_tasks_count',
             'completed_tasks_count',
@@ -105,10 +121,12 @@ class WorkspaceProjectSerializer(serializers.ModelSerializer):
             'notes_count',
             'links_count',
             'attachments_count',
+            'infra_count',
+            'economics',
             'created_at',
             'updated_at'
         )
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'ma_obligation', 'created_at', 'updated_at')
 
     def _annotated(self, obj, attr, fallback_queryset):
         value = getattr(obj, attr, None)
@@ -150,9 +168,31 @@ class WorkspaceProjectSerializer(serializers.ModelSerializer):
     def get_attachments_count(self, obj):
         return self._annotated(obj, 'attachments_count', obj.attachments)
 
+    def get_infra_count(self, obj):
+        return self._annotated(obj, 'infra_count', obj.infrastructure_assets)
+
+    def get_economics(self, obj):
+        # Heavy multi-query payload: only computed for the detail endpoint
+        # (ViewSet injects include_economics=True on retrieve).
+        if not self.context.get('include_economics'):
+            return None
+        from .services import get_project_economics
+        return get_project_economics(obj)
+
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user
-        return super().create(validated_data)
+        project = super().create(validated_data)
+        # Keep the Financial Radar INFLOW obligation in step with MA billing
+        # settings every time a project is created or edited.
+        from .services import sync_project_ma_obligation
+        sync_project_ma_obligation(project)
+        return project
+
+    def update(self, instance, validated_data):
+        project = super().update(instance, validated_data)
+        from .services import sync_project_ma_obligation
+        sync_project_ma_obligation(project)
+        return project
 
 
 class TaskDocumentSerializer(serializers.ModelSerializer):
@@ -581,6 +621,234 @@ class CalendarEventSerializer(serializers.ModelSerializer):
             # An outdated end_at is cleared rather than rejecting the update.
             attrs['end_at'] = None
         return attrs
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class InfrastructureAssetSerializer(serializers.ModelSerializer):
+    """Infrastructure asset with write-only SSH secrets (encrypted at rest)."""
+    ssh_password = serializers.CharField(
+        write_only=True, required=False, allow_blank=True,
+        help_text='SSH password - encrypted on save, never returned.'
+    )
+    ssh_private_key = serializers.CharField(
+        write_only=True, required=False, allow_blank=True,
+        help_text='SSH private key PEM - encrypted on save, never returned.'
+    )
+    ssh_passphrase = serializers.CharField(
+        write_only=True, required=False, allow_blank=True,
+        help_text='SSH key passphrase - encrypted on save, never returned.'
+    )
+    has_ssh_password = serializers.SerializerMethodField()
+    has_ssh_key = serializers.SerializerMethodField()
+    has_ssh_passphrase = serializers.SerializerMethodField()
+
+    class Meta:
+        model = InfrastructureAsset
+        fields = (
+            'id',
+            'project',
+            'name',
+            'asset_type',
+            'provider',
+            'region',
+            'os_name',
+            'specs',
+            'notes',
+            'ip_address',
+            'private_ip',
+            'hostname',
+            'ssh_port',
+            'primary_domain',
+            'console_url',
+            'expiry_date',
+            'ssh_auth_type',
+            'ssh_username',
+            'ssh_password',
+            'ssh_private_key',
+            'ssh_passphrase',
+            'has_ssh_password',
+            'has_ssh_key',
+            'has_ssh_passphrase',
+            'watchdog_enabled',
+            'alert_cpu_threshold',
+            'alert_ram_threshold',
+            'alert_disk_threshold',
+            'health_status',
+            'last_checked_at',
+            'last_telemetry',
+            'billing_ownership',
+            'cost_amount',
+            'cost_currency',
+            'billing_cycle',
+            'next_billing_date',
+            'sync_to_radar',
+            'financial_obligation',
+            'created_at',
+            'updated_at'
+        )
+        read_only_fields = (
+            'id', 'health_status', 'last_checked_at', 'last_telemetry',
+            'financial_obligation', 'created_at', 'updated_at'
+        )
+
+    def get_has_ssh_password(self, obj):
+        return bool(obj.ssh_password_encrypted)
+
+    def get_has_ssh_key(self, obj):
+        return bool(obj.ssh_private_key_encrypted)
+
+    def get_has_ssh_passphrase(self, obj):
+        return bool(obj.ssh_passphrase_encrypted)
+
+    def validate_project(self, value):
+        if value and value.user != self.context['request'].user:
+            raise serializers.ValidationError('You do not have permission to access this project.')
+        return value
+
+    def validate_ssh_port(self, value):
+        if value is not None and not (1 <= int(value) <= 65535):
+            raise serializers.ValidationError('SSH port must be between 1 and 65535.')
+        return value
+
+    def _validate_threshold(self, value, label):
+        if value is not None and not (1 <= int(value) <= 100):
+            raise serializers.ValidationError(f'{label} threshold must be between 1 and 100.')
+        return value
+
+    def validate_alert_cpu_threshold(self, value):
+        return self._validate_threshold(value, 'CPU')
+
+    def validate_alert_ram_threshold(self, value):
+        return self._validate_threshold(value, 'RAM')
+
+    def validate_alert_disk_threshold(self, value):
+        return self._validate_threshold(value, 'Disk')
+
+    def _pop_and_encrypt_secrets(self, validated_data):
+        from apps.storage.encryption import encrypt_token
+        secrets = {}
+        for payload_key, model_key in (
+            ('ssh_password', 'ssh_password_encrypted'),
+            ('ssh_private_key', 'ssh_private_key_encrypted'),
+            ('ssh_passphrase', 'ssh_passphrase_encrypted'),
+        ):
+            if payload_key in validated_data:
+                secrets[model_key] = encrypt_token(validated_data.pop(payload_key) or '')
+        return secrets
+
+    def create(self, validated_data):
+        from .services import sync_infra_asset_obligation
+        validated_data['user'] = self.context['request'].user
+        secrets = self._pop_and_encrypt_secrets(validated_data)
+        asset = InfrastructureAsset.objects.create(**validated_data, **secrets)
+        sync_infra_asset_obligation(asset)
+        return asset
+
+    def update(self, instance, validated_data):
+        from .services import sync_infra_asset_obligation
+        secrets = self._pop_and_encrypt_secrets(validated_data)
+        for field, value in secrets.items():
+            setattr(instance, field, value)
+        asset = super().update(instance, validated_data)
+        sync_infra_asset_obligation(asset)
+        return asset
+
+
+class ServerCredentialSerializer(serializers.ModelSerializer):
+    """Encrypted secret vault entry - plaintext secret never leaves the API
+    except through the dedicated /reveal/ action."""
+    secret = serializers.CharField(
+        write_only=True, required=False, allow_blank=True,
+        help_text='Secret value - encrypted on save, never returned in lists.'
+    )
+    has_secret = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ServerCredential
+        fields = (
+            'id',
+            'project',
+            'asset',
+            'title',
+            'category',
+            'username',
+            'host_or_url',
+            'secret',
+            'has_secret',
+            'notes',
+            'created_at',
+            'updated_at'
+        )
+        read_only_fields = ('id', 'created_at', 'updated_at')
+
+    def get_has_secret(self, obj):
+        return bool(obj.secret_encrypted)
+
+    def validate_project(self, value):
+        if value and value.user != self.context['request'].user:
+            raise serializers.ValidationError('You do not have permission to access this project.')
+        return value
+
+    def validate_asset(self, value):
+        if value and value.user != self.context['request'].user:
+            raise serializers.ValidationError('You do not have permission to access this asset.')
+        return value
+
+    def create(self, validated_data):
+        from apps.storage.encryption import encrypt_token
+        validated_data['user'] = self.context['request'].user
+        secret = validated_data.pop('secret', None)
+        if secret:
+            validated_data['secret_encrypted'] = encrypt_token(secret)
+        return ServerCredential.objects.create(**validated_data)
+
+    def update(self, instance, validated_data):
+        from apps.storage.encryption import encrypt_token
+        secret = validated_data.pop('secret', None)
+        if secret is not None:
+            instance.secret_encrypted = encrypt_token(secret)
+        return super().update(instance, validated_data)
+
+
+class ServerRunbookSerializer(serializers.ModelSerializer):
+    """User-defined runbook - full CRUD, zero shipped presets."""
+
+    class Meta:
+        model = ServerRunbook
+        fields = (
+            'id',
+            'project',
+            'asset',
+            'title',
+            'description',
+            'command',
+            'working_dir',
+            'timeout_seconds',
+            'last_run_at',
+            'last_exit_code',
+            'last_output',
+            'created_at',
+            'updated_at'
+        )
+        read_only_fields = ('id', 'last_run_at', 'last_exit_code', 'last_output', 'created_at', 'updated_at')
+
+    def validate_project(self, value):
+        if value and value.user != self.context['request'].user:
+            raise serializers.ValidationError('You do not have permission to access this project.')
+        return value
+
+    def validate_asset(self, value):
+        if value and value.user != self.context['request'].user:
+            raise serializers.ValidationError('You do not have permission to access this asset.')
+        return value
+
+    def validate_timeout_seconds(self, value):
+        if value is not None and not (1 <= int(value) <= 600):
+            raise serializers.ValidationError('Timeout must be between 1 and 600 seconds.')
+        return value
 
     def create(self, validated_data):
         validated_data['user'] = self.context['request'].user

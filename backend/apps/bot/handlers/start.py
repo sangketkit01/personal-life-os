@@ -1,9 +1,11 @@
-from telegram import Update
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
 from apps.finance.services import get_financial_overview
 from apps.portfolio.services import get_portfolio_overview
+from apps.bot.i18n import bot_msg
+from apps.bot.markdown_utils import escape_md
 
 User = get_user_model()
 
@@ -12,20 +14,24 @@ User = get_user_model()
 def pair_user_by_token(token: str, chat_id: int):
     """Pair Telegram Chat ID with User using one-time token (valid for 15 minutes)."""
     from datetime import timedelta
+    from django.db import transaction
     from django.utils import timezone
     try:
-        user = User.objects.get(telegram_connect_token=token, is_active=True)
-        if user.updated_at and (timezone.now() - user.updated_at) > timedelta(minutes=15):
+        with transaction.atomic():
+            user = User.objects.select_for_update().get(telegram_connect_token=token, is_active=True)
+            if user.updated_at and (timezone.now() - user.updated_at) > timedelta(minutes=15):
+                user.telegram_connect_token = None
+                user.save(update_fields=['telegram_connect_token', 'updated_at'])
+                return None
+
+            # Clear any previous owner of this chat id first so the unique
+            # constraint can never raise IntegrityError on re-pairing.
+            User.objects.filter(telegram_chat_id=str(chat_id)).exclude(id=user.id).update(telegram_chat_id=None)
+
+            user.telegram_chat_id = str(chat_id)
             user.telegram_connect_token = None
-            user.save(update_fields=['telegram_connect_token', 'updated_at'])
-            return None
-
-        User.objects.filter(telegram_chat_id=str(chat_id)).exclude(id=user.id).update(telegram_chat_id=None)
-
-        user.telegram_chat_id = str(chat_id)
-        user.telegram_connect_token = None
-        user.save(update_fields=['telegram_chat_id', 'telegram_connect_token', 'updated_at'])
-        return user
+            user.save(update_fields=['telegram_chat_id', 'telegram_connect_token', 'updated_at'])
+            return user
     except User.DoesNotExist:
         return None
 
@@ -190,6 +196,111 @@ async def portfolio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode='Markdown')
 
 
+@sync_to_async
+def get_user_servers(user):
+    """List infrastructure assets with the latest telemetry snapshot."""
+    from apps.workspace.models import InfrastructureAsset
+    return list(InfrastructureAsset.objects.filter(user=user).order_by('name'))
+
+
+@sync_to_async
+def get_user_ma_contracts(user):
+    """List MA contracts (MA-typed projects or any project with an MA fee)."""
+    from django.db.models import Q
+    from apps.workspace.models import WorkspaceProject, ProjectType
+    return list(WorkspaceProject.objects.filter(
+        user=user
+    ).filter(
+        Q(project_type=ProjectType.MA_CONTRACT) | Q(ma_amount__gt=0)
+    ).order_by('ma_end_date'))
+
+
+async def servers_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler for /servers: list servers & infrastructure with live status."""
+    if not update.effective_chat or not update.message:
+        return
+
+    user = await get_user_by_chat_id(update.effective_chat.id)
+    if not user:
+        await update.message.reply_text("⚠️ This account is not connected. Please connect from the web app first.")
+        return
+
+    assets = await get_user_servers(user)
+    if not assets:
+        await update.message.reply_text(bot_msg(user, 'servers.empty'))
+        return
+
+    status_icon = {'ONLINE': '🟢', 'WARNING': '🟡', 'OFFLINE': '🔴'}
+
+    lines = [bot_msg(user, 'servers.title'), ""]
+    keyboard = []
+    for asset in assets[:12]:
+        icon = status_icon.get(asset.health_status, '⚪')
+        tel = asset.last_telemetry or {}
+        lines.append(f"{icon} *{escape_md(asset.name)}* [{asset.asset_type}]")
+        detail_parts = []
+        if asset.ip_address:
+            detail_parts.append(asset.ip_address)
+        if tel.get('uptime_human'):
+            detail_parts.append(f"up {tel['uptime_human']}")
+        if tel.get('cpu_pct') is not None:
+            detail_parts.append(f"CPU {tel['cpu_pct']}%")
+        if tel.get('ram_pct') is not None:
+            detail_parts.append(f"RAM {tel['ram_pct']}%")
+        if not detail_parts:
+            checked = asset.last_checked_at.strftime('%d/%m %H:%M') if asset.last_checked_at else None
+            detail_parts.append(checked or bot_msg(user, 'servers.never'))
+        lines.append(f"   {' · '.join(str(p) for p in detail_parts)}")
+        keyboard.append([InlineKeyboardButton(
+            f"{bot_msg(user, 'servers.refresh')} · {asset.name[:24]}",
+            callback_data=f"probe_vps:{asset.id}"
+        )])
+
+    await update.message.reply_text(
+        "\n".join(lines),
+        parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def ma_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler for /ma: list MA contracts, expiry and next billing."""
+    if not update.effective_chat or not update.message:
+        return
+
+    user = await get_user_by_chat_id(update.effective_chat.id)
+    if not user:
+        await update.message.reply_text("⚠️ This account is not connected. Please connect from the web app first.")
+        return
+
+    projects = await get_user_ma_contracts(user)
+    if not projects:
+        await update.message.reply_text(bot_msg(user, 'ma.empty'))
+        return
+
+    from django.utils import timezone as dj_tz
+
+    lines = [bot_msg(user, 'ma.title'), ""]
+    for p in projects[:10]:
+        lines.append(f"• *{escape_md(p.name)}*")
+        parts = []
+        if p.client_name:
+            parts.append(escape_md(p.client_name))
+        if p.ma_end_date:
+            days = (p.ma_end_date - dj_tz.localdate()).days
+            if days < 0:
+                parts.append(bot_msg(user, 'ma.expired', date=p.ma_end_date.strftime('%d/%m/%Y')))
+            else:
+                parts.append(bot_msg(user, 'ma.ends', date=p.ma_end_date.strftime('%d/%m/%Y'), days=days))
+        if p.ma_next_billing_date:
+            parts.append(bot_msg(user, 'ma.next_billing', date=p.ma_next_billing_date.strftime('%d/%m/%Y')))
+        if p.ma_amount and float(p.ma_amount) > 0:
+            parts.append(f"฿{float(p.ma_amount):,.2f}/{p.ma_billing_cycle}")
+        lines.append(f"   {' · '.join(parts)}")
+
+    await update.message.reply_text("\n".join(lines), parse_mode='Markdown')
+
+
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler for /help command."""
     if not update.message:
@@ -201,6 +312,8 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /status — Monthly Burn Rate & upcoming bills\n"
         "• /portfolio — Investment portfolio & PnL overview\n"
         "• /news [TICKER] — Latest market & asset news (e.g. /news NVDA)\n"
+        "• /servers — Servers & infrastructure live status\n"
+        "• /ma — MA contracts, expiry dates & next billing\n"
         "• /help — Show help manual\n\n"
         "⏰ *Automated Dispatches:*\n"
         "• 08:30 — Morning Executive Briefing (tasks & market overview)\n"

@@ -5,6 +5,145 @@ export type ProjectLinkType = 'WEBSITE' | 'CANVA' | 'FIGMA' | 'GITHUB' | 'SHEET'
 export type CalendarEventType = 'APPOINTMENT' | 'MEETING' | 'REMINDER' | 'MILESTONE' | 'PERSONAL' | 'OTHER'
 export type NoteColor = 'DEFAULT' | 'AMBER' | 'EMERALD' | 'SKY' | 'VIOLET' | 'ROSE'
 
+export type ProjectType = 'INTERNAL' | 'CLIENT_DEV' | 'MA_CONTRACT'
+export type InfraAssetType = 'VPS' | 'DEDICATED' | 'MANAGED_DB' | 'DOMAIN' | 'CDN_DNS' | 'PAAS' | 'SSL_CERT' | 'OTHER'
+export type BillingOwnership = 'SELF_FUNDED' | 'CLIENT_REIMBURSED' | 'CLIENT_DIRECT'
+export type SshAuthType = 'PASSWORD' | 'PRIVATE_KEY' | 'NONE'
+export type CredentialCategory = 'SSH' | 'DATABASE' | 'API_KEY' | 'ENV_VARS' | 'ADMIN_PANEL' | 'OTHER'
+export type InfraHealthStatus = 'ONLINE' | 'OFFLINE' | 'WARNING' | 'UNKNOWN'
+
+export interface SlaDetails {
+  uptime_target?: string
+  response_time?: string
+  backup_policy?: string
+  monthly_hours_quota?: string
+  notes?: string
+}
+
+export interface ProjectEconomics {
+  currency: string
+  monthly_ma_inflow: string
+  annual_ma_inflow: string
+  realized_inflow: string
+  monthly_infra_outflow: string
+  annual_infra_outflow: string
+  realized_outflow: string
+  projected_monthly_margin: string
+  realized_net_margin: string
+  margin_pct: string
+  self_funded_asset_count: number
+}
+
+export interface DockerContainerInfo {
+  ID?: string
+  Names?: string
+  Image?: string
+  State?: string
+  Status?: string
+  Ports?: string
+  [key: string]: any
+}
+
+export interface InfraTelemetry {
+  cpu_pct: number | null
+  load_avg: number | null
+  ram_used_mb: number | null
+  ram_total_mb: number | null
+  ram_pct: number | null
+  disk_used_gb: number | null
+  disk_total_gb: number | null
+  disk_pct: number | null
+  uptime_seconds: number | null
+  uptime_human: string | null
+  kernel: string
+  containers: DockerContainerInfo[]
+  error: string | null
+  probe_ms?: number
+}
+
+export interface InfrastructureAsset {
+  id: string
+  project: string
+  name: string
+  asset_type: InfraAssetType
+  provider: string
+  region: string
+  os_name: string
+  specs: { vcpu?: number; ram_gb?: number; disk_gb?: number; [key: string]: any }
+  notes: string
+  ip_address: string
+  private_ip: string
+  hostname: string
+  ssh_port: number
+  primary_domain: string
+  console_url: string
+  expiry_date: string | null
+  ssh_auth_type: SshAuthType
+  ssh_username: string
+  has_ssh_password: boolean
+  has_ssh_key: boolean
+  has_ssh_passphrase: boolean
+  watchdog_enabled: boolean
+  alert_cpu_threshold: number
+  alert_ram_threshold: number
+  alert_disk_threshold: number
+  health_status: InfraHealthStatus
+  last_checked_at: string | null
+  last_alerted_at: string | null
+  last_telemetry: InfraTelemetry | Record<string, never>
+  billing_ownership: BillingOwnership
+  cost_amount: string
+  cost_currency: string
+  billing_cycle: string
+  next_billing_date: string | null
+  sync_to_radar: boolean
+  financial_obligation: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ServerCredential {
+  id: string
+  project: string
+  asset: string | null
+  title: string
+  category: CredentialCategory
+  username: string
+  host_or_url: string
+  has_secret: boolean
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ServerRunbook {
+  id: string
+  project: string
+  asset: string
+  title: string
+  description: string
+  command: string
+  working_dir: string
+  timeout_seconds: number
+  last_run_at: string | null
+  last_exit_code: number | null
+  last_output: string
+  created_at: string
+  updated_at: string
+}
+
+export interface RemoteCommandResult {
+  command?: string
+  stdout: string
+  stderr: string
+  exit_status: number
+  duration_ms: number
+  action?: string
+  container_id?: string
+  output?: string
+  telemetry?: InfraTelemetry
+}
+
 export type NoteBlockType =
   | 'h1'
   | 'h2'
@@ -72,6 +211,19 @@ export interface WorkspaceProject {
   target_date: string | null
   is_archived: boolean
   metadata: Record<string, any>
+  project_type: ProjectType
+  client_name: string
+  client_contact: string
+  ma_start_date: string | null
+  ma_end_date: string | null
+  ma_billing_cycle: string
+  ma_amount: string
+  ma_currency: string
+  ma_next_billing_date: string | null
+  sla_details: SlaDetails
+  ma_obligation: string | null
+  infra_count?: number
+  economics?: ProjectEconomics | null
   pending_tasks_count: number
   total_tasks_count: number
   completed_tasks_count: number

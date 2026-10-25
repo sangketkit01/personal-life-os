@@ -5,4 +5,15 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
+  server: {
+    proxy: {
+      // WebSocket SSH terminal: proxy so the HttpOnly access_token cookie is
+      // forwarded with the upgrade request (cross-origin WS cannot send it).
+      '/ws': {
+        target: 'ws://localhost:8000',
+        ws: true,
+        changeOrigin: true
+      }
+    }
+  }
 })

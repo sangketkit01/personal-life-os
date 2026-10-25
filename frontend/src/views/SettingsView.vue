@@ -136,14 +136,25 @@
             <span class="text-zinc-400">{{ t('st.tg.linkedChat') }} <strong class="text-zinc-100 font-semibold">{{ authStore.user.telegram_chat_id }}</strong></span>
             <span class="text-[11px] text-emerald-400">{{ t('st.tg.active') }}</span>
           </div>
-          <button
-            @click="handleDisconnectTelegram"
-            :disabled="isDisconnectingTelegram"
-            type="button"
-            class="px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-rose-400 text-xs font-sans transition-colors disabled:opacity-50"
-          >
-            {{ isDisconnectingTelegram ? t('st.tg.disconnecting') : t('st.tg.disconnect') }}
-          </button>
+          <div class="flex items-center gap-2">
+            <button
+              @click="handleSendTestAlert"
+              :disabled="isSendingTestAlert"
+              type="button"
+              class="px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-emerald-400 text-xs font-sans transition-colors disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <Send class="w-3.5 h-3.5" />
+              {{ isSendingTestAlert ? t('st.tg.sending') : t('st.tg.testAlert') }}
+            </button>
+            <button
+              @click="handleDisconnectTelegram"
+              :disabled="isDisconnectingTelegram"
+              type="button"
+              class="px-2.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-rose-400 text-xs font-sans transition-colors disabled:opacity-50"
+            >
+              {{ isDisconnectingTelegram ? t('st.tg.disconnecting') : t('st.tg.disconnect') }}
+            </button>
+          </div>
         </div>
 
         <div v-else class="flex items-center justify-between p-3 rounded-md bg-zinc-900/60 border border-zinc-800">
@@ -537,7 +548,8 @@ import {
   ShieldCheck,
   HardDrive,
   ExternalLink,
-  CloudUpload
+  CloudUpload,
+  Send,
 } from 'lucide-vue-next'
 
 const authStore = useAuthStore()
@@ -570,6 +582,7 @@ async function switchLanguage(next: AppLocale) {
 
 const isGeneratingToken = ref(false)
 const isDisconnectingTelegram = ref(false)
+const isSendingTestAlert = ref(false)
 const isChangingPassword = ref(false)
 const passwordForm = ref({
   current_password: '',
@@ -592,6 +605,18 @@ const confirmModal = reactive({
 function executeConfirmModal() {
   confirmModal.isOpen = false
   confirmModal.action()
+}
+
+async function handleSendTestAlert() {
+  isSendingTestAlert.value = true
+  try {
+    await apiClient.post('/auth/telegram/test/')
+    toast.success(t('st.tg.testSent'))
+  } catch (err: any) {
+    toast.error(err?.response?.data?.detail || t('st.tg.testFailed'))
+  } finally {
+    isSendingTestAlert.value = false
+  }
 }
 
 async function handleConnectTelegram() {

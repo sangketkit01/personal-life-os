@@ -8,7 +8,10 @@ from .views import (
     NoteFolderViewSet,
     ProjectLinkViewSet,
     ProjectAttachmentViewSet,
-    CalendarEventViewSet
+    CalendarEventViewSet,
+    InfrastructureAssetViewSet,
+    ServerCredentialViewSet,
+    ServerRunbookViewSet
 )
 
 router = DefaultRouter()
@@ -19,6 +22,9 @@ router.register('notes', NoteViewSet, basename='note')
 router.register('links', ProjectLinkViewSet, basename='project-link')
 router.register('attachments', ProjectAttachmentViewSet, basename='project-attachment')
 router.register('events', CalendarEventViewSet, basename='calendar-event')
+router.register('infrastructure', InfrastructureAssetViewSet, basename='infrastructure-asset')
+router.register('credentials', ServerCredentialViewSet, basename='server-credential')
+router.register('runbooks', ServerRunbookViewSet, basename='server-runbook')
 
 urlpatterns = [
     path('overview/', WorkspaceOverviewView.as_view(), name='workspace-overview'),

@@ -320,17 +320,33 @@
                 </div>
                 <div class="flex items-center gap-1 shrink-0">
                   <button v-if="c.State !== 'running'" type="button" @click="docker(asset, c, 'start')"
-                    class="p-1 rounded bg-emerald-950/60 border border-emerald-900/60 text-emerald-400 hover:bg-emerald-900/40 transition-colors"
-                    :title="t('infra.dockerStart')"><Play class="w-3 h-3" /></button>
-                  <button v-else type="button" @click="docker(asset, c, 'stop')"
-                    class="p-1 rounded bg-amber-950/60 border border-amber-900/60 text-amber-400 hover:bg-amber-900/40 transition-colors"
-                    :title="t('infra.dockerStop')"><Square class="w-3 h-3" /></button>
-                  <button type="button" @click="docker(asset, c, 'restart')"
-                    class="p-1 rounded bg-sky-950/60 border border-sky-900/60 text-sky-400 hover:bg-sky-900/40 transition-colors"
-                    :title="t('infra.dockerRestart')"><RotateCw class="w-3 h-3" /></button>
+                    :disabled="!!containerActionPending[`${asset.id}:${c.ID}`]"
+                    class="p-1 rounded bg-emerald-950/60 border border-emerald-900/60 text-emerald-400 hover:bg-emerald-900/40 transition-colors disabled:opacity-50"
+                    :title="t('infra.dockerStart')">
+                    <Loader2 v-if="containerActionPending[`${asset.id}:${c.ID}`] === 'start'" class="w-3 h-3 animate-spin" />
+                    <Play v-else class="w-3 h-3" />
+                  </button>
+                  <button v-else type="button" @click="requestDockerAction(asset, c, 'stop')"
+                    :disabled="!!containerActionPending[`${asset.id}:${c.ID}`]"
+                    class="p-1 rounded bg-amber-950/60 border border-amber-900/60 text-amber-400 hover:bg-amber-900/40 transition-colors disabled:opacity-50"
+                    :title="t('infra.dockerStop')">
+                    <Loader2 v-if="containerActionPending[`${asset.id}:${c.ID}`] === 'stop'" class="w-3 h-3 animate-spin" />
+                    <Square v-else class="w-3 h-3" />
+                  </button>
+                  <button type="button" @click="requestDockerAction(asset, c, 'restart')"
+                    :disabled="!!containerActionPending[`${asset.id}:${c.ID}`]"
+                    class="p-1 rounded bg-sky-950/60 border border-sky-900/60 text-sky-400 hover:bg-sky-900/40 transition-colors disabled:opacity-50"
+                    :title="t('infra.dockerRestart')">
+                    <Loader2 v-if="containerActionPending[`${asset.id}:${c.ID}`] === 'restart'" class="w-3 h-3 animate-spin" />
+                    <RotateCw v-else class="w-3 h-3" />
+                  </button>
                   <button type="button" @click="docker(asset, c, 'logs')"
-                    class="p-1 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
-                    :title="t('infra.dockerLogs')"><FileText class="w-3 h-3" /></button>
+                    :disabled="!!containerActionPending[`${asset.id}:${c.ID}`]"
+                    class="p-1 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors disabled:opacity-50"
+                    :title="t('infra.dockerLogs')">
+                    <Loader2 v-if="containerActionPending[`${asset.id}:${c.ID}`] === 'logs'" class="w-3 h-3 animate-spin" />
+                    <FileText v-else class="w-3 h-3" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -691,8 +707,10 @@
       :message="t('infra.deleteMessage', { name: confirmDeleteAsset?.name || '' })"
       :confirm-text="t('common.delete')"
       :cancel-text="t('common.cancel')"
+      :is-loading="isDeletingAsset"
+      :error-message="deleteAssetError"
       @confirm="doDeleteAsset"
-      @cancel="confirmDeleteAsset = null"
+      @cancel="confirmDeleteAsset = null; deleteAssetError = ''"
     />
     <ConfirmModal
       :is-open="!!confirmDeleteCred"
@@ -700,8 +718,22 @@
       :message="t('cred.deleteMessage', { title: confirmDeleteCred?.title || '' })"
       :confirm-text="t('common.delete')"
       :cancel-text="t('common.cancel')"
+      :is-loading="isDeletingCred"
+      :error-message="deleteCredError"
       @confirm="doDeleteCred"
-      @cancel="confirmDeleteCred = null"
+      @cancel="confirmDeleteCred = null; deleteCredError = ''"
+    />
+    <ConfirmModal
+      :is-open="!!confirmDockerAction"
+      :title="confirmDockerAction?.action === 'stop' ? 'Stop Docker Container?' : 'Restart Docker Container?'"
+      :message="`Are you sure you want to ${confirmDockerAction?.action} container '${confirmDockerAction?.container.Names}' on server '${confirmDockerAction?.asset.name}'? This may interrupt active services.`"
+      :confirm-text="confirmDockerAction?.action === 'stop' ? 'Stop Container' : 'Restart Container'"
+      :cancel-text="t('common.cancel')"
+      :is-danger="confirmDockerAction?.action === 'stop'"
+      :is-loading="isDockerActionLoading"
+      :error-message="dockerActionError"
+      @confirm="executeConfirmedDockerAction"
+      @cancel="confirmDockerAction = null; dockerActionError = ''"
     />
   </div>
 </template>
@@ -714,7 +746,7 @@ import {
   Container, ChevronDown, Play, Square, RotateCw, FileText, TerminalSquare, Zap,
   Share2, Link2, CreditCard, Globe, Mail, HardDrive, Code2,
   Copy, ExternalLink, ShieldCheck, KeyRound, Eye, X,
-  Database, Lock
+  Database, Lock, Loader2
 } from 'lucide-vue-next'
 import { t, formatLocaleDate } from '../../i18n'
 import { useWorkspaceStore } from '../../stores/workspace'
@@ -750,7 +782,15 @@ const editingCredential = ref<ServerCredential | null>(null)
 const terminalAsset = ref<InfrastructureAsset | null>(null)
 const runbookAsset = ref<InfrastructureAsset | null>(null)
 const confirmDeleteAsset = ref<InfrastructureAsset | null>(null)
+const isDeletingAsset = ref(false)
+const deleteAssetError = ref('')
 const confirmDeleteCred = ref<ServerCredential | null>(null)
+const isDeletingCred = ref(false)
+const deleteCredError = ref('')
+const confirmDockerAction = ref<{ asset: InfrastructureAsset; container: DockerContainerInfo; action: 'stop' | 'restart' } | null>(null)
+const isDockerActionLoading = ref(false)
+const dockerActionError = ref('')
+const containerActionPending = ref<Record<string, string>>({})
 const probingId = ref<string | null>(null)
 const revealed = ref<Record<string, string>>({})
 const expandedDocker = reactive<Record<string, boolean>>({})
@@ -965,8 +1005,30 @@ async function probe(asset: InfrastructureAsset) {
   }
 }
 
+function requestDockerAction(asset: InfrastructureAsset, container: DockerContainerInfo, action: 'stop' | 'restart') {
+  dockerActionError.value = ''
+  confirmDockerAction.value = { asset, container, action }
+}
+
+async function executeConfirmedDockerAction() {
+  if (!confirmDockerAction.value) return
+  isDockerActionLoading.value = true
+  dockerActionError.value = ''
+  const { asset, container, action } = confirmDockerAction.value
+  try {
+    await docker(asset, container, action)
+    confirmDockerAction.value = null
+  } catch (err: any) {
+    dockerActionError.value = err?.response?.data?.detail || t('infra.dockerFailed')
+  } finally {
+    isDockerActionLoading.value = false
+  }
+}
+
 async function docker(asset: InfrastructureAsset, container: DockerContainerInfo, action: string) {
   const containerId = String(container.ID || container.Names || '')
+  const actionKey = `${asset.id}:${container.ID || container.Names}`
+  containerActionPending.value[actionKey] = action
   try {
     const res = await workspaceStore.dockerAction(asset.id, containerId, action, 100)
     if (action === 'logs') {
@@ -979,6 +1041,9 @@ async function docker(asset: InfrastructureAsset, container: DockerContainerInfo
     }
   } catch (err: any) {
     toast.error(err?.response?.data?.detail || t('infra.dockerFailed'))
+    throw err
+  } finally {
+    delete containerActionPending.value[actionKey]
   }
 }
 
@@ -994,25 +1059,33 @@ async function reveal(cred: ServerCredential) {
 
 async function doDeleteAsset() {
   if (!confirmDeleteAsset.value) return
+  isDeletingAsset.value = true
+  deleteAssetError.value = ''
   try {
     await workspaceStore.deleteInfraAsset(confirmDeleteAsset.value.id)
     toast.success(t('infra.deleted'))
     confirmDeleteAsset.value = null
     await reloadFleet()
   } catch (err: any) {
-    toast.error(err?.response?.data?.detail || t('infra.deleteFailed'))
+    deleteAssetError.value = err?.response?.data?.detail || t('infra.deleteFailed')
+  } finally {
+    isDeletingAsset.value = false
   }
 }
 
 async function doDeleteCred() {
   if (!confirmDeleteCred.value) return
+  isDeletingCred.value = true
+  deleteCredError.value = ''
   try {
     await workspaceStore.deleteServerCredential(confirmDeleteCred.value.id)
     toast.success(t('cred.deleted'))
     confirmDeleteCred.value = null
     await reloadCredentials()
   } catch (err: any) {
-    toast.error(err?.response?.data?.detail || t('cred.deleteFailed'))
+    deleteCredError.value = err?.response?.data?.detail || t('cred.deleteFailed')
+  } finally {
+    isDeletingCred.value = false
   }
 }
 

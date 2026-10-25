@@ -554,8 +554,10 @@
       :message="confirmModal.message"
       :confirm-text="confirmModal.confirmText"
       :is-danger="confirmModal.isDanger"
+      :is-loading="confirmModal.isLoading"
+      :error-message="confirmModal.errorMessage"
       @confirm="executeConfirmModal"
-      @cancel="confirmModal.isOpen = false"
+      @cancel="confirmModal.isOpen = false; confirmModal.errorMessage = ''"
     />
   </div>
 </template>
@@ -614,12 +616,22 @@ const confirmModal = reactive({
   message: '',
   confirmText: 'Delete',
   isDanger: true,
-  action: () => {}
+  isLoading: false,
+  errorMessage: '',
+  action: async () => {}
 })
 
-function executeConfirmModal() {
-  confirmModal.isOpen = false
-  confirmModal.action()
+async function executeConfirmModal() {
+  confirmModal.isLoading = true
+  confirmModal.errorMessage = ''
+  try {
+    await confirmModal.action()
+    confirmModal.isOpen = false
+  } catch (err: any) {
+    confirmModal.errorMessage = err?.response?.data?.detail || err?.response?.data?.error || err?.message || 'Operation failed'
+  } finally {
+    confirmModal.isLoading = false
+  }
 }
 
 const tabs = computed<Array<{ id: 'STATEMENT' | 'ORDERS' | 'DOCS' | 'HISTORY'; label: string; icon: any; badge?: string }>>(() => [
@@ -699,13 +711,10 @@ function handleDeleteOrder(orderId: string) {
   confirmModal.message = 'Are you sure you want to delete this purchase order? Statement balances will recalculate.'
   confirmModal.confirmText = 'Delete Order'
   confirmModal.isDanger = true
+  confirmModal.errorMessage = ''
   confirmModal.action = async () => {
-    try {
-      await deleteOrder(orderId, accountId.value)
-      toast.success('Order deleted')
-    } catch (err: any) {
-      toast.error('Failed to delete order')
-    }
+    await deleteOrder(orderId, accountId.value)
+    toast.success('Order deleted')
   }
   confirmModal.isOpen = true
 }
@@ -734,13 +743,10 @@ function handleDeleteAttachment(attachmentId: string) {
   confirmModal.message = 'Are you sure you want to delete this statement document from your vault?'
   confirmModal.confirmText = 'Delete Document'
   confirmModal.isDanger = true
+  confirmModal.errorMessage = ''
   confirmModal.action = async () => {
-    try {
-      await deleteAttachment(attachmentId, accountId.value)
-      toast.success('Document removed')
-    } catch (err: any) {
-      toast.error('Failed to delete document')
-    }
+    await deleteAttachment(attachmentId, accountId.value)
+    toast.success('Document removed')
   }
   confirmModal.isOpen = true
 }
@@ -750,14 +756,11 @@ function confirmDeleteAccount() {
   confirmModal.message = `Are you sure you want to delete "${account.value?.title}"? All sub-orders and records will be removed.`
   confirmModal.confirmText = 'Delete Facility'
   confirmModal.isDanger = true
+  confirmModal.errorMessage = ''
   confirmModal.action = async () => {
-    try {
-      await deleteAccount(accountId.value)
-      toast.success('BNPL facility deleted')
-      router.push('/finance/bnpl')
-    } catch (err: any) {
-      toast.error('Failed to delete account')
-    }
+    await deleteAccount(accountId.value)
+    toast.success('BNPL facility deleted')
+    router.push('/finance/bnpl')
   }
   confirmModal.isOpen = true
 }

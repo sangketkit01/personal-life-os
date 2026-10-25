@@ -16,7 +16,7 @@
             </span>
           </div>
           <button
-            @click="emit('close')"
+            @click="handleClose"
             class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 transition-colors"
             title="Close (Esc)"
           >
@@ -337,7 +337,7 @@
             <span v-else class="text-[10px] font-mono text-zinc-600">{{ t('ti.autoSaved') }}</span>
             <button
               type="button"
-              @click="emit('close')"
+              @click="handleClose"
               class="px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors"
             >
               {{ t('ti.close') }}
@@ -353,8 +353,10 @@
       :title="t('ti.deleteConfirmTitle')"
       :message="t('ti.deleteConfirmMsg', { title: task?.title || '' })"
       :confirm-text="t('ti.deleteConfirmBtn')"
+      :is-loading="isDeletingTask"
+      :error-message="deleteTaskError"
       @confirm="handleDeleteTask"
-      @cancel="showDeleteConfirm = false"
+      @cancel="showDeleteConfirm = false; deleteTaskError = ''"
     />
 
     <!-- Delete Attachment Confirmation -->
@@ -363,8 +365,10 @@
       :title="t('ti.deleteFileTitle')"
       :message="t('ti.deleteFileMsg', { name: attachmentToDelete?.file_name || '' })"
       :confirm-text="t('ti.deleteFileBtn')"
+      :is-loading="isDeletingAttachment"
+      :error-message="deleteAttachmentError"
       @confirm="handleDeleteAttachment"
-      @cancel="attachmentToDelete = null"
+      @cancel="attachmentToDelete = null; deleteAttachmentError = ''"
     />
 
     <!-- In-app Drive file preview -->
@@ -437,7 +441,11 @@ const draft = reactive({
 const isSaving = ref(false)
 const saveError = ref(false)
 const showDeleteConfirm = ref(false)
+const isDeletingTask = ref(false)
+const deleteTaskError = ref('')
 const attachmentToDelete = ref<ProjectAttachment | null>(null)
+const isDeletingAttachment = ref(false)
+const deleteAttachmentError = ref('')
 const newChecklistTitle = ref('')
 const newLink = reactive({ title: '', url: '' })
 const isUploading = ref(false)
@@ -505,6 +513,10 @@ function syncDraft(task: TaskDocument) {
   lastDeadlineValue = draft.deadline
 }
 
+const inFlightTaskSaves = new Map<string, Promise<any>>()
+const pendingTaskSaves = new Map<string, { payload: Record<string, any>; revision: number }>()
+let taskEditRevision = 0
+
 watch(
   () => [props.isOpen, props.task?.id],
   async ([isOpen, taskId]) => {
@@ -512,10 +524,12 @@ watch(
       // Flush pending draft edits for the PREVIOUS task before switching,
       // so jumping directly between Kanban cards never loses changes.
       const previousTaskId = loadedTaskId
-      if (previousTaskId && previousTaskId !== String(taskId) && saveTimer) {
-        clearTimeout(saveTimer)
-        saveTimer = null
-        await saveNowFor(previousTaskId)
+      if (previousTaskId && previousTaskId !== String(taskId) && (saveTimer || pendingTaskSaves.has(previousTaskId))) {
+        if (saveTimer) {
+          clearTimeout(saveTimer)
+          saveTimer = null
+        }
+        await saveNowFor(previousTaskId, true)
       }
       loadedTaskId = String(taskId)
       syncDraft(props.task)
@@ -530,9 +544,11 @@ watch(
       if (saveTimer) {
         clearTimeout(saveTimer)
         saveTimer = null
-        if (loadedTaskId) {
-          saveNowFor(loadedTaskId)
-        }
+      }
+      if (loadedTaskId) {
+        const idToSave = loadedTaskId
+        const payloadToSave = buildPayload()
+        void saveNowFor(idToSave, true, payloadToSave)
       }
       loadedTaskId = ''
       attachmentToDelete.value = null
@@ -541,12 +557,25 @@ watch(
   { immediate: true }
 )
 
+function handleClose() {
+  if (loadedTaskId) {
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    const idToSave = loadedTaskId
+    const payloadToSave = buildPayload()
+    void saveNowFor(idToSave, true, payloadToSave)
+  }
+  emit('close')
+}
+
 // Escape closes the inspector (non-blocking panel has no backdrop click)
 function handleEscape(event: KeyboardEvent) {
   if (!props.isOpen) return
   if (event.key === 'Escape') {
     event.preventDefault()
-    emit('close')
+    handleClose()
   }
 }
 
@@ -556,6 +585,13 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleEscape)
+  if (loadedTaskId) {
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    void saveNowFor(loadedTaskId, true, buildPayload())
+  }
 })
 
 function buildPayload(): Record<string, any> {
@@ -572,19 +608,57 @@ function buildPayload(): Record<string, any> {
   }
 }
 
-async function saveNowFor(taskId: string) {
-  if (!props.isOpen) return
+async function saveNowFor(taskId: string, force = false, payloadOverride?: Record<string, any>): Promise<any> {
+  if (!force && !props.isOpen) return
+  if (!taskId) return
+
+  const payload = payloadOverride || buildPayload()
+  const snapRevision = ++taskEditRevision
+
+  // Serialized per-task queue: if a save is already in-flight for this task,
+  // queue the newer payload and await the existing save to finish first.
+  if (inFlightTaskSaves.has(taskId)) {
+    pendingTaskSaves.set(taskId, { payload, revision: snapRevision })
+    return inFlightTaskSaves.get(taskId)
+  }
+
   isSaving.value = true
   saveError.value = false
-  try {
-    const updated = await workspaceStore.updateTask(taskId, buildPayload())
-    emit('updated', updated)
-  } catch {
-    saveError.value = true
-    toast.error(t('ti.saveFailedToast'))
-  } finally {
-    isSaving.value = false
-  }
+  const toastId = `autosave-task-${taskId}`
+  toast.showToast(t('common.saving'), 'loading', 0, undefined, toastId)
+
+  const savePromise = (async () => {
+    try {
+      const updated = await workspaceStore.updateTask(taskId, payload)
+      // Only emit updated and show success if no newer edits were queued in the meantime
+      if (!pendingTaskSaves.has(taskId)) {
+        emit('updated', updated)
+        toast.showToast(t('common.allSaved'), 'success', 2000, undefined, toastId)
+      }
+      return updated
+    } catch (err) {
+      saveError.value = true
+      toast.showToast(t('common.saveFailedEditsPreserved'), 'error', 0, {
+        label: t('common.retry'),
+        onClick: () => saveNowFor(taskId, force, payload)
+      }, toastId)
+      throw err
+    } finally {
+      inFlightTaskSaves.delete(taskId)
+      isSaving.value = inFlightTaskSaves.size > 0
+
+      // If a newer payload was queued while this save was in flight, dispatch it sequentially!
+      // Must use force = true so closing the drawer while queued edits exist still persists them!
+      if (pendingTaskSaves.has(taskId)) {
+        const next = pendingTaskSaves.get(taskId)!
+        pendingTaskSaves.delete(taskId)
+        void saveNowFor(taskId, true, next.payload)
+      }
+    }
+  })()
+
+  inFlightTaskSaves.set(taskId, savePromise)
+  return savePromise
 }
 
 async function saveNow() {
@@ -593,10 +667,11 @@ async function saveNow() {
 }
 
 function scheduleSave() {
+  taskEditRevision++
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
     saveTimer = null
-    saveNow()
+    void saveNow()
   }, 700)
 }
 
@@ -720,7 +795,8 @@ async function uploadFile(file: File) {
 async function handleDeleteAttachment() {
   const target = attachmentToDelete.value
   if (!target) return
-  attachmentToDelete.value = null
+  isDeletingAttachment.value = true
+  deleteAttachmentError.value = ''
   try {
     await workspaceStore.deleteAttachment(target.id)
     if (props.task) {
@@ -732,8 +808,11 @@ async function handleDeleteAttachment() {
     }
     emit('refresh')
     toast.info(t('ti.fileDeleted'))
-  } catch {
-    toast.error(t('pd.uploadFailed'))
+    attachmentToDelete.value = null
+  } catch (err: any) {
+    deleteAttachmentError.value = err?.response?.data?.error || err?.message || t('pd.uploadFailed')
+  } finally {
+    isDeletingAttachment.value = false
   }
 }
 
@@ -741,14 +820,18 @@ async function handleDeleteAttachment() {
 async function handleDeleteTask() {
   if (!props.task) return
   const taskId = props.task.id
-  showDeleteConfirm.value = false
-  emit('close')
+  isDeletingTask.value = true
+  deleteTaskError.value = ''
   try {
     await workspaceStore.deleteTask(taskId)
+    showDeleteConfirm.value = false
+    emit('close')
     emit('deleted', taskId)
     toast.info(t('ti.taskDeleted'))
-  } catch {
-    toast.error(t('ti.deleteFailed'))
+  } catch (err: any) {
+    deleteTaskError.value = err?.response?.data?.error || err?.message || t('ti.deleteFailed')
+  } finally {
+    isDeletingTask.value = false
   }
 }
 

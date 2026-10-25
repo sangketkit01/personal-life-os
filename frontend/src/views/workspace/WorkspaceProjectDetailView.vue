@@ -786,8 +786,10 @@
       title="Delete this project?"
       :message="`'${project?.name}' and all of its tasks, pages and links will be permanently removed. Uploaded Drive files remain in Google Drive.`"
       confirm-text="Delete Project"
+      :is-loading="isDeletingProject"
+      :error-message="deleteProjectError"
       @confirm="deleteProject"
-      @cancel="showDeleteProjectConfirm = false"
+      @cancel="showDeleteProjectConfirm = false; deleteProjectError = ''"
     />
 
     <ConfirmModal
@@ -795,8 +797,10 @@
       title="Delete this page?"
       :message="`'${selectedPage?.title || 'Untitled'}' will be permanently removed.`"
       confirm-text="Delete Page"
+      :is-loading="isDeletingPage"
+      :error-message="deletePageError"
       @confirm="deletePage"
-      @cancel="showDeletePageConfirm = false"
+      @cancel="showDeletePageConfirm = false; deletePageError = ''"
     />
 
     <ConfirmModal
@@ -804,8 +808,10 @@
       title="Delete this link?"
       :message="`'${linkToDelete?.title}' will be removed from this project.`"
       confirm-text="Delete Link"
+      :is-loading="isDeletingLink"
+      :error-message="deleteLinkError"
       @confirm="deleteLink"
-      @cancel="linkToDelete = null"
+      @cancel="linkToDelete = null; deleteLinkError = ''"
     />
 
     <ConfirmModal
@@ -813,16 +819,18 @@
       title="Delete this file?"
       :message="`'${attachmentToDelete?.file_name}' will be removed from Google Drive and this project.`"
       confirm-text="Delete File"
+      :is-loading="isDeletingAttachment"
+      :error-message="deleteAttachmentError"
       @confirm="deleteAttachment"
-      @cancel="attachmentToDelete = null"
+      @cancel="attachmentToDelete = null; deleteAttachmentError = ''"
     />
   </div>
 </template>
 
 <script setup lang="ts">
 import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
-import { computed, nextTick, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, nextTick, reactive, ref, watch, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import {
   BookOpen,
   Calendar,
@@ -900,6 +908,9 @@ const TABS = [
 const activeTab = ref<string>(['board', 'calendar', 'pages', 'files', 'infrastructure'].includes(String(route.query.tab)) ? String(route.query.tab) : 'board')
 
 function switchTab(tab: string) {
+  if (activeTab.value === 'pages' && tab !== 'pages') {
+    void flushPageAutosave()
+  }
   activeTab.value = tab
   router.replace({ query: { ...route.query, tab } })
 }
@@ -1028,6 +1039,8 @@ function handleEventDeleted() {
 // ===== Edit / Delete Project =====
 const showProjectModal = ref(false)
 const showDeleteProjectConfirm = ref(false)
+const isDeletingProject = ref(false)
+const deleteProjectError = ref('')
 const projectForm = reactive({
   name: '',
   status: 'ACTIVE' as ProjectStatus,
@@ -1076,13 +1089,17 @@ async function submitProject() {
 }
 
 async function deleteProject() {
-  showDeleteProjectConfirm.value = false
+  isDeletingProject.value = true
+  deleteProjectError.value = ''
   try {
     await workspaceStore.deleteProject(projectId.value)
+    showDeleteProjectConfirm.value = false
     toast.info('Project deleted')
     router.replace('/workspace')
-  } catch {
-    toast.error('Failed to delete project')
+  } catch (err: any) {
+    deleteProjectError.value = err?.response?.data?.error || err?.message || 'Failed to delete project'
+  } finally {
+    isDeletingProject.value = false
   }
 }
 
@@ -1090,6 +1107,8 @@ async function deleteProject() {
 const showLinkModal = ref(false)
 const editingLink = ref<ProjectLink | null>(null)
 const linkToDelete = ref<ProjectLink | null>(null)
+const isDeletingLink = ref(false)
+const deleteLinkError = ref('')
 const previewLink = ref<ProjectLink | null>(null)
 const linkForm = reactive({
   title: '',
@@ -1142,13 +1161,17 @@ async function toggleLinkPin(link: ProjectLink) {
 
 async function deleteLink() {
   const target = linkToDelete.value
-  linkToDelete.value = null
   if (!target) return
+  isDeletingLink.value = true
+  deleteLinkError.value = ''
   try {
     await workspaceStore.deleteLink(target.id)
     toast.info('Link deleted')
-  } catch {
-    toast.error('Failed to delete link')
+    linkToDelete.value = null
+  } catch (err: any) {
+    deleteLinkError.value = err?.response?.data?.error || err?.message || 'Failed to delete link'
+  } finally {
+    isDeletingLink.value = false
   }
 }
 
@@ -1165,6 +1188,8 @@ const pagePinned = ref(false)
 const pageBlocks = ref<NoteBlock[]>([])
 const pageSaveState = ref<'saved' | 'dirty' | 'saving'>('saved')
 const showDeletePageConfirm = ref(false)
+const isDeletingPage = ref(false)
+const deletePageError = ref('')
 let pageSaveTimer: ReturnType<typeof setTimeout> | null = null
 // Guards the deep watcher from flagging "dirty" when pageBlocks are replaced
 // programmatically (select / create / save) rather than typed by the user.
@@ -1188,11 +1213,11 @@ const pageTags = computed(() =>
 const pageSaveStateText = computed(() => {
   switch (pageSaveState.value) {
     case 'dirty':
-      return 'Unsaved changes'
+      return t('ti.saveFailed') === 'บันทึกไม่สำเร็จ' ? 'ยังไม่ได้บันทึก' : 'Unsaved changes'
     case 'saving':
-      return 'Saving...'
+      return t('common.saving')
     default:
-      return 'All changes saved'
+      return t('common.allSaved')
   }
 })
 
@@ -1207,8 +1232,25 @@ const pageSaveStateClass = computed(() => {
   }
 })
 
-function selectPage(noteId: string) {
-  flushPageAutosave()
+const pageInFlightMap = new Map<string, Promise<any>>()
+const pagePendingMap = new Map<string, { payload: Record<string, any>; revision: number }>()
+let pageEditRevision = 0
+
+function getCurrentPagePayload(): Record<string, any> {
+  return {
+    title: pageTitle.value.trim() || 'Untitled',
+    icon: pageIcon.value,
+    tags: pageTags.value,
+    is_pinned: pagePinned.value,
+    blocks: pageBlocks.value,
+    project: projectId.value
+  }
+}
+
+async function selectPage(noteId: string) {
+  if (selectedPageId.value !== noteId) {
+    await flushPageAutosave()
+  }
   selectedPageId.value = noteId
   const note = workspaceStore.notes.find(n => n.id === noteId)
   if (note) {
@@ -1221,8 +1263,8 @@ function selectPage(noteId: string) {
   pageSaveState.value = 'saved'
 }
 
-function createPage() {
-  flushPageAutosave()
+async function createPage() {
+  await flushPageAutosave()
   pageTitle.value = ''
   pageIcon.value = 'file-text'
   pageTagsInput.value = ''
@@ -1230,55 +1272,180 @@ function createPage() {
   setPageBlocks([])
   selectedPageId.value = null
   pageSaveState.value = 'dirty'
-  savePage(true)
+  await savePage(null, true)
 }
 
 function markPageDirty() {
+  pageEditRevision++
   pageSaveState.value = 'dirty'
   if (pageSaveTimer) clearTimeout(pageSaveTimer)
   pageSaveTimer = setTimeout(() => {
     pageSaveTimer = null
-    savePage()
+    void savePage()
   }, 2500)
 }
 
-function flushPageAutosave() {
+async function flushPageAutosave(): Promise<void> {
   if (pageSaveTimer) {
     clearTimeout(pageSaveTimer)
     pageSaveTimer = null
-    if (pageSaveState.value === 'dirty') {
-      savePage()
+  }
+
+  while (true) {
+    const currentId = selectedPageId.value
+    const inFlightNew = pageInFlightMap.get('__NEW__')
+    const inFlightCurrent = currentId ? pageInFlightMap.get(currentId) : null
+
+    // 1. If an initial page creation is still in flight, wait for it first.
+    // When it resolves, selectedPageId.value will be assigned the new note ID,
+    // and any queued pending edits will be triggered under that real ID.
+    if (inFlightNew) {
+      await inFlightNew
+      continue
     }
+
+    // 2. If a save for the current page ID is in flight, wait for it to settle.
+    if (inFlightCurrent) {
+      await inFlightCurrent
+      continue
+    }
+
+    // 3. If there are pending saves queued in pagePendingMap, trigger and await them.
+    const pendingNew = pagePendingMap.has('__NEW__')
+    const pendingCurrent = currentId ? pagePendingMap.has(currentId) : false
+
+    if (pendingNew || pendingCurrent) {
+      const pKey = pendingNew ? '__NEW__' : currentId!
+      const next = pagePendingMap.get(pKey)!
+      pagePendingMap.delete(pKey)
+      const targetId = currentId || (pKey === '__NEW__' ? null : pKey)
+      await savePage(targetId, true, next.payload)
+      continue
+    }
+
+    // 4. If the page is still dirty, save immediately under the current ID (or new if still null)
+    if (pageSaveState.value === 'dirty') {
+      await savePage(currentId, true)
+      continue
+    }
+
+    // 5. Also await any remaining in-flight promises across all pages
+    const remainingInFlight = Array.from(pageInFlightMap.values())
+    if (remainingInFlight.length > 0) {
+      await Promise.all(remainingInFlight)
+      continue
+    }
+
+    break
   }
 }
 
-async function savePage(force = false) {
-  if (!force && pageSaveState.value !== 'dirty' && selectedPageId.value) return
-  pageSaveState.value = 'saving'
-  try {
-    const payload = {
-      title: pageTitle.value.trim() || 'Untitled',
-      icon: pageIcon.value,
-      tags: pageTags.value,
-      is_pinned: pagePinned.value,
-      blocks: pageBlocks.value,
-      project: projectId.value
-    }
-    let saved: Note
-    if (selectedPageId.value) {
-      saved = await workspaceStore.updateNote(selectedPageId.value, payload)
-    } else {
-      saved = await workspaceStore.createNote(payload)
-      selectedPageId.value = saved.id
-    }
-    pageTitle.value = saved.title
-    setPageBlocks((saved.blocks || []).map(b => ({ ...b })))
-    pageSaveState.value = 'saved'
-  } catch {
-    pageSaveState.value = 'dirty'
-    toast.error('Failed to save page')
+async function savePage(pageId?: string | null, force = false, payloadOverride?: Record<string, any>): Promise<any> {
+  const targetPageId = pageId !== undefined ? pageId : selectedPageId.value
+  if (!force && pageSaveState.value !== 'dirty' && targetPageId && selectedPageId.value === targetPageId) return
+
+  const key = targetPageId || '__NEW__'
+  const payload = payloadOverride || getCurrentPagePayload()
+  const snapRevision = ++pageEditRevision
+
+  // Serialized queue per page: A saving never blocks B or New Page
+  if (pageInFlightMap.has(key)) {
+    pagePendingMap.set(key, { payload, revision: snapRevision })
+    return pageInFlightMap.get(key)
   }
+
+  if (selectedPageId.value === targetPageId) {
+    pageSaveState.value = 'saving'
+  }
+  const toastId = `autosave-page-${targetPageId || 'new'}`
+  toast.showToast(t('common.saving'), 'loading', 0, undefined, toastId)
+
+  let savedNote: Note | null = null
+
+  const savePromise = (async () => {
+    try {
+      if (targetPageId) {
+        savedNote = await workspaceStore.updateNote(targetPageId, payload)
+      } else {
+        savedNote = await workspaceStore.createNote(payload)
+        if (selectedPageId.value === null) {
+          selectedPageId.value = savedNote.id
+        }
+      }
+
+      const currentActiveId = selectedPageId.value
+      if (currentActiveId === (targetPageId || savedNote.id)) {
+        // Only mark as saved and sync from server if NO newer edits occurred while in-flight
+        const hasNewerEdits = pageEditRevision !== snapRevision || pagePendingMap.has(key) || pageSaveTimer !== null
+        if (!hasNewerEdits) {
+          pageTitle.value = savedNote.title
+          setPageBlocks((savedNote.blocks || []).map(b => ({ ...b })))
+          pageSaveState.value = 'saved'
+          toast.showToast(t('common.allSaved'), 'success', 2000, undefined, toastId)
+        } else {
+          // Edits occurred while saving! Retain dirty state and do not overwrite fresh user edits
+          pageSaveState.value = 'dirty'
+        }
+      } else {
+        toast.showToast(t('common.allSaved'), 'success', 2000, undefined, toastId)
+      }
+      return savedNote
+    } catch (err) {
+      if (selectedPageId.value === targetPageId) {
+        pageSaveState.value = 'dirty'
+      }
+      toast.showToast(t('common.saveFailedEditsPreserved'), 'error', 0, {
+        label: t('common.retry'),
+        onClick: () => savePage(targetPageId, true, payload)
+      }, toastId)
+      throw err
+    } finally {
+      pageInFlightMap.delete(key)
+      if (pagePendingMap.has(key)) {
+        const next = pagePendingMap.get(key)!
+        pagePendingMap.delete(key)
+        // If a new page was just created, subsequent queued saves must PATCH the created note (not create again)!
+        const resolvedId = targetPageId || savedNote?.id || selectedPageId.value
+        void savePage(resolvedId, true, next.payload)
+      }
+    }
+  })()
+
+  pageInFlightMap.set(key, savePromise)
+  savePromise.catch(() => {})
+  return savePromise
 }
+
+onBeforeUnmount(() => {
+  if (pageSaveTimer) {
+    clearTimeout(pageSaveTimer)
+    pageSaveTimer = null
+  }
+  const currentId = selectedPageId.value
+  const key = currentId || '__NEW__'
+  if ((pageSaveState.value === 'dirty' || pagePendingMap.has(key)) && currentId) {
+    const payload = getCurrentPagePayload()
+    workspaceStore.updateNote(currentId, payload)
+      .then(() => {
+        toast.showToast(t('common.allSaved'), 'success', 2000, undefined, `autosave-page-${currentId}`)
+      })
+      .catch(() => {
+        toast.showToast(t('common.saveFailedEditsPreserved'), 'error', 0, {
+          label: t('common.retry'),
+          onClick: () => workspaceStore.updateNote(currentId, payload)
+        }, `autosave-page-${currentId}`)
+      })
+  }
+})
+
+onBeforeRouteLeave(async () => {
+  try {
+    await flushPageAutosave()
+  } catch {
+    toast.error(t('common.saveFailedBeforeLeave'))
+    return false
+  }
+})
 
 async function togglePagePin() {
   pagePinned.value = !pagePinned.value
@@ -1289,14 +1456,18 @@ async function togglePagePin() {
 }
 
 async function deletePage() {
-  showDeletePageConfirm.value = false
   if (!selectedPageId.value) return
+  isDeletingPage.value = true
+  deletePageError.value = ''
   try {
     await workspaceStore.deleteNote(selectedPageId.value)
     selectedPageId.value = null
+    showDeletePageConfirm.value = false
     toast.info('Page deleted')
-  } catch {
-    toast.error('Failed to delete page')
+  } catch (err: any) {
+    deletePageError.value = err?.response?.data?.error || err?.message || 'Failed to delete page'
+  } finally {
+    isDeletingPage.value = false
   }
 }
 
@@ -1310,6 +1481,8 @@ watch(pageBlocks, () => {
 // ===== Drive Vault =====
 const vaultFileInput = ref<HTMLInputElement | null>(null)
 const attachmentToDelete = ref<ProjectAttachment | null>(null)
+const isDeletingAttachment = ref(false)
+const deleteAttachmentError = ref('')
 
 const attachmentPreview = reactive({
   open: false,
@@ -1372,16 +1545,20 @@ async function uploadVaultFiles(files: File[]) {
 
 async function deleteAttachment() {
   const target = attachmentToDelete.value
-  attachmentToDelete.value = null
   if (!target) return
+  isDeletingAttachment.value = true
+  deleteAttachmentError.value = ''
   try {
     await workspaceStore.deleteAttachment(target.id)
     await workspaceStore.fetchProjectDetail(projectId.value).then(p => {
       if (p) project.value = p
     }).catch(() => {})
     toast.info('File deleted')
-  } catch {
-    toast.error('Failed to delete file')
+    attachmentToDelete.value = null
+  } catch (err: any) {
+    deleteAttachmentError.value = err?.response?.data?.error || err?.message || 'Failed to delete file'
+  } finally {
+    isDeletingAttachment.value = false
   }
 }
 

@@ -778,8 +778,10 @@
       :message="confirmModal.message"
       :confirm-text="confirmModal.confirmText"
       :is-danger="confirmModal.isDanger"
+      :is-loading="confirmModal.isLoading"
+      :error-message="confirmModal.errorMessage"
       @confirm="executeConfirmModal"
-      @cancel="confirmModal.isOpen = false"
+      @cancel="confirmModal.isOpen = false; confirmModal.errorMessage = ''"
     />
   </div>
 </template>
@@ -1065,12 +1067,22 @@ const confirmModal = reactive({
   message: '',
   confirmText: 'Delete',
   isDanger: true,
-  action: () => {}
+  isLoading: false,
+  errorMessage: '',
+  action: async () => {}
 })
 
-function executeConfirmModal() {
-  confirmModal.isOpen = false
-  confirmModal.action()
+async function executeConfirmModal() {
+  confirmModal.isLoading = true
+  confirmModal.errorMessage = ''
+  try {
+    await confirmModal.action()
+    confirmModal.isOpen = false
+  } catch (err: any) {
+    confirmModal.errorMessage = err?.response?.data?.detail || err?.response?.data?.error || err?.message || 'Operation failed'
+  } finally {
+    confirmModal.isLoading = false
+  }
 }
 
 function handleDeleteAttachment(attachmentId: string) {
@@ -1078,14 +1090,11 @@ function handleDeleteAttachment(attachmentId: string) {
   confirmModal.message = 'Are you sure you want to permanently delete this document from your vault?'
   confirmModal.confirmText = 'Delete Document'
   confirmModal.isDanger = true
+  confirmModal.errorMessage = ''
   confirmModal.action = async () => {
-    try {
-      await deleteAttachment(attachmentId)
-      toast.success('Document removed')
-      await loadContractDetails()
-    } catch (err: any) {
-      toast.error('Failed to delete document')
-    }
+    await deleteAttachment(attachmentId)
+    toast.success('Document removed')
+    await loadContractDetails()
   }
   confirmModal.isOpen = true
 }
@@ -1096,15 +1105,12 @@ function confirmDelete() {
   confirmModal.message = `Are you sure you want to delete contract "${contract.value.title}"? All amortization schedules and payment records will be removed.`
   confirmModal.confirmText = 'Delete Contract'
   confirmModal.isDanger = true
+  confirmModal.errorMessage = ''
   confirmModal.action = async () => {
     if (!contract.value) return
-    try {
-      await deleteInstallment(contract.value.id)
-      toast.success('Contract deleted')
-      router.push('/finance/installments')
-    } catch (err: any) {
-      toast.error('Failed to delete contract')
-    }
+    await deleteInstallment(contract.value.id)
+    toast.success('Contract deleted')
+    router.push('/finance/installments')
   }
   confirmModal.isOpen = true
 }

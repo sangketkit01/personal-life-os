@@ -305,6 +305,7 @@ import {
 } from 'lucide-vue-next'
 import NotionBlockEditor from '../workspace/NotionBlockEditor.vue'
 import { NOTE_ICON_PRESETS, iconComponentFor } from '../../utils/iconPresets'
+import { t } from '../../i18n'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
 import { stripHtml } from '../../utils/richText'
@@ -412,11 +413,11 @@ const lastEdited = computed(() => {
 const saveStateText = computed(() => {
   switch (saveState.value) {
     case 'dirty':
-      return 'Unsaved'
+      return t('ti.saveFailed') === 'บันทึกไม่สำเร็จ' ? 'ยังไม่ได้บันทึก' : 'Unsaved'
     case 'saving':
-      return 'Saving...'
+      return t('common.saving')
     default:
-      return 'Saved'
+      return t('ti.autoSaved') === 'บันทึกอัตโนมัติแล้ว' ? 'บันทึกแล้ว' : 'Saved'
   }
 })
 
@@ -478,10 +479,34 @@ function syncFromNote() {
   saveState.value = 'saved'
 }
 
+let editRevision = 0
+let inFlightPromise: Promise<void> | null = null
+let hasPendingChangesWhileSaving = false
+
 watch(
   () => props.note.id,
-  () => {
-    flushAutosave()
+  async (newId, oldId) => {
+    if (oldId && oldId !== newId && (saveState.value === 'dirty' || saveTimer || hasPendingChangesWhileSaving)) {
+      if (saveTimer) {
+        clearTimeout(saveTimer)
+        saveTimer = null
+      }
+      const oldPayload = {
+        title: editorTitle.value.trim() || 'Untitled',
+        icon: editorIcon.value,
+        tags: editorTags.value,
+        blocks: editorBlocks.value
+      }
+      try {
+        await workspaceStore.updateNote(oldId, oldPayload)
+        toast.showToast(t('common.allSaved'), 'success', 2000, undefined, `autosave-note-${oldId}`)
+      } catch (err) {
+        toast.showToast(t('common.saveFailedEditsPreserved'), 'error', 0, {
+          label: t('common.retry'),
+          onClick: () => workspaceStore.updateNote(oldId, oldPayload)
+        }, `autosave-note-${oldId}`)
+      }
+    }
     syncFromNote()
     void migrateLegacyAttachments()
   },
@@ -489,43 +514,114 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  flushAutosave()
-})
-
-function markDirty() {
-  saveState.value = 'dirty'
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    saveTimer = null
-    saveNow()
-  }, 1500)
-}
-
-function flushAutosave() {
   if (saveTimer) {
     clearTimeout(saveTimer)
     saveTimer = null
   }
-  if (saveState.value === 'dirty') {
-    saveNow()
-  }
-}
-
-async function saveNow() {
-  saveState.value = 'saving'
-  try {
-    await workspaceStore.updateNote(props.note.id, {
+  if (saveState.value === 'dirty' || hasPendingChangesWhileSaving) {
+    const payload = {
       title: editorTitle.value.trim() || 'Untitled',
       icon: editorIcon.value,
       tags: editorTags.value,
       blocks: editorBlocks.value
-    })
-    saveState.value = 'saved'
-  } catch {
-    saveState.value = 'dirty'
-    toast.error('Failed to save note')
+    }
+    workspaceStore.updateNote(props.note.id, payload)
+      .then(() => {
+        toast.showToast(t('common.allSaved'), 'success', 2000, undefined, `autosave-note-${props.note.id}`)
+      })
+      .catch(() => {
+        toast.showToast(t('common.saveFailedEditsPreserved'), 'error', 0, {
+          label: t('common.retry'),
+          onClick: () => workspaceStore.updateNote(props.note.id, payload)
+        }, `autosave-note-${props.note.id}`)
+      })
+  }
+})
+
+function markDirty() {
+  editRevision++
+  saveState.value = 'dirty'
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    saveTimer = null
+    void saveNow()
+  }, 1500)
+}
+
+async function flushAutosave(): Promise<void> {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  if (saveState.value === 'dirty' || hasPendingChangesWhileSaving || inFlightPromise) {
+    if (!inFlightPromise) {
+      await saveNow()
+    }
+    // Await the active promise and any sequentially queued pending saves until fully settled
+    while (inFlightPromise) {
+      await inFlightPromise
+    }
   }
 }
+
+async function saveNow(): Promise<void> {
+  if (inFlightPromise) {
+    hasPendingChangesWhileSaving = true
+    return inFlightPromise
+  }
+
+  const noteIdToSave = props.note.id
+  const payload = {
+    title: editorTitle.value.trim() || 'Untitled',
+    icon: editorIcon.value,
+    tags: editorTags.value,
+    blocks: editorBlocks.value
+  }
+  const snapRevision = editRevision
+
+  saveState.value = 'saving'
+  const toastId = `autosave-note-${noteIdToSave}`
+  toast.showToast(t('common.saving'), 'loading', 0, undefined, toastId)
+
+  inFlightPromise = (async () => {
+    try {
+      await workspaceStore.updateNote(noteIdToSave, payload)
+      if (props.note.id === noteIdToSave) {
+        if (editRevision === snapRevision && !hasPendingChangesWhileSaving) {
+          saveState.value = 'saved'
+          toast.showToast(t('common.allSaved'), 'success', 2000, undefined, toastId)
+        } else {
+          saveState.value = 'dirty'
+          hasPendingChangesWhileSaving = true
+        }
+      } else {
+        toast.showToast(t('common.allSaved'), 'success', 2000, undefined, toastId)
+      }
+    } catch (err) {
+      if (props.note.id === noteIdToSave) {
+        saveState.value = 'dirty'
+      }
+      toast.showToast(t('common.saveFailedEditsPreserved'), 'error', 0, {
+        label: t('common.retry'),
+        onClick: () => saveNow()
+      }, toastId)
+      throw err
+    } finally {
+      inFlightPromise = null
+      if (hasPendingChangesWhileSaving && props.note.id === noteIdToSave) {
+        hasPendingChangesWhileSaving = false
+        inFlightPromise = saveNow()
+      }
+    }
+  })()
+
+  return inFlightPromise
+}
+
+defineExpose({
+  flushAutosave,
+  saveState
+})
 
 watch(editorTitle, () => {
   if (!suppressSyncWatch) markDirty()
@@ -565,9 +661,20 @@ async function setNoteFolder(folderId: string | null) {
 
 async function moveToTrash() {
   try {
-    await workspaceStore.trashNote(props.note.id)
-    toast.info('Note moved to trash')
-    emit('trashed', props.note.id)
+    const noteId = props.note.id
+    await workspaceStore.trashNote(noteId)
+    toast.info('Note moved to trash', 6000, {
+      label: 'Undo',
+      onClick: async () => {
+        try {
+          await workspaceStore.restoreNote(noteId)
+          toast.success('Note restored')
+        } catch {
+          toast.error('Failed to restore note')
+        }
+      }
+    })
+    emit('trashed', noteId)
   } catch {
     toast.error('Failed to trash note')
   }

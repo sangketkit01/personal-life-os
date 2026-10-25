@@ -92,7 +92,7 @@
                 v-for="rb in runbooks"
                 :key="rb.id"
                 type="button"
-                @click="sendRunbook(rb)"
+                @click="handleRunbookClick(rb)"
                 class="w-full text-left px-2.5 py-2 rounded-md bg-zinc-900/60 border border-zinc-800 hover:border-zinc-600 transition-colors group"
               >
                 <div class="flex items-center gap-1.5">
@@ -105,6 +105,16 @@
           </div>
         </div>
       </div>
+      <ConfirmModal
+        :is-open="!!confirmRunbook"
+        :title="t('term.confirmRunbookTitle') || 'Confirm Runbook Execution'"
+        :message="`'${confirmRunbook?.title}':\n${confirmRunbook?.command}\nExecute on server '${asset.name}'?`"
+        :confirm-text="t('term.execute') || 'Execute'"
+        :cancel-text="t('common.cancel')"
+        :is-danger="false"
+        @confirm="doSendConfirmedRunbook"
+        @cancel="confirmRunbook = null"
+      />
     </div>
   </Teleport>
 </template>
@@ -118,6 +128,7 @@ import {
   TerminalSquare, RefreshCw, Eraser, ScrollText, Maximize2, Minimize2, X, Zap, ChevronRight
 } from 'lucide-vue-next'
 import { t } from '../../i18n'
+import ConfirmModal from '../common/ConfirmModal.vue'
 import type { InfrastructureAsset, ServerRunbook } from '../../types/workspace'
 
 const props = defineProps<{
@@ -133,6 +144,7 @@ const wsStatus = ref<WsStatus>('disconnected')
 const lastErrorMessage = ref('')
 const isMaximized = ref(false)
 const showRunbookBar = ref(true)
+const confirmRunbook = ref<ServerRunbook | null>(null)
 
 const terminalHost = ref<HTMLElement | null>(null)
 
@@ -275,6 +287,17 @@ function toggleRunbookBar() {
   nextTick(() => {
     try { fitAddon?.fit() } catch { /* noop */ }
   })
+}
+
+function handleRunbookClick(rb: ServerRunbook) {
+  confirmRunbook.value = rb
+}
+
+function doSendConfirmedRunbook() {
+  const rb = confirmRunbook.value
+  if (!rb) return
+  confirmRunbook.value = null
+  sendRunbook(rb)
 }
 
 function sendRunbook(rb: ServerRunbook) {

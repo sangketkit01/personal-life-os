@@ -447,8 +447,10 @@
       :message="confirmModal.message"
       :confirm-text="confirmModal.confirmText"
       :is-danger="confirmModal.isDanger"
+      :is-loading="confirmModal.isLoading"
+      :error-message="confirmModal.errorMessage"
       @confirm="handleConfirmAction"
-      @cancel="confirmModal.isOpen = false"
+      @cancel="confirmModal.isOpen = false; confirmModal.errorMessage = ''"
     />
   </div>
 </template>
@@ -508,8 +510,23 @@ const confirmModal = reactive({
   message: '',
   confirmText: 'Delete',
   isDanger: true,
-  action: () => {}
+  isLoading: false,
+  errorMessage: '',
+  action: async () => {}
 })
+
+async function handleConfirmAction() {
+  confirmModal.isLoading = true
+  confirmModal.errorMessage = ''
+  try {
+    await confirmModal.action()
+    confirmModal.isOpen = false
+  } catch (err: any) {
+    confirmModal.errorMessage = err?.response?.data?.detail || err?.response?.data?.error || err?.message || 'Operation failed'
+  } finally {
+    confirmModal.isLoading = false
+  }
+}
 
 const assetClassFilters = [
   { value: 'ALL', label: 'All' },
@@ -735,13 +752,10 @@ function confirmDeleteHolding(holding: StockHolding) {
   confirmModal.message = `Are you sure you want to delete holding ${holding.ticker} and all its transaction history?`
   confirmModal.confirmText = 'Delete Holding'
   confirmModal.isDanger = true
+  confirmModal.errorMessage = ''
   confirmModal.action = async () => {
-    try {
-      await portfolioStore.deleteHolding(holding.id)
-      toast.info(`Deleted holding ${holding.ticker}`)
-    } catch {
-      toast.error('Failed to delete holding')
-    }
+    await portfolioStore.deleteHolding(holding.id)
+    toast.info(`Deleted holding ${holding.ticker}`)
   }
   confirmModal.isOpen = true
 }
@@ -755,20 +769,12 @@ function confirmDeletePortfolio(p: InvestmentPortfolio) {
   confirmModal.message = `Are you sure you want to delete portfolio "${p.name}"? Holdings under this portfolio will be removed.`
   confirmModal.confirmText = 'Delete Portfolio'
   confirmModal.isDanger = true
+  confirmModal.errorMessage = ''
   confirmModal.action = async () => {
-    try {
-      await portfolioStore.deletePortfolio(p.id)
-      toast.info(`Deleted portfolio "${p.name}"`)
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to delete portfolio')
-    }
+    await portfolioStore.deletePortfolio(p.id)
+    toast.info(`Deleted portfolio "${p.name}"`)
   }
   confirmModal.isOpen = true
-}
-
-function handleConfirmAction() {
-  confirmModal.isOpen = false
-  confirmModal.action()
 }
 
 onMounted(async () => {

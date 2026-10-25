@@ -73,8 +73,10 @@
       :message="confirmModal.message"
       :confirm-text="confirmModal.confirmText"
       :is-danger="confirmModal.isDanger"
+      :is-loading="confirmModal.isLoading"
+      :error-message="confirmModal.errorMessage"
       @confirm="executeConfirmModal"
-      @cancel="confirmModal.isOpen = false"
+      @cancel="confirmModal.isOpen = false; confirmModal.errorMessage = ''"
     />
   </div>
 </template>
@@ -113,12 +115,22 @@ const confirmModal = reactive({
   message: '',
   confirmText: 'Delete',
   isDanger: true,
-  action: () => {}
+  isLoading: false,
+  errorMessage: '',
+  action: async () => {}
 })
 
-function executeConfirmModal() {
-  confirmModal.isOpen = false
-  confirmModal.action()
+async function executeConfirmModal() {
+  confirmModal.isLoading = true
+  confirmModal.errorMessage = ''
+  try {
+    await confirmModal.action()
+    confirmModal.isOpen = false
+  } catch (err: any) {
+    confirmModal.errorMessage = err?.response?.data?.detail || err?.response?.data?.error || err?.message || 'Operation failed'
+  } finally {
+    confirmModal.isLoading = false
+  }
 }
 
 onMounted(async () => {
@@ -149,14 +161,11 @@ function handleDeleteOrder(id: string) {
   confirmModal.message = 'Are you sure you want to delete this BNPL sub-order? Billing statements will recalculate.'
   confirmModal.confirmText = 'Delete Order'
   confirmModal.isDanger = true
+  confirmModal.errorMessage = ''
   confirmModal.action = async () => {
-    try {
-      await deleteOrder(id)
-      toast.info('Deleted BNPL sub-order')
-      await fetchAccounts()
-    } catch {
-      toast.error('Failed to delete BNPL sub-order')
-    }
+    await deleteOrder(id)
+    toast.info('Deleted BNPL sub-order')
+    await fetchAccounts()
   }
   confirmModal.isOpen = true
 }

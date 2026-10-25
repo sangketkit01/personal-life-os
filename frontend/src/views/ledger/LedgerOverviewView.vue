@@ -347,8 +347,10 @@
       :message="confirmModal.message"
       :confirm-text="confirmModal.confirmText"
       :is-danger="confirmModal.isDanger"
+      :is-loading="confirmModal.isLoading"
+      :error-message="confirmModal.errorMessage"
       @confirm="executeConfirmAction"
-      @cancel="confirmModal.isOpen = false"
+      @cancel="confirmModal.isOpen = false; confirmModal.errorMessage = ''"
     />
   </div>
 </template>
@@ -387,12 +389,22 @@ const confirmModal = reactive({
   message: '',
   confirmText: 'Delete',
   isDanger: true,
-  action: () => {}
+  isLoading: false,
+  errorMessage: '',
+  action: async () => {}
 })
 
-function executeConfirmAction() {
-  confirmModal.isOpen = false
-  confirmModal.action()
+async function executeConfirmAction() {
+  confirmModal.isLoading = true
+  confirmModal.errorMessage = ''
+  try {
+    await confirmModal.action()
+    confirmModal.isOpen = false
+  } catch (err: any) {
+    confirmModal.errorMessage = err?.response?.data?.error || err?.message || 'Operation failed'
+  } finally {
+    confirmModal.isLoading = false
+  }
 }
 
 const liquidAccountsCount = computed(() => {
@@ -435,6 +447,7 @@ function handleDeleteTransaction(id: string) {
   confirmModal.message = 'Are you sure you want to delete this transaction? The corresponding account balance will be restored automatically.'
   confirmModal.confirmText = 'Delete Transaction'
   confirmModal.isDanger = true
+  confirmModal.errorMessage = ''
   confirmModal.action = async () => {
     await ledgerStore.deleteTransaction(id)
     await handleRefresh()

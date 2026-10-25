@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import apiClient from '../../api/client'
+import { useToastStore } from '../../stores/toast'
 import type { FinancialObligation } from '../../types/finance'
 
 export interface CreateDebtPayload {
@@ -194,7 +195,16 @@ export function useDebts() {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       if (currentDebt.value && currentDebt.value.id === id) {
-        await fetchDebtById(id)
+        try {
+          await fetchDebtById(id)
+        } catch (refreshErr) {
+          console.warn('Debt refresh failed after payment:', refreshErr)
+          const toast = useToastStore()
+          toast.error('Payment recorded, but failed to refresh debt details.', 6000, {
+            label: 'Retry refresh',
+            onClick: () => fetchDebtById(id)
+          })
+        }
       }
       return res.data
     } finally {

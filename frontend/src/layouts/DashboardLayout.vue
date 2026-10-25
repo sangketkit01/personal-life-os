@@ -776,12 +776,7 @@ const financeNavItems: NavSubItem[] = [
   {
     path: '/finance/debts',
     labelKey: 'nav.finance.debts',
-    icon: Scale,
-    badge: () => {
-      const count = financeStore.obligations.filter(o => o.direction === 'INFLOW' && o.status === 'ACTIVE').length
-      return count > 0 ? `${count} debtors` : undefined
-    },
-    badgeClass: 'bg-zinc-900 text-zinc-400 border-zinc-800'
+    icon: Scale
   }
 ]
 

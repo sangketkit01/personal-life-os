@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import apiClient from '../../api/client'
+import { useToastStore } from '../../stores/toast'
 import type { FinancialObligation, ObligationAttachmentItem, PaymentHistoryItem } from '../../types/finance'
 
 export interface CreateSubscriptionPayload {
@@ -106,7 +107,16 @@ export function useSubscriptions() {
         billing_day: payload.billing_day || null,
         metadata: payload.metadata
       })
-      await fetchSubscriptions()
+      try {
+        await fetchSubscriptions()
+      } catch (refreshErr) {
+        console.warn('Subscription list refresh failed:', refreshErr)
+        const toast = useToastStore()
+        toast.error('Subscription created, but failed to refresh list.', 6000, {
+          label: 'Retry refresh',
+          onClick: () => fetchSubscriptions()
+        })
+      }
       return res.data
     } catch (err: any) {
       error.value = err?.response?.data?.detail || 'Failed to create subscription'
@@ -169,12 +179,30 @@ export function useSubscriptions() {
         const res = await apiClient.post(`/finance/obligations/${id}/pay/`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         })
-        await fetchSubscription(id)
+        try {
+          await fetchSubscription(id)
+        } catch (refreshErr) {
+          console.warn('Subscription refresh failed after payment:', refreshErr)
+          const toast = useToastStore()
+          toast.error('Payment recorded, but failed to refresh subscription.', 6000, {
+            label: 'Retry refresh',
+            onClick: () => fetchSubscription(id)
+          })
+        }
         return res.data
       }
 
       const res = await apiClient.post(`/finance/obligations/${id}/pay/`, payload)
-      await fetchSubscription(id)
+      try {
+        await fetchSubscription(id)
+      } catch (refreshErr) {
+        console.warn('Subscription refresh failed after payment:', refreshErr)
+        const toast = useToastStore()
+        toast.error('Payment recorded, but failed to refresh subscription.', 6000, {
+          label: 'Retry refresh',
+          onClick: () => fetchSubscription(id)
+        })
+      }
       return res.data
     } catch (err: any) {
       error.value = err?.response?.data?.detail || 'Failed to record subscription payment'
@@ -192,7 +220,16 @@ export function useSubscriptions() {
       if (currentSubscription.value?.id === id) {
         currentSubscription.value = res.data.obligation
       }
-      await fetchSubscriptions()
+      try {
+        await fetchSubscriptions()
+      } catch (refreshErr) {
+        console.warn('Subscription list refresh failed:', refreshErr)
+        const toast = useToastStore()
+        toast.error('Trial cancelled, but failed to refresh list.', 6000, {
+          label: 'Retry refresh',
+          onClick: () => fetchSubscriptions()
+        })
+      }
       return res.data
     } catch (err: any) {
       error.value = err?.response?.data?.detail || 'Failed to cancel trial'
@@ -210,7 +247,16 @@ export function useSubscriptions() {
       if (currentSubscription.value?.id === id) {
         currentSubscription.value = res.data.obligation
       }
-      await fetchSubscriptions()
+      try {
+        await fetchSubscriptions()
+      } catch (refreshErr) {
+        console.warn('Subscription list refresh failed:', refreshErr)
+        const toast = useToastStore()
+        toast.error('Trial converted, but failed to refresh list.', 6000, {
+          label: 'Retry refresh',
+          onClick: () => fetchSubscriptions()
+        })
+      }
       return res.data
     } catch (err: any) {
       error.value = err?.response?.data?.detail || 'Failed to convert trial'

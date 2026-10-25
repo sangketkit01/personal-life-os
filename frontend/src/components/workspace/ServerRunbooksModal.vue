@@ -92,7 +92,7 @@
                 </p>
               </div>
               <div class="flex items-center gap-1 shrink-0">
-                <button type="button" @click="execute(rb)" :disabled="executingId === rb.id"
+                <button type="button" @click="handleRunClick(rb)" :disabled="executingId === rb.id"
                   class="px-2 py-1 rounded bg-emerald-600/90 hover:bg-emerald-500 text-white text-[10px] font-semibold transition-colors flex items-center gap-1 disabled:opacity-50">
                   <Play class="w-3 h-3" :class="{ 'animate-pulse': executingId === rb.id }" />
                   {{ executingId === rb.id ? t('rb.running') : t('rb.execute') }}
@@ -101,7 +101,7 @@
                   class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors">
                   <Pencil class="w-3 h-3" />
                 </button>
-                <button type="button" @click="confirmDelete = rb"
+                <button type="button" @click="confirmDelete = rb; deleteError = ''"
                   class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 transition-colors">
                   <Trash2 class="w-3 h-3" />
                 </button>
@@ -148,8 +148,22 @@
         :message="t('rb.deleteMessage', { title: confirmDelete?.title || '' })"
         :confirm-text="t('common.delete')"
         :cancel-text="t('common.cancel')"
+        :is-loading="isDeleting"
+        :error-message="deleteError"
         @confirm="doDelete"
-        @cancel="confirmDelete = null"
+        @cancel="confirmDelete = null; deleteError = ''"
+      />
+      <ConfirmModal
+        :is-open="!!confirmExecute"
+        :title="t('term.confirmRunbookTitle') || 'Confirm Runbook Execution'"
+        :message="`'${confirmExecute?.title}':\n${confirmExecute?.command}\nExecute on server '${asset.name}'?`"
+        :confirm-text="t('rb.execute') || 'Execute'"
+        :cancel-text="t('common.cancel')"
+        :is-danger="false"
+        :is-loading="isExecutingConfirmed"
+        :error-message="executeError"
+        @confirm="doConfirmedExecute"
+        @cancel="confirmExecute = null; executeError = ''"
       />
     </div>
   </Teleport>
@@ -181,7 +195,31 @@ const editingId = ref<string | null>(null)
 const isSaving = ref(false)
 const executingId = ref<string | null>(null)
 const confirmDelete = ref<ServerRunbook | null>(null)
+const isDeleting = ref(false)
+const deleteError = ref('')
+const confirmExecute = ref<ServerRunbook | null>(null)
+const isExecutingConfirmed = ref(false)
+const executeError = ref('')
 const results = ref<Record<string, RemoteCommandResult>>({})
+
+function handleRunClick(rb: ServerRunbook) {
+  executeError.value = ''
+  confirmExecute.value = rb
+}
+
+async function doConfirmedExecute() {
+  if (!confirmExecute.value || isExecutingConfirmed.value) return
+  isExecutingConfirmed.value = true
+  executeError.value = ''
+  try {
+    await execute(confirmExecute.value)
+    confirmExecute.value = null
+  } catch (err: any) {
+    executeError.value = err?.response?.data?.detail || err?.message || t('rb.execError')
+  } finally {
+    isExecutingConfirmed.value = false
+  }
+}
 
 const emptyForm = () => ({
   title: '',
@@ -236,10 +274,18 @@ async function execute(rb: ServerRunbook) {
   try {
     const res = await workspaceStore.executeServerRunbook(rb.id)
     results.value[rb.id] = res.result
-    if (res.result.exit_status === 0) toast.success(t('rb.execOk', { ms: String(res.result.duration_ms) }))
-    else toast.error(t('rb.execFail', { code: String(res.result.exit_status) }))
+    if (res.result.exit_status === 0) {
+      toast.success(t('rb.execOk', { ms: String(res.result.duration_ms) }))
+    } else {
+      const failMsg = t('rb.execFail', { code: String(res.result.exit_status) })
+      toast.error(failMsg)
+      throw new Error(failMsg)
+    }
+    return res
   } catch (err: any) {
-    toast.error(err?.response?.data?.detail || t('rb.execError'))
+    const errText = err?.response?.data?.detail || err?.message || t('rb.execError')
+    toast.error(errText)
+    throw err
   } finally {
     executingId.value = null
   }
@@ -247,13 +293,17 @@ async function execute(rb: ServerRunbook) {
 
 async function doDelete() {
   if (!confirmDelete.value) return
+  isDeleting.value = true
+  deleteError.value = ''
   try {
     await workspaceStore.deleteServerRunbook(confirmDelete.value.id)
     toast.success(t('rb.deleted'))
     confirmDelete.value = null
     await load()
   } catch (err: any) {
-    toast.error(err?.response?.data?.detail || t('rb.deleteFailed'))
+    deleteError.value = err?.response?.data?.detail || t('rb.deleteFailed')
+  } finally {
+    isDeleting.value = false
   }
 }
 

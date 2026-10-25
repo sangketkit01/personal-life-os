@@ -218,8 +218,10 @@
       :message="confirmModal.message"
       :confirm-text="confirmModal.confirmText"
       :is-danger="confirmModal.isDanger"
+      :is-loading="confirmModal.isLoading"
+      :error-message="confirmModal.errorMessage"
       @confirm="executeConfirmAction"
-      @cancel="confirmModal.isOpen = false"
+      @cancel="confirmModal.isOpen = false; confirmModal.errorMessage = ''"
     />
   </div>
 </template>
@@ -274,12 +276,22 @@ const confirmModal = reactive({
   message: '',
   confirmText: 'Delete',
   isDanger: true,
-  action: () => {}
+  isLoading: false,
+  errorMessage: '',
+  action: async () => {}
 })
 
-function executeConfirmAction() {
-  confirmModal.isOpen = false
-  confirmModal.action()
+async function executeConfirmAction() {
+  confirmModal.isLoading = true
+  confirmModal.errorMessage = ''
+  try {
+    await confirmModal.action()
+    confirmModal.isOpen = false
+  } catch (err: any) {
+    confirmModal.errorMessage = err?.response?.data?.error || err?.message || 'Operation failed'
+  } finally {
+    confirmModal.isLoading = false
+  }
 }
 
 const handleKeyDown = (e: KeyboardEvent) => {
@@ -338,14 +350,11 @@ function confirmDeleteBudget(id: string, name?: string) {
   confirmModal.message = `Are you sure you want to remove the monthly spending limit for "${categoryName}"?`
   confirmModal.confirmText = 'Remove Budget'
   confirmModal.isDanger = true
+  confirmModal.errorMessage = ''
   confirmModal.action = async () => {
-    try {
-      await ledgerApi.deleteBudget(id)
-      toast.success(`Removed budget for ${categoryName}`)
-      await loadBudgets()
-    } catch (err: any) {
-      toast.error('Failed to delete category budget')
-    }
+    await ledgerApi.deleteBudget(id)
+    toast.success(`Removed budget for ${categoryName}`)
+    await loadBudgets()
   }
   confirmModal.isOpen = true
 }

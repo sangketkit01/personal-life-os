@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ledgerApi } from '../api/ledger'
+import { useToastStore } from './toast'
 import type {
   LedgerAccount,
   LedgerCategory,
@@ -141,13 +142,31 @@ export const useLedgerStore = defineStore('ledger', () => {
   async function createTransaction(payload: CreateTransactionPayload) {
     const tx = await ledgerApi.createTransaction(payload)
     // Refresh account balances and summary
-    await Promise.all([fetchAccounts(), fetchSummary(), fetchPendingSplits()])
+    try {
+      await Promise.all([fetchAccounts(), fetchSummary(), fetchPendingSplits()])
+    } catch (refreshErr) {
+      console.warn('Post-transaction refresh failed:', refreshErr)
+      const toast = useToastStore()
+      toast.error('Transaction recorded, but failed to refresh accounts.', 6000, {
+        label: 'Retry refresh',
+        onClick: () => { Promise.all([fetchAccounts(), fetchSummary(), fetchPendingSplits()]) }
+      })
+    }
     return tx
   }
 
   async function deleteTransaction(id: string) {
     await ledgerApi.deleteTransaction(id)
-    await Promise.all([fetchAccounts(), fetchSummary(), fetchPendingSplits()])
+    try {
+      await Promise.all([fetchAccounts(), fetchSummary(), fetchPendingSplits()])
+    } catch (refreshErr) {
+      console.warn('Post-delete refresh failed:', refreshErr)
+      const toast = useToastStore()
+      toast.error('Transaction deleted, but failed to refresh accounts.', 6000, {
+        label: 'Retry refresh',
+        onClick: () => { Promise.all([fetchAccounts(), fetchSummary(), fetchPendingSplits()]) }
+      })
+    }
     try {
       const { useFinanceStore } = await import('./finance')
       await useFinanceStore().fetchOverview()
@@ -158,30 +177,60 @@ export const useLedgerStore = defineStore('ledger', () => {
 
   async function createAccount(payload: CreateAccountPayload) {
     const acc = await ledgerApi.createAccount(payload)
-    await fetchAccounts()
+    try {
+      await fetchAccounts()
+    } catch (refreshErr) {
+      console.warn('Post-account create refresh failed:', refreshErr)
+    }
     return acc
   }
 
   async function updateAccount(id: string, payload: Partial<CreateAccountPayload>) {
     const acc = await ledgerApi.updateAccount(id, payload)
-    await fetchAccounts()
+    try {
+      await fetchAccounts()
+    } catch (refreshErr) {
+      console.warn('Post-account update refresh failed:', refreshErr)
+    }
     return acc
   }
 
   async function deleteAccount(id: string) {
     await ledgerApi.deleteAccount(id)
-    await fetchAccounts()
+    try {
+      await fetchAccounts()
+    } catch (refreshErr) {
+      console.warn('Post-account delete refresh failed:', refreshErr)
+    }
   }
 
   async function transfer(payload: TransferPayload) {
     const res = await ledgerApi.transfer(payload)
-    await Promise.all([fetchAccounts(), fetchSummary()])
+    try {
+      await Promise.all([fetchAccounts(), fetchSummary()])
+    } catch (refreshErr) {
+      console.warn('Post-transfer refresh failed:', refreshErr)
+      const toast = useToastStore()
+      toast.error('Transfer recorded, but failed to refresh accounts.', 6000, {
+        label: 'Retry refresh',
+        onClick: () => { Promise.all([fetchAccounts(), fetchSummary()]) }
+      })
+    }
     return res
   }
 
   async function settleSplit(splitId: string, payload: SettleSplitPayload) {
     const res = await ledgerApi.settleSplit(splitId, payload)
-    await Promise.all([fetchAccounts(), fetchSummary(), fetchPendingSplits()])
+    try {
+      await Promise.all([fetchAccounts(), fetchSummary(), fetchPendingSplits()])
+    } catch (refreshErr) {
+      console.warn('Post-settle refresh failed:', refreshErr)
+      const toast = useToastStore()
+      toast.error('Split settled, but failed to refresh accounts.', 6000, {
+        label: 'Retry refresh',
+        onClick: () => { Promise.all([fetchAccounts(), fetchSummary(), fetchPendingSplits()]) }
+      })
+    }
     try {
       const { useFinanceStore } = await import('./finance')
       await useFinanceStore().fetchOverview()

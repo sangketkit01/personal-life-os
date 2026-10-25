@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import apiClient from '../api/client'
 import type { FinancialObligation, FinancialOverview } from '../types/finance'
+import { useToastStore } from './toast'
 
 export const useFinanceStore = defineStore('finance', () => {
   const overview = ref<FinancialOverview | null>(null)
@@ -41,7 +42,16 @@ export const useFinanceStore = defineStore('finance', () => {
   async function createObligation(payload: Record<string, any>) {
     const res = await apiClient.post<FinancialObligation>('/finance/obligations/', payload)
     obligations.value.unshift(res.data)
-    await fetchOverview()
+    try {
+      await fetchOverview()
+    } catch (refreshErr) {
+      console.warn('Overview refresh failed after obligation creation:', refreshErr)
+      const toast = useToastStore()
+      toast.error('Record created, but failed to refresh overview.', 6000, {
+        label: 'Retry refresh',
+        onClick: () => fetchOverview()
+      })
+    }
     return res.data
   }
 
@@ -51,7 +61,16 @@ export const useFinanceStore = defineStore('finance', () => {
     if (idx !== -1) {
       obligations.value[idx] = res.data
     }
-    await fetchOverview()
+    try {
+      await fetchOverview()
+    } catch (refreshErr) {
+      console.warn('Overview refresh failed after obligation update:', refreshErr)
+      const toast = useToastStore()
+      toast.error('Record updated, but failed to refresh overview.', 6000, {
+        label: 'Retry refresh',
+        onClick: () => fetchOverview()
+      })
+    }
     return res.data
   }
 
@@ -94,7 +113,18 @@ export const useFinanceStore = defineStore('finance', () => {
     if (idx !== -1) {
       obligations.value[idx] = res.data.obligation
     }
-    await fetchOverview()
+
+    // Decouple overview refetch from payment mutation
+    try {
+      await fetchOverview()
+    } catch (refreshErr) {
+      console.warn('Overview refresh failed after payment:', refreshErr)
+      const toast = useToastStore()
+      toast.error('Payment recorded, but failed to refresh overview.', 6000, {
+        label: 'Retry refresh',
+        onClick: () => fetchOverview()
+      })
+    }
 
     // Cross-sync: refresh ledger accounts and cash flow if payment was linked to an account
     if (data.account_id) {
@@ -145,13 +175,21 @@ export const useFinanceStore = defineStore('finance', () => {
       formData,
       { headers: { 'Content-Type': 'multipart/form-data' } }
     )
-    await fetchObligations()
+    try {
+      await fetchObligations()
+    } catch (refreshErr) {
+      console.warn('Obligations refresh failed after attachment upload:', refreshErr)
+    }
     return res.data
   }
 
   async function deleteAttachment(attachmentId: string) {
     await apiClient.delete(`/finance/attachments/${attachmentId}/`)
-    await fetchObligations()
+    try {
+      await fetchObligations()
+    } catch (refreshErr) {
+      console.warn('Obligations refresh failed after attachment delete:', refreshErr)
+    }
   }
 
   async function cancelTrial(id: string) {
@@ -160,14 +198,32 @@ export const useFinanceStore = defineStore('finance', () => {
     if (idx !== -1) {
       obligations.value[idx] = res.data.obligation
     }
-    await fetchOverview()
+    try {
+      await fetchOverview()
+    } catch (refreshErr) {
+      console.warn('Overview refresh failed after trial cancellation:', refreshErr)
+      const toast = useToastStore()
+      toast.error('Trial cancelled, but failed to refresh overview.', 6000, {
+        label: 'Retry refresh',
+        onClick: () => fetchOverview()
+      })
+    }
     return res.data
   }
 
   async function deleteObligation(id: string) {
     await apiClient.delete(`/finance/obligations/${id}/`)
     obligations.value = obligations.value.filter(o => o.id !== id)
-    await fetchOverview()
+    try {
+      await fetchOverview()
+    } catch (refreshErr) {
+      console.warn('Overview refresh failed after obligation deletion:', refreshErr)
+      const toast = useToastStore()
+      toast.error('Record deleted, but failed to refresh overview.', 6000, {
+        label: 'Retry refresh',
+        onClick: () => { fetchOverview() }
+      })
+    }
   }
 
   return {

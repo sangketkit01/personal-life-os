@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import apiClient from '../api/client'
+import { useToastStore } from './toast'
 import type {
   PortfolioOverview,
   StockHolding,
@@ -411,7 +412,16 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     isLoading.value = true
     try {
       const res = await apiClient.patch<StockHolding>(`/portfolio/holdings/${id}/`, payload)
-      await Promise.all([fetchOverview(), fetchHoldings(), fetchTransactions()])
+      try {
+        await Promise.all([fetchOverview(), fetchHoldings(), fetchTransactions()])
+      } catch (refreshErr) {
+        console.warn('Post-update holding refresh failed:', refreshErr)
+        const toast = useToastStore()
+        toast.error('Holding updated, but failed to refresh portfolio.', 6000, {
+          label: 'Retry refresh',
+          onClick: () => { Promise.all([fetchOverview(), fetchHoldings(), fetchTransactions()]) }
+        })
+      }
       return res.data
     } catch (err: any) {
       error.value = err?.response?.data?.detail || 'Failed to update holding'
@@ -427,7 +437,16 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       const res = await apiClient.post(`/portfolio/holdings/${id}/move/`, {
         target_portfolio_id: targetPortfolioId
       })
-      await Promise.all([fetchPortfolios(), fetchOverview(), fetchHoldings(), fetchTransactions()])
+      try {
+        await Promise.all([fetchPortfolios(), fetchOverview(), fetchHoldings(), fetchTransactions()])
+      } catch (refreshErr) {
+        console.warn('Post-move holding refresh failed:', refreshErr)
+        const toast = useToastStore()
+        toast.error('Asset moved, but failed to refresh portfolio.', 6000, {
+          label: 'Retry refresh',
+          onClick: () => { Promise.all([fetchPortfolios(), fetchOverview(), fetchHoldings(), fetchTransactions()]) }
+        })
+      }
       return res.data
     } catch (err: any) {
       error.value = err?.response?.data?.detail || 'Failed to move asset'
@@ -440,7 +459,16 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   async function deleteTransaction(id: string) {
     try {
       await apiClient.delete(`/portfolio/transactions/${id}/`)
-      await Promise.all([fetchOverview(), fetchHoldings(), fetchTransactions()])
+      try {
+        await Promise.all([fetchOverview(), fetchHoldings(), fetchTransactions()])
+      } catch (refreshErr) {
+        console.warn('Post-delete transaction refresh failed:', refreshErr)
+        const toast = useToastStore()
+        toast.error('Transaction deleted, but failed to refresh data.', 6000, {
+          label: 'Retry refresh',
+          onClick: () => { Promise.all([fetchOverview(), fetchHoldings(), fetchTransactions()]) }
+        })
+      }
     } catch (err: any) {
       error.value = err?.response?.data?.detail || 'Failed to delete transaction'
       throw err
@@ -450,7 +478,16 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   async function deleteHolding(id: string) {
     try {
       await apiClient.delete(`/portfolio/holdings/${id}/`)
-      await Promise.all([fetchOverview(), fetchHoldings(), fetchTransactions()])
+      try {
+        await Promise.all([fetchOverview(), fetchHoldings(), fetchTransactions()])
+      } catch (refreshErr) {
+        console.warn('Post-delete holding refresh failed:', refreshErr)
+        const toast = useToastStore()
+        toast.error('Asset deleted, but failed to refresh portfolio.', 6000, {
+          label: 'Retry refresh',
+          onClick: () => { Promise.all([fetchOverview(), fetchHoldings(), fetchTransactions()]) }
+        })
+      }
     } catch (err: any) {
       error.value = err?.response?.data?.detail || 'Failed to delete asset'
       throw err

@@ -516,8 +516,10 @@
       :message="confirmModal.message"
       :confirm-text="confirmModal.confirmText"
       :is-danger="confirmModal.isDanger"
+      :is-loading="confirmModal.isLoading"
+      :error-message="confirmModal.errorMessage"
       @confirm="executeConfirmModal"
-      @cancel="confirmModal.isOpen = false"
+      @cancel="confirmModal.isOpen = false; confirmModal.errorMessage = ''"
     />
   </div>
 </template>
@@ -599,12 +601,22 @@ const confirmModal = reactive({
   message: '',
   confirmText: t('common.confirm'),
   isDanger: true,
-  action: () => {}
+  isLoading: false,
+  errorMessage: '',
+  action: async () => {}
 })
 
-function executeConfirmModal() {
-  confirmModal.isOpen = false
-  confirmModal.action()
+async function executeConfirmModal() {
+  confirmModal.isLoading = true
+  confirmModal.errorMessage = ''
+  try {
+    await confirmModal.action()
+    confirmModal.isOpen = false
+  } catch (err: any) {
+    confirmModal.errorMessage = err?.response?.data?.detail || err?.response?.data?.error || err?.message || 'Operation failed'
+  } finally {
+    confirmModal.isLoading = false
+  }
 }
 
 async function handleSendTestAlert() {
@@ -636,14 +648,13 @@ function handleDisconnectTelegram() {
   confirmModal.message = t('st.tg.disconnectMsg')
   confirmModal.confirmText = t('st.tg.disconnect')
   confirmModal.isDanger = true
+  confirmModal.errorMessage = ''
   confirmModal.action = async () => {
     isDisconnectingTelegram.value = true
     try {
       await authStore.disconnectTelegram()
       await fetchAuditLogs()
       toast.info(t('st.tg.disconnectedToast'))
-    } catch (err) {
-      toast.error(t('st.tg.disconnectFailed'))
     } finally {
       isDisconnectingTelegram.value = false
     }
@@ -704,15 +715,12 @@ function revokeOtherSessions() {
   confirmModal.message = t('st.sess.revokeAllMsg')
   confirmModal.confirmText = t('st.sess.revokeAll')
   confirmModal.isDanger = true
+  confirmModal.errorMessage = ''
   confirmModal.action = async () => {
-    try {
-      const res = await apiClient.post<{ message: string; revoked_count: number }>('/auth/sessions/revoke-others/')
-      await fetchSessions()
-      await fetchAuditLogs()
-      toast.info(res.data.message || 'Other sessions revoked')
-    } catch (err) {
-      toast.error(t('st.sess.revokeFailed'))
-    }
+    const res = await apiClient.post<{ message: string; revoked_count: number }>('/auth/sessions/revoke-others/')
+    await fetchSessions()
+    await fetchAuditLogs()
+    toast.info(res.data.message || 'Other sessions revoked')
   }
   confirmModal.isOpen = true
 }
@@ -742,15 +750,12 @@ function deleteInviteCode(id: string, code: string) {
   confirmModal.message = t('st.inv.deleteMsg', { code })
   confirmModal.confirmText = t('st.inv.deleteConfirm')
   confirmModal.isDanger = true
+  confirmModal.errorMessage = ''
   confirmModal.action = async () => {
-    try {
-      await apiClient.delete(`/auth/invites/${id}/`)
-      await fetchInvites()
-      await fetchAuditLogs()
-      toast.info(t('st.inv.deletedToast', { code }))
-    } catch (err) {
-      toast.error(t('st.inv.createFailed'))
-    }
+    await apiClient.delete(`/auth/invites/${id}/`)
+    await fetchInvites()
+    await fetchAuditLogs()
+    toast.info(t('st.inv.deletedToast', { code }))
   }
   confirmModal.isOpen = true
 }
@@ -800,6 +805,7 @@ function handleDisconnectDrive() {
   confirmModal.message = t('st.drive.disconnectMsg')
   confirmModal.confirmText = t('st.tg.disconnect')
   confirmModal.isDanger = true
+  confirmModal.errorMessage = ''
   confirmModal.action = async () => {
     await storageStore.disconnect()
   }

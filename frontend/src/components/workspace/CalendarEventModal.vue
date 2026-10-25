@@ -144,8 +144,10 @@
       title="Delete this schedule?"
       :message="`'${event?.title}' will be removed from the calendar.`"
       confirm-text="Delete Event"
+      :is-loading="isDeleting"
+      :error-message="deleteError"
       @confirm="handleDelete"
-      @cancel="showDeleteConfirm = false"
+      @cancel="showDeleteConfirm = false; deleteError = ''"
     />
   </Teleport>
 </template>
@@ -175,6 +177,8 @@ const workspaceStore = useWorkspaceStore()
 const toast = useToastStore()
 
 const showDeleteConfirm = ref(false)
+const isDeleting = ref(false)
+const deleteError = ref('')
 const dirty = ref(false)
 const saving = ref(false)
 let loadedEventId = ''
@@ -295,14 +299,18 @@ onBeforeUnmount(() => {
 async function handleDelete() {
   if (!props.event) return
   const eventId = props.event.id
-  showDeleteConfirm.value = false
-  emit('close')
+  isDeleting.value = true
+  deleteError.value = ''
   try {
     await workspaceStore.deleteEvent(eventId)
+    showDeleteConfirm.value = false
+    emit('close')
     toast.info('Schedule deleted')
     emit('deleted', eventId)
-  } catch {
-    toast.error('Failed to delete schedule')
+  } catch (err: any) {
+    deleteError.value = err?.response?.data?.error || err?.message || 'Failed to delete schedule'
+  } finally {
+    isDeleting.value = false
   }
 }
 </script>

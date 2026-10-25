@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import apiClient from '../../api/client'
+import { useToastStore } from '../../stores/toast'
 import type { FinancialObligation } from '../../types/finance'
 
 export interface InstallmentScheduleItem {
@@ -86,7 +87,16 @@ export function useInstallments() {
       const res = await apiClient.post(`/finance/obligations/${id}/pay/`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
-      await fetchInstallments()
+      try {
+        await fetchInstallments()
+      } catch (refreshErr) {
+        console.warn('Installments refresh failed after payment:', refreshErr)
+        const toast = useToastStore()
+        toast.error('Payment recorded, but failed to refresh list.', 6000, {
+          label: 'Retry refresh',
+          onClick: () => fetchInstallments()
+        })
+      }
       return res.data
     } finally {
       isActionLoading.value = false

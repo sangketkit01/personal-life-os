@@ -345,6 +345,7 @@
           </div>
           <NoteEditorCanvas
             v-if="activeNote"
+            ref="splitEditorRef"
             :key="activeNote.id"
             :note="activeNote"
             :is-verified="isVerified(activeNote.id)"
@@ -382,6 +383,7 @@
           </div>
           <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
             <NoteEditorCanvas
+              ref="gridEditorRef"
               :key="activeNote.id"
               :note="activeNote"
               :is-verified="isVerified(activeNote.id)"
@@ -451,8 +453,10 @@
       title="Delete this folder?"
       :message="`Folder '${folderToDelete?.name}' will be removed. Notes inside stay safe and become unfiled.`"
       confirm-text="Delete Folder"
+      :is-loading="isDeletingFolder"
+      :error-message="deleteFolderError"
       @confirm="deleteFolder"
-      @cancel="folderToDelete = null"
+      @cancel="folderToDelete = null; deleteFolderError = ''"
     />
 
     <ConfirmModal
@@ -460,8 +464,10 @@
       title="Empty the trash?"
       message="All notes in the trash will be permanently deleted. This cannot be undone."
       confirm-text="Empty Trash"
+      :is-loading="isEmptyingTrash"
+      :error-message="emptyTrashError"
       @confirm="emptyTrash"
-      @cancel="showEmptyTrashConfirm = false"
+      @cancel="showEmptyTrashConfirm = false; emptyTrashError = ''"
     />
 
     <!-- Floating Empty Trash button (trash view only) -->
@@ -500,6 +506,8 @@ import {
 } from 'lucide-vue-next'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import NoteEditorCanvas from '../../components/notes/NoteEditorCanvas.vue'
+import { onBeforeRouteLeave } from 'vue-router'
+import { t } from '../../i18n'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
 import { stripHtml } from '../../utils/richText'
@@ -526,6 +534,23 @@ const NOTE_COLORS: Array<{ key: NoteColor; label: string; dot: string }> = [
 const workspaceStore = useWorkspaceStore()
 const toast = useToastStore()
 
+const splitEditorRef = ref<InstanceType<typeof NoteEditorCanvas> | null>(null)
+const gridEditorRef = ref<InstanceType<typeof NoteEditorCanvas> | null>(null)
+
+onBeforeRouteLeave(async () => {
+  try {
+    if (splitEditorRef.value) {
+      await splitEditorRef.value.flushAutosave()
+    }
+    if (gridEditorRef.value) {
+      await gridEditorRef.value.flushAutosave()
+    }
+  } catch {
+    toast.error(t('common.saveFailedBeforeLeave'))
+    return false
+  }
+})
+
 // ===== View state =====
 const smartView = ref<SmartViewKey>('all')
 const activeFolderId = ref<string | null>(null)
@@ -538,7 +563,11 @@ const showGridEditor = ref(false)
 const verifiedNoteIds = reactive(new Set<string>())
 
 const folderToDelete = ref<NoteFolder | null>(null)
+const isDeletingFolder = ref(false)
+const deleteFolderError = ref('')
 const showEmptyTrashConfirm = ref(false)
+const isEmptyingTrash = ref(false)
+const emptyTrashError = ref('')
 const editingFolderId = ref<string | null>(null)
 const folderEditName = ref('')
 const isCreatingFolder = ref(false)
@@ -603,7 +632,17 @@ async function onDropToTrash() {
   if (!noteId) return
   try {
     await workspaceStore.trashNote(noteId)
-    toast.info('Note moved to trash')
+    toast.info('Note moved to trash', 6000, {
+      label: 'Undo',
+      onClick: async () => {
+        try {
+          await workspaceStore.restoreNote(noteId)
+          toast.success('Note restored')
+        } catch {
+          toast.error('Failed to restore note')
+        }
+      }
+    })
   } catch {
     toast.error('Failed to move note to trash')
   }
@@ -834,12 +873,16 @@ async function restoreNote(noteId: string) {
 }
 
 async function emptyTrash() {
-  showEmptyTrashConfirm.value = false
+  isEmptyingTrash.value = true
+  emptyTrashError.value = ''
   try {
     const res = await workspaceStore.emptyTrash()
+    showEmptyTrashConfirm.value = false
     toast.info(`Deleted ${res.deleted} note${res.deleted === 1 ? '' : 's'} permanently`)
-  } catch {
-    toast.error('Failed to empty trash')
+  } catch (err: any) {
+    emptyTrashError.value = err?.response?.data?.error || err?.message || 'Failed to empty trash'
+  } finally {
+    isEmptyingTrash.value = false
   }
 }
 
@@ -884,15 +927,19 @@ async function submitFolderRename(folderId: string) {
 
 async function deleteFolder() {
   const folder = folderToDelete.value
-  folderToDelete.value = null
   if (!folder) return
+  isDeletingFolder.value = true
+  deleteFolderError.value = ''
   try {
     await workspaceStore.deleteFolder(folder.id)
     if (activeFolderId.value === folder.id) activeFolderId.value = null
     await refreshNotes()
     toast.info('Folder deleted')
-  } catch {
-    toast.error('Failed to delete folder')
+    folderToDelete.value = null
+  } catch (err: any) {
+    deleteFolderError.value = err?.response?.data?.error || err?.message || 'Failed to delete folder'
+  } finally {
+    isDeletingFolder.value = false
   }
 }
 

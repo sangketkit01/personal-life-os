@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import apiClient from '../../api/client'
+import { useToastStore } from '../../stores/toast'
 import type { FinancialObligation } from '../../types/finance'
 
 export interface CreateBNPLAccountPayload {
@@ -210,7 +211,16 @@ export function useBNPL() {
       subOrders.value.unshift(res.data)
       // Refresh current account so limit and current bill recompute
       if (currentAccount.value && currentAccount.value.id === accountId) {
-        await fetchAccountById(accountId)
+        try {
+          await fetchAccountById(accountId)
+        } catch (refreshErr) {
+          console.warn('Account refresh failed after order creation:', refreshErr)
+          const toast = useToastStore()
+          toast.error('Order created, but failed to refresh account details.', 6000, {
+            label: 'Retry refresh',
+            onClick: () => fetchAccountById(accountId)
+          })
+        }
       }
       return res.data
     } catch (err: any) {
@@ -240,8 +250,18 @@ export function useBNPL() {
       const res = await apiClient.post(`/finance/obligations/${accountId}/pay/`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
-      await fetchAccountById(accountId)
-      await fetchAccounts()
+      try {
+        await Promise.all([fetchAccountById(accountId), fetchAccounts()])
+      } catch (refreshErr) {
+        console.warn('Account refresh failed after payment:', refreshErr)
+        const toast = useToastStore()
+        toast.error('Payment recorded, but failed to refresh details.', 6000, {
+          label: 'Retry refresh',
+          onClick: async () => {
+            await Promise.all([fetchAccountById(accountId), fetchAccounts()])
+          }
+        })
+      }
       return res.data
     } finally {
       isActionLoading.value = false
@@ -254,8 +274,18 @@ export function useBNPL() {
       await apiClient.delete(`/finance/obligations/${orderId}/`)
       subOrders.value = subOrders.value.filter(o => o.id !== orderId)
       if (accountId) {
-        await fetchAccountById(accountId)
-        await fetchAccounts()
+        try {
+          await Promise.all([fetchAccountById(accountId), fetchAccounts()])
+        } catch (refreshErr) {
+          console.warn('Account refresh failed after order deletion:', refreshErr)
+          const toast = useToastStore()
+          toast.error('Order deleted, but failed to refresh details.', 6000, {
+            label: 'Retry refresh',
+            onClick: async () => {
+              await Promise.all([fetchAccountById(accountId), fetchAccounts()])
+            }
+          })
+        }
       }
     } finally {
       isActionLoading.value = false

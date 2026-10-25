@@ -22,22 +22,32 @@
         </div>
       </div>
 
-      <!-- 2. Expected Inflow (Debtors) -->
-      <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm hover:shadow-md">
+      <!-- 2. Expected Inflow -->
+      <div
+        @click="showInflowModal = true"
+        class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-emerald-600/60 hover:bg-zinc-900/70 hover:-translate-y-0.5 transition-all duration-200 shadow-sm hover:shadow-md cursor-pointer group"
+      >
         <div class="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-zinc-400">
-          <span>Expected Inflow</span>
-          <span class="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">Receivables</span>
+          <span class="group-hover:text-emerald-300 transition-colors">{{ t('fin.expectedInflow') }}</span>
+          <div class="flex items-center gap-1">
+            <span class="px-1 py-0.2 rounded text-[9px] bg-zinc-800 text-zinc-400 border border-zinc-700 font-mono">THB</span>
+            <span class="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">{{ t('fin.inflowBadge') }}</span>
+          </div>
         </div>
         <div class="mt-2.5 flex items-baseline gap-1.5 font-mono">
           <span class="text-xl font-bold text-emerald-400 tabular-nums">
             +฿{{ Number(financeStore.overview?.expected_inflow_amount || 0).toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
           </span>
-          <span class="text-[11px] text-zinc-500">({{ activeDebtorsCount }} debtors)</span>
+          <span class="text-[11px] text-zinc-500">({{ expectedInflowSourcesCount }} {{ t('fin.inflowItemsCount', { n: String(expectedInflowSourcesCount) }) }})</span>
         </div>
         <div class="mt-3 text-[11px] text-zinc-500 flex items-center justify-between border-t border-zinc-800/50 pt-2.5">
-          <span>Pending receivables</span>
-          <button @click="emit('switchTab', 'DEBT')" class="text-zinc-400 hover:text-zinc-200 active:scale-95 transition-all font-mono text-[10px]">
-            Debtors &rarr;
+          <span class="truncate max-w-[140px] font-mono text-[10px]">{{ inflowSummarySnippet }}</span>
+          <button
+            type="button"
+            @click.stop="showInflowModal = true"
+            class="text-emerald-400 hover:text-emerald-300 active:scale-95 transition-all font-mono text-[10px] flex items-center gap-1"
+          >
+            <span>{{ t('fin.viewBreakdown') }}</span> &rarr;
           </button>
         </div>
       </div>
@@ -198,7 +208,9 @@
           <div class="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 group-hover:scale-105 transition-transform">
             <HandCoins class="w-4 h-4" />
           </div>
-          <span class="text-xs font-mono font-semibold text-zinc-400 group-hover:text-zinc-200 transition-colors">{{ debtTotalCount }} records</span>
+          <span class="text-xs font-mono font-semibold text-zinc-400 group-hover:text-zinc-200 transition-colors">
+            {{ activeDebtorsCount }} {{ t('fin.debtorRecordsCount', { n: String(activeDebtorsCount) }) }} · {{ debtTotalCount }} records
+          </span>
         </div>
         <div>
           <h3 class="text-sm font-semibold text-zinc-200 group-hover:text-white transition-colors">Two-Way Debt Ledger</h3>
@@ -206,13 +218,24 @@
         </div>
       </div>
     </div>
+
+    <!-- Expected Inflow Breakdown Modal -->
+    <ExpectedInflowBreakdownModal
+      :is-open="showInflowModal"
+      :target-month="financeStore.overview?.target_month"
+      :breakdown="financeStore.overview?.expected_inflow_breakdown"
+      :total-amount="financeStore.overview?.expected_inflow_amount"
+      @close="showInflowModal = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useFinanceStore } from '../../../stores/finance'
+import { t } from '../../../i18n'
 import type { FinancialObligation, UpcomingBill } from '../../../types/finance'
+import ExpectedInflowBreakdownModal from './ExpectedInflowBreakdownModal.vue'
 import {
   CalendarClock,
   Car,
@@ -231,9 +254,43 @@ const emit = defineEmits<{
 }>()
 
 const financeStore = useFinanceStore()
+const showInflowModal = ref(false)
 
 const activeDebtorsCount = computed(() => {
+  if (financeStore.overview?.active_debtor_records_count !== undefined) {
+    return financeStore.overview.active_debtor_records_count
+  }
+  return props.obligations.filter(o =>
+    o.type === 'DEBT' &&
+    o.direction === 'INFLOW' &&
+    o.status === 'ACTIVE' &&
+    Number(o.summary?.remaining_balance ?? o.amount ?? 0) > 0
+  ).length
+})
+
+const debtTotalCount = computed(() => {
+  if (financeStore.overview?.debt_total_count !== undefined) {
+    return financeStore.overview.debt_total_count
+  }
+  return props.obligations.filter(o => o.type === 'DEBT').length
+})
+
+const expectedInflowSourcesCount = computed(() => {
+  const items = financeStore.overview?.expected_inflow_breakdown?.items
+  if (items) return items.length
   return props.obligations.filter(o => o.direction === 'INFLOW' && o.status === 'ACTIVE').length
+})
+
+const inflowSummarySnippet = computed(() => {
+  const bd = financeStore.overview?.expected_inflow_breakdown
+  if (!bd || !bd.items || bd.items.length === 0) {
+    return t('fin.expectedThisMonth')
+  }
+  const parts: string[] = []
+  if (Number(bd.ma_amount || 0) > 0) parts.push(`MA: ฿${Number(bd.ma_amount).toLocaleString('th-TH')}`)
+  if (Number(bd.debt_amount || 0) > 0) parts.push(`Debt: ฿${Number(bd.debt_amount).toLocaleString('th-TH')}`)
+  if (Number(bd.recurring_amount || 0) > 0) parts.push(`Recurring: ฿${Number(bd.recurring_amount).toLocaleString('th-TH')}`)
+  return parts.length > 0 ? parts.join(' · ') : t('fin.expectedThisMonth')
 })
 
 const installmentCount = computed(() => {
@@ -246,10 +303,6 @@ const bnplAccountCount = computed(() => {
 
 const subscriptionCount = computed(() => {
   return props.obligations.filter(o => o.type === 'SUBSCRIPTION' || o.type === 'FREE_TRIAL').length
-})
-
-const debtTotalCount = computed(() => {
-  return props.obligations.filter(o => o.type === 'DEBT' || o.direction === 'INFLOW').length
 })
 
 function handlePayItem(item: UpcomingBill) {

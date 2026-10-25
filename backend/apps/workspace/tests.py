@@ -1370,6 +1370,18 @@ class SshEngineTests(InfrastructureBaseTestCase):
         with self.assertRaises(SshConnectionError):
             open_ssh_client(self.asset)
 
+    @patch('paramiko.SSHClient')
+    def test_open_client_supports_hostname_only(self, mock_client_cls):
+        from apps.workspace.ssh_service import open_ssh_client
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        self.asset.ip_address = ''
+        self.asset.hostname = 'ssh.example.com'
+        self.asset.save()
+        open_ssh_client(self.asset)
+        mock_client.connect.assert_called_once()
+        self.assertEqual(mock_client.connect.call_args[1]['hostname'], 'ssh.example.com')
+
     def test_private_key_loaded_from_memory_only(self):
         import paramiko
         from apps.workspace.ssh_service import _load_private_key_from_memory

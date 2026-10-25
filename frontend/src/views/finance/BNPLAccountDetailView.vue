@@ -65,7 +65,7 @@
           class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold font-sans transition-colors flex items-center gap-1.5 shadow-sm"
         >
           <CreditCard class="w-3.5 h-3.5 text-zinc-950" />
-          <span>Pay Bill (฿{{ Number(account?.summary?.current_bill_amount || 0).toLocaleString('en-US') }})</span>
+          <span>Pay Bill ({{ currencySymbol(account?.currency || 'THB') }}{{ Number(account?.summary?.current_bill_amount || 0).toLocaleString('en-US') }})</span>
         </button>
       </div>
     </div>
@@ -81,7 +81,7 @@
         <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-1">
           <span class="text-[10px] font-mono uppercase text-zinc-500 block">Approved Limit</span>
           <div class="text-xl font-semibold font-mono text-zinc-100 tabular-nums">
-            ฿{{ Number(account.metadata?.credit_limit || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+            {{ currencySymbol(account?.currency || 'THB') }}{{ Number(account.metadata?.credit_limit || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
           </div>
           <span class="text-[10px] text-zinc-500 font-mono block">Max revolving ceiling</span>
         </div>
@@ -95,7 +95,7 @@
             </span>
           </div>
           <div class="text-xl font-semibold font-mono text-zinc-100 tabular-nums">
-            ฿{{ Number(account.summary?.total_remaining_debt || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+            {{ currencySymbol(account?.currency || 'THB') }}{{ Number(account.summary?.total_remaining_debt || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
           </div>
           <!-- Gauge bar -->
           <div class="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden mt-1.5">
@@ -111,7 +111,7 @@
         <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-1">
           <span class="text-[10px] font-mono uppercase text-zinc-500 block">Available Power</span>
           <div class="text-xl font-semibold font-mono text-emerald-400 tabular-nums">
-            ฿{{ Number(account.summary?.available_credit || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+            {{ currencySymbol(account?.currency || 'THB') }}{{ Number(account.summary?.available_credit || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
           </div>
           <span class="text-[10px] text-zinc-500 font-mono block">Remaining credit line</span>
         </div>
@@ -125,7 +125,7 @@
             </span>
           </div>
           <div class="text-xl font-semibold font-mono text-rose-400 tabular-nums">
-            ฿{{ Number(account.summary?.current_bill_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+            {{ currencySymbol(account?.currency || 'THB') }}{{ Number(account.summary?.current_bill_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
           </div>
           <span class="text-[10px] text-zinc-500 font-mono block">
             {{ activeSubOrders.length }} active order installments
@@ -201,7 +201,7 @@
                 <div class="text-right font-mono">
                   <span class="text-[10px] text-zinc-500 uppercase block">Statement Total</span>
                   <span class="text-base font-semibold text-rose-400 tabular-nums">
-                    ฿{{ Number(stmt.total_due).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                    {{ currencySymbol(account?.currency || 'THB') }}{{ Number(stmt.total_due).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                   </span>
                 </div>
                 <button
@@ -209,7 +209,7 @@
                   class="px-3.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold font-sans transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
                 >
                   <Check class="w-3.5 h-3.5" />
-                  <span>Pay Bill (฿{{ Number(stmt.total_due).toLocaleString('en-US') }})</span>
+                  <span>Pay Bill ({{ currencySymbol(account?.currency || 'THB') }}{{ Number(stmt.total_due).toLocaleString('en-US') }})</span>
                 </button>
               </div>
             </div>
@@ -240,10 +240,10 @@
                       Term {{ item.term_number }} of {{ item.total_terms }}
                     </td>
                     <td class="py-2.5 text-right font-semibold text-rose-400 tabular-nums">
-                      ฿{{ Number(item.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                      {{ currencySymbol(account?.currency || 'THB') }}{{ Number(item.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                     </td>
                     <td class="py-2.5 text-right text-zinc-400 tabular-nums pr-4">
-                      ฿{{ Number(item.remaining_order_debt).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                      {{ currencySymbol(account?.currency || 'THB') }}{{ Number(item.remaining_order_debt).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                     </td>
                   </tr>
                 </tbody>
@@ -337,10 +337,10 @@
                     </div>
                   </td>
                   <td class="py-3 text-right font-semibold text-rose-400 tabular-nums">
-                    ฿{{ Number(order.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                    {{ currencySymbol(account?.currency || 'THB') }}{{ Number(order.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                   </td>
                   <td class="py-3 text-right text-zinc-300 tabular-nums font-semibold">
-                    ฿{{ Number(getOrderRemainingDebt(order)).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                    {{ currencySymbol(account?.currency || 'THB') }}{{ Number(getOrderRemainingDebt(order)).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                   </td>
                   <td class="py-3">
                     <span
@@ -508,7 +508,7 @@
                     {{ new Date(p.paid_at).toLocaleString('en-GB') }}
                   </td>
                   <td class="py-2.5 text-right font-semibold text-emerald-400 tabular-nums">
-                    ฿{{ Number(p.paid_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                    {{ currencySymbol(account?.currency || 'THB') }}{{ Number(p.paid_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                   </td>
                   <td class="py-2.5 text-zinc-400">
                     {{ p.note || 'Monthly statement payoff' }}
@@ -561,6 +561,7 @@
 </template>
 
 <script setup lang="ts">
+import { currencySymbol } from '../../utils/currency'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBNPL } from '../../composables/finance/useBNPL'

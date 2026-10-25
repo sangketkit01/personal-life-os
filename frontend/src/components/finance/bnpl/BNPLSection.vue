@@ -87,8 +87,8 @@
             <!-- Gauge -->
             <div class="space-y-1 font-mono text-xs">
               <div class="flex justify-between text-[11px]">
-                <span class="text-zinc-400">Available: ฿{{ Number(acc.summary?.available_credit || 0).toLocaleString('th-TH') }}</span>
-                <span class="text-zinc-500">Limit: ฿{{ Number(acc.metadata?.credit_limit || 0).toLocaleString('th-TH') }}</span>
+                <span class="text-zinc-400">Available: {{ currencySymbol(acc.currency) }}{{ Number(acc.summary?.available_credit || 0).toLocaleString('th-TH') }}</span>
+                <span class="text-zinc-500">Limit: {{ currencySymbol(acc.currency) }}{{ Number(acc.metadata?.credit_limit || 0).toLocaleString('th-TH') }}</span>
               </div>
               <div class="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
                 <div
@@ -102,7 +102,7 @@
             <!-- Actions Bar inside card -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1.5 border-t border-zinc-800/60 text-[11px] font-mono">
               <span class="text-zinc-400">
-                Cycle Due: <strong class="text-zinc-100">฿{{ Number(acc.summary?.current_bill_amount || 0).toLocaleString('en-US') }}</strong>
+                Cycle Due: <strong class="text-zinc-100">{{ currencySymbol(acc.currency) }}{{ Number(acc.summary?.current_bill_amount || 0).toLocaleString('en-US') }}</strong>
               </span>
 
               <div class="flex flex-wrap items-center gap-1.5 self-end sm:self-auto" @click.stop>
@@ -185,7 +185,7 @@
               />
             </div>
             <div>
-              <label class="text-[10px] text-zinc-500 uppercase block mb-1">Monthly Amount (฿)</label>
+              <label class="text-[10px] text-zinc-500 uppercase block mb-1">Monthly Amount</label>
               <input
                 v-model.number="newOrderForm.monthly_amount"
                 type="number"
@@ -235,7 +235,7 @@
                 <tr class="border-b border-zinc-800/80 text-[10px] text-zinc-500 uppercase tracking-wider font-semibold bg-zinc-950/40">
                   <th class="py-2.5 pl-4">Sub-Order / Purchase</th>
                   <th class="py-2.5">Progress</th>
-                  <th class="py-2.5 text-right">Monthly (฿)</th>
+                  <th class="py-2.5 text-right">Monthly </th>
                   <th class="py-2.5 text-right">Remaining Balance</th>
                   <th class="py-2.5 text-right pr-4">Actions</th>
                 </tr>
@@ -257,10 +257,10 @@
                     </div>
                   </td>
                   <td class="py-2.5 text-right font-semibold text-zinc-100 tabular-nums">
-                    ฿{{ Number(order.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                    {{ currencySymbol(order.currency) }}{{ Number(order.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                   </td>
                   <td class="py-2.5 text-right text-zinc-300 tabular-nums">
-                    ฿{{ getRemainingOrderBalance(order).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                    {{ currencySymbol(order.currency) }}{{ getRemainingOrderBalance(order).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                   </td>
                   <td class="py-2.5 text-right pr-4">
                     <button
@@ -288,6 +288,7 @@
 </template>
 
 <script setup lang="ts">
+import { currencySymbol } from '../../../utils/currency'
 import { ref, reactive, computed, watch } from 'vue'
 import type { FinancialObligation } from '../../../types/finance'
 import apiClient from '../../../api/client'

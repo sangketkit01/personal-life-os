@@ -45,7 +45,7 @@
           </div>
           <div class="flex justify-between text-zinc-400 text-[11px]">
             <span>Statement Due:</span>
-            <span class="text-zinc-100 font-semibold">฿{{ Number(paidAmount || obligation.summary?.current_bill_amount || obligation.amount).toLocaleString('en-US') }}</span>
+            <span class="text-zinc-100 font-semibold">{{ currencySymbol(obligation.currency) }}{{ Number(paidAmount || obligation.summary?.current_bill_amount || obligation.amount).toLocaleString('en-US') }}</span>
           </div>
         </div>
 
@@ -54,7 +54,7 @@
           <div class="flex justify-between text-zinc-400 text-[11px]">
             <span>{{ obligation.direction === 'INFLOW' ? 'Remaining to collect:' : 'Outstanding Balance:' }}</span>
             <span class="font-semibold" :class="obligation.direction === 'INFLOW' ? 'text-emerald-400' : 'text-zinc-100'">
-              ฿{{ Number(obligation.summary?.remaining_balance || obligation.amount).toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
+              {{ currencySymbol(obligation.currency) }}{{ Number(obligation.summary?.remaining_balance || obligation.amount).toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
             </span>
           </div>
         </div>
@@ -62,7 +62,7 @@
         <!-- Amount to pay -->
         <div>
           <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">
-            {{ obligation.direction === 'INFLOW' ? 'Repayment Amount Received (฿)' : (obligation.subtype === 'BNPL_ACCOUNT' ? 'Bill Amount to Settle (฿)' : (obligation.type === 'DEBT' ? 'Settlement Amount (Partial Allowed)' : 'Payment Amount (฿)')) }}
+            {{ obligation.direction === 'INFLOW' ? 'Repayment Amount Received' : (obligation.subtype === 'BNPL_ACCOUNT' ? 'Bill Amount to Settle' : (obligation.type === 'DEBT' ? 'Settlement Amount (Partial Allowed)' : 'Payment Amount')) }}
           </label>
           <input
             v-model="paidAmount"
@@ -101,7 +101,7 @@
               <span v-if="isInsufficientBalance" class="flex items-center gap-1 justify-center"><AlertTriangle class="w-3 h-3" /> Insufficient balance in this account</span>
               <span v-else>Auto-links cash flow transaction</span>
             </span>
-            <span class="text-zinc-400">Avail: ฿{{ Number(selectedAccountInfo.current_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
+            <span class="text-zinc-400">Avail: {{ currencySymbol(selectedAccountInfo?.currency || 'THB') }}{{ Number(selectedAccountInfo.current_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
           </div>
         </div>
 
@@ -197,6 +197,7 @@
 </template>
 
 <script setup lang="ts">
+import { currencySymbol } from '../../utils/currency'
 import {
  ref, computed, watch, onMounted } from 'vue'
 import { useFinanceStore } from '../../stores/finance'

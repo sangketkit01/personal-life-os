@@ -77,7 +77,7 @@
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label class="block text-xs font-mono text-zinc-400 mb-1.5">
-            Financed Principal (฿) <span class="text-rose-400">*</span>
+            Financed Principal <span class="text-rose-400">*</span>
           </label>
           <div class="relative">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono text-zinc-500">฿</span>
@@ -225,7 +225,7 @@
           <div v-if="form.subtype === 'HIRE_PURCHASE'" class="space-y-3 pt-2 border-t border-zinc-800/40">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-mono text-zinc-400 mb-1">Down Payment (฿)</label>
+                <label class="block text-xs font-mono text-zinc-400 mb-1">Down Payment ()</label>
                 <input
                   v-model.number="form.down_payment"
                   type="number"

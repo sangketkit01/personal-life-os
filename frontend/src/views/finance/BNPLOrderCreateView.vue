@@ -64,7 +64,7 @@
           <!-- Total Price -->
           <div>
             <label class="block text-xs font-mono text-zinc-400 mb-1">
-              Total Order Price (฿) <span class="text-rose-400">*</span>
+              Total Order Price <span class="text-rose-400">*</span>
             </label>
             <div class="relative">
               <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono text-zinc-500">฿</span>

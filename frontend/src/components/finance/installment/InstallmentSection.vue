@@ -98,7 +98,7 @@
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 p-2.5 rounded-lg bg-zinc-950 border border-zinc-800/80 font-mono text-xs">
             <div>
               <span class="text-[9px] text-zinc-500 block uppercase">Financed Principal</span>
-              <span class="text-zinc-200 font-semibold">฿{{ Number(hp.metadata?.financed_amount || hp.metadata?.total_principal || 0).toLocaleString('en-US') }}</span>
+              <span class="text-zinc-200 font-semibold">{{ currencySymbol(hp.currency) }}{{ Number(hp.metadata?.financed_amount || hp.metadata?.total_principal || 0).toLocaleString('en-US') }}</span>
             </div>
             <div>
               <span class="text-[9px] text-zinc-500 block uppercase">Flat Rate P.A.</span>
@@ -106,7 +106,7 @@
             </div>
             <div class="text-right">
               <span class="text-[9px] text-zinc-500 block uppercase">Monthly Installment</span>
-              <span class="text-zinc-100 font-semibold">฿{{ Number(hp.amount).toLocaleString('en-US') }}</span>
+              <span class="text-zinc-100 font-semibold">{{ currencySymbol(hp.currency) }}{{ Number(hp.amount).toLocaleString('en-US') }}</span>
             </div>
           </div>
 
@@ -165,26 +165,26 @@
               <div class="p-2.5 rounded bg-zinc-900/40 border border-zinc-800/80 text-zinc-300 space-y-1.5 text-[11px]">
                 <div class="flex justify-between text-zinc-400">
                   <span>Outstanding Principal:</span>
-                  <span>฿{{ getSimBreakdown(hp).remainingPrincipal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
+                  <span>{{ currencySymbol(hp.currency) }}{{ getSimBreakdown(hp).remainingPrincipal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
                 </div>
                 <div class="flex justify-between text-emerald-400">
                   <span>OCPB Interest Saved ({{ getDiscountPct(hp) }}%):</span>
-                  <span>-฿{{ getSimBreakdown(hp).interestSaved.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
+                  <span>-{{ currencySymbol(hp.currency) }}{{ getSimBreakdown(hp).interestSaved.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
                 </div>
                 <div class="flex justify-between text-zinc-400">
                   <span>Value-Added Tax (VAT 7%):</span>
-                  <span>฿{{ getSimBreakdown(hp).vat.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
+                  <span>{{ currencySymbol(hp.currency) }}{{ getSimBreakdown(hp).vat.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
                 </div>
                 <div class="pt-1.5 border-t border-zinc-800 flex justify-between font-semibold">
                   <span class="text-zinc-100">Net Payoff Settlement:</span>
-                  <span class="text-zinc-100 text-xs">฿{{ getSimBreakdown(hp).payoffTotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
+                  <span class="text-zinc-100 text-xs">{{ currencySymbol(hp.currency) }}{{ getSimBreakdown(hp).payoffTotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
                 </div>
               </div>
 
               <!-- Net Savings Highlight -->
               <div class="p-2 rounded bg-zinc-900 border border-zinc-800 text-[11px] flex justify-between items-center">
                 <span class="text-zinc-400">Net Cash Savings:</span>
-                <span class="font-bold tabular-nums text-emerald-400">+฿{{ getSimBreakdown(hp).netSavings.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
+                <span class="font-bold tabular-nums text-emerald-400">+{{ currencySymbol(hp.currency) }}{{ getSimBreakdown(hp).netSavings.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
               </div>
             </div>
           </div>
@@ -209,7 +209,7 @@
                 <th class="py-2.5 pl-4">Product / Item</th>
                 <th class="py-2.5">Lender / Institution</th>
                 <th class="py-2.5">Terms Progress</th>
-                <th class="py-2.5 text-right">Monthly (฿)</th>
+                <th class="py-2.5 text-right">Monthly </th>
                 <th class="py-2.5 text-right">Remaining Balance</th>
                 <th class="py-2.5">Due Date</th>
                 <th class="py-2.5 text-right pr-4">Actions</th>
@@ -234,10 +234,10 @@
                   </div>
                 </td>
                 <td class="py-2.5 text-right font-semibold text-zinc-100 tabular-nums">
-                  ฿{{ Number(item.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                  {{ currencySymbol(item.currency) }}{{ Number(item.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                 </td>
                 <td class="py-2.5 text-right text-zinc-300 tabular-nums">
-                  ฿{{ Number(item.summary?.remaining_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                  {{ currencySymbol(item.currency) }}{{ Number(item.summary?.remaining_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                 </td>
                 <td class="py-2.5 text-zinc-400">
                   {{ item.due_date ? new Date(item.due_date).toLocaleDateString('en-GB') : `Day ${item.billing_day || '-'}` }}
@@ -291,6 +291,7 @@
 </template>
 
 <script setup lang="ts">
+import { currencySymbol } from '../../../utils/currency'
 import { ref, computed } from 'vue'
 import type { FinancialObligation } from '../../../types/finance'
 import {

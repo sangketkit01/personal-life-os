@@ -236,6 +236,7 @@
               <th class="py-3 px-4 font-semibold">Service / Plan</th>
               <th class="py-3 px-4 font-semibold">Category</th>
               <th class="py-3 px-4 font-semibold">Billing Cycle</th>
+              <th class="py-3 px-4 font-semibold">Status</th>
               <th class="py-3 px-4 font-semibold text-right">Fee</th>
               <th class="py-3 px-4 font-semibold text-right">Monthly Burn</th>
               <th class="py-3 px-4 font-semibold">Linked Account</th>
@@ -289,7 +290,22 @@
                 <span class="capitalize">{{ sub.metadata?.billing_cycle || 'Monthly' }}</span>
               </td>
 
-              <!-- 4. Fee -->
+              <!-- 4. Status -->
+              <td class="py-3 px-4">
+                <span
+                  class="text-[9px] font-mono px-1.5 py-0.5 rounded border font-semibold uppercase"
+                  :class="{
+                    'border-emerald-800/60 text-emerald-400 bg-emerald-950/40': sub.status === 'ACTIVE',
+                    'border-zinc-700 text-zinc-500 bg-zinc-900': sub.status === 'CANCELLED' || sub.status === 'COMPLETED',
+                    'border-amber-800/60 text-amber-400 bg-amber-950/40': sub.status === 'PAUSED',
+                    'border-zinc-800 text-zinc-400 bg-zinc-900': !['ACTIVE','CANCELLED','COMPLETED','PAUSED'].includes(sub.status)
+                  }"
+                >
+                  {{ sub.status }}
+                </span>
+              </td>
+
+              <!-- 5. Fee -->
               <td class="py-3 px-4 text-right font-mono tabular-nums text-zinc-100 font-medium">
                 {{ sub.currency === 'USD' ? '$' : '฿' }}{{ formatNumber(sub.amount) }}
               </td>

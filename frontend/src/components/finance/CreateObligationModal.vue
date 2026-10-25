@@ -124,7 +124,7 @@
           </div>
           <div>
             <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">
-              {{ selectedSubtype === 'BNPL_ACCOUNT' ? 'Monthly Bill (฿)' : (selectedType === 'FREE_TRIAL' ? 'Renew Cost (฿)' : 'Amount (฿)') }}
+              {{ selectedSubtype === 'BNPL_ACCOUNT' ? 'Monthly Bill ' : (selectedType === 'FREE_TRIAL' ? 'Renew Cost ' : 'Amount ') }}
             </label>
             <input
               v-model="form.amount"
@@ -145,7 +145,7 @@
               v-model="form.currency"
               class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-mono focus:outline-none focus:border-zinc-600 transition-colors"
             >
-              <option value="THB">THB (฿)</option>
+              <option value="THB">THB </option>
               <option value="USD">USD ($)</option>
             </select>
           </div>
@@ -167,7 +167,7 @@
           <div class="text-[11px] font-semibold text-zinc-200 uppercase tracking-wider">Hire Purchase Parameters (Vehicle Loan)</div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label class="block text-[10px] text-zinc-500 mb-1">Financed Principal (฿)</label>
+              <label class="block text-[10px] text-zinc-500 mb-1">Financed Principal </label>
               <input
                 v-model.number="form.metadata.financed_amount"
                 type="number"
@@ -238,7 +238,7 @@
           <div class="text-[11px] font-semibold text-zinc-200 uppercase tracking-wider">BNPL Credit Line (Revolving Credit)</div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label class="block text-[10px] text-zinc-500 mb-1">Total Credit Limit (฿)</label>
+              <label class="block text-[10px] text-zinc-500 mb-1">Total Credit Limit </label>
               <input
                 v-model.number="form.metadata.credit_limit"
                 type="number"

@@ -1,3 +1,4 @@
+import calendar
 from decimal import Decimal
 from datetime import date, timedelta
 from typing import Dict, Any, List
@@ -55,11 +56,15 @@ def get_financial_overview(user, target_date: date = None) -> Dict[str, Any]:
     active_obligations = FinancialObligation.objects.filter(
         user=user,
         status=ObligationStatus.ACTIVE
-    )
+    ).select_related('project')
 
     confirmed_burn_rate = Decimal('0.00')
     potential_risk_amount = Decimal('0.00')
     expected_inflow_amount = Decimal('0.00')
+    expected_inflow_items: List[Dict[str, Any]] = []
+
+    active_debtor_records_count = 0
+    total_debtors_outstanding_amount = Decimal('0.00')
 
     categorized_items: Dict[str, List[Dict[str, Any]]] = {
         'INSTALLMENT': [],
@@ -97,15 +102,123 @@ def get_financial_overview(user, target_date: date = None) -> Dict[str, Any]:
         # Group by type
         categorized_items[ob.type].append(item_data)
 
+        # Track active debtor records (strictly DEBT + INFLOW with remaining balance > 0)
+        if ob.type == ObligationType.DEBT and ob.direction == FlowDirection.INFLOW:
+            remaining = Decimal(str(summary.get('remaining_balance', ob.amount)))
+            if remaining > Decimal('0.00'):
+                active_debtor_records_count += 1
+                total_debtors_outstanding_amount += (remaining * rate).quantize(Decimal('0.01'))
+
         # 1. Monthly Burn Rate (Outflows) and Expected Inflows
         if ob.direction == FlowDirection.INFLOW:
             # Expected inflow (e.g. debt repaid by counterparty / recurring income)
             if ob.type == ObligationType.DEBT:
                 if ob.due_date and ob.due_date.year == target_year and ob.due_date.month == target_month:
-                    remaining = summary.get('remaining_balance', ob.amount)
-                    expected_inflow_amount += (Decimal(str(remaining)) * rate).quantize(Decimal('0.01'))
-            elif ob.type in [ObligationType.SUBSCRIPTION, ObligationType.INSTALLMENT]:
-                expected_inflow_amount += amount_thb
+                    remaining = Decimal(str(summary.get('remaining_balance', ob.amount)))
+                    if remaining > Decimal('0.00'):
+                        item_thb = (remaining * rate).quantize(Decimal('0.01'))
+                        expected_inflow_amount += item_thb
+                        counterparty = summary.get('counterparty') or (ob.metadata or {}).get('counterparty') or ob.title
+                        expected_inflow_items.append({
+                            'id': str(ob.id),
+                            'title': ob.title,
+                            'category': 'DEBT',
+                            'category_label': 'Debt Repayment',
+                            'type': ob.type,
+                            'amount': remaining,
+                            'amount_thb': item_thb,
+                            'currency': ob.currency,
+                            'due_date': ob.due_date.isoformat() if ob.due_date else None,
+                            'counterparty': counterparty,
+                            'project_id': None,
+                        })
+            elif ob.type == ObligationType.SUBSCRIPTION:
+                billing_cycle = (ob.metadata or {}).get('billing_cycle', 'MONTHLY').upper()
+                include_inflow = False
+                inflow_amount = amount_thb
+                inflow_raw_amount = ob.amount
+
+                if billing_cycle == 'YEARLY':
+                    if ob.due_date and ob.due_date.year == target_year and ob.due_date.month == target_month:
+                        include_inflow = True
+                elif billing_cycle == 'QUARTERLY':
+                    if ob.due_date and ob.due_date.year == target_year and ob.due_date.month == target_month:
+                        include_inflow = True
+                elif billing_cycle == 'WEEKLY':
+                    if ob.due_date:
+                        last_day_num = calendar.monthrange(target_year, target_month)[1]
+                        last_day = date(target_year, target_month, last_day_num)
+                        first_day = date(target_year, target_month, 1)
+                        if ob.due_date <= last_day:
+                            curr = ob.due_date
+                            while curr < first_day:
+                                curr += timedelta(days=7)
+                            weekly_count = 0
+                            while curr.year == target_year and curr.month == target_month:
+                                weekly_count += 1
+                                curr += timedelta(days=7)
+                            if weekly_count > 0:
+                                include_inflow = True
+                                inflow_amount = (amount_thb * Decimal(str(weekly_count))).quantize(Decimal('0.01'))
+                                inflow_raw_amount = (ob.amount * Decimal(str(weekly_count))).quantize(Decimal('0.01'))
+                else:
+                    # Monthly: only included if scheduled in target_year, target_month!
+                    # Respects already paid obligations whose due_date shifted to next month,
+                    # as well as future contracts starting next month.
+                    if ob.due_date and ob.due_date.year == target_year and ob.due_date.month == target_month:
+                        include_inflow = True
+                    elif ob.due_date is None and ob.billing_day:
+                        include_inflow = True
+
+                if include_inflow:
+                    expected_inflow_amount += inflow_amount
+                    meta = ob.metadata or {}
+                    # Check explicit MA contract source:
+                    # Must have source_type == 'MA_CONTRACT' or linked project is explicitly of type MA_CONTRACT
+                    is_ma = bool(
+                        meta.get('source_type') == 'MA_CONTRACT' or
+                        (getattr(ob, 'project', None) and getattr(ob.project, 'project_type', '') == 'MA_CONTRACT')
+                    )
+                    proj_id = str(ob.project_id) if ob.project_id else meta.get('project_id')
+                    client_name = meta.get('client_name') or meta.get('counterparty') or ''
+                    expected_inflow_items.append({
+                        'id': str(ob.id),
+                        'title': ob.title,
+                        'category': 'MA' if is_ma else 'RECURRING',
+                        'category_label': 'MA Revenue' if is_ma else 'Recurring Inflow',
+                        'type': ob.type,
+                        'amount': inflow_raw_amount,
+                        'amount_thb': inflow_amount,
+                        'currency': ob.currency,
+                        'due_date': ob.due_date.isoformat() if ob.due_date else None,
+                        'counterparty': client_name,
+                        'project_id': proj_id if is_ma else None,
+                    })
+            elif ob.type == ObligationType.INSTALLMENT:
+                # Installment inflow (e.g. counterparty paying installment to user)
+                # Must be scheduled in target_year, target_month and not finished!
+                is_due_this_month = False
+                if ob.due_date and ob.due_date.year == target_year and ob.due_date.month == target_month:
+                    is_due_this_month = True
+                elif ob.due_date is None and ob.billing_day:
+                    is_due_this_month = True
+
+                if is_due_this_month and not summary.get('is_finished', False):
+                    expected_inflow_amount += amount_thb
+                    meta = ob.metadata or {}
+                    expected_inflow_items.append({
+                        'id': str(ob.id),
+                        'title': ob.title,
+                        'category': 'RECURRING',
+                        'category_label': 'Recurring Inflow',
+                        'type': ob.type,
+                        'amount': ob.amount,
+                        'amount_thb': amount_thb,
+                        'currency': ob.currency,
+                        'due_date': ob.due_date.isoformat() if ob.due_date else None,
+                        'counterparty': meta.get('counterparty') or '',
+                        'project_id': None,
+                    })
         else:
             # Outflow commitments
             if ob.type == ObligationType.INSTALLMENT:
@@ -182,11 +295,29 @@ def get_financial_overview(user, target_date: date = None) -> Dict[str, Any]:
     # Sort upcoming 7 days by urgency
     upcoming_7_days.sort(key=lambda x: x['days_left'])
 
+    debt_total_count = FinancialObligation.objects.filter(
+        user=user,
+        type=ObligationType.DEBT
+    ).count()
+
+    debt_breakdown_amount = sum((item['amount_thb'] for item in expected_inflow_items if item['category'] == 'DEBT'), Decimal('0.00'))
+    ma_breakdown_amount = sum((item['amount_thb'] for item in expected_inflow_items if item['category'] == 'MA'), Decimal('0.00'))
+    recurring_breakdown_amount = sum((item['amount_thb'] for item in expected_inflow_items if item['category'] == 'RECURRING'), Decimal('0.00'))
+
     return {
         'target_month': f"{target_year}-{target_month:02d}",
         'confirmed_burn_rate': confirmed_burn_rate,
         'potential_risk_amount': potential_risk_amount,
         'expected_inflow_amount': expected_inflow_amount,
+        'expected_inflow_breakdown': {
+            'debt_amount': debt_breakdown_amount,
+            'ma_amount': ma_breakdown_amount,
+            'recurring_amount': recurring_breakdown_amount,
+            'items': expected_inflow_items
+        },
+        'active_debtor_records_count': active_debtor_records_count,
+        'total_debtors_outstanding_amount': total_debtors_outstanding_amount,
+        'debt_total_count': debt_total_count,
         'active_trials_count': active_trials_count,
         'critical_trials_count': critical_trials_count,
         'upcoming_7_days_count': len(upcoming_7_days),

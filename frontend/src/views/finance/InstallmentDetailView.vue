@@ -86,7 +86,7 @@
         <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
           <span class="text-[10px] font-mono uppercase text-zinc-500 block">Monthly Installment</span>
           <div class="mt-2 text-xl font-bold font-mono text-zinc-100 tabular-nums">
-            ฿{{ Number(contract.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+            {{ currencySymbol(contract.currency) }}{{ Number(contract.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
           </div>
           <span class="text-[10px] text-zinc-500 mt-1 block">Due {{ contract.due_date || 'N/A' }}</span>
         </div>
@@ -95,7 +95,7 @@
         <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
           <span class="text-[10px] font-mono uppercase text-zinc-500 block">Remaining Balance</span>
           <div class="mt-2 text-xl font-bold font-mono text-zinc-100 tabular-nums">
-            ฿{{ Number(contract.summary?.remaining_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+            {{ currencySymbol(contract.currency) }}{{ Number(contract.summary?.remaining_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
           </div>
           <span class="text-[10px] text-zinc-500 mt-1 block">
             {{ remainingTermsCount }} of {{ totalTermsCount }} terms remaining
@@ -106,7 +106,7 @@
         <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
           <span class="text-[10px] font-mono uppercase text-zinc-500 block">Financed Principal</span>
           <div class="mt-2 text-xl font-bold font-mono text-zinc-300 tabular-nums">
-            ฿{{ Number(contract.metadata?.financed_amount || contract.metadata?.total_principal || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+            {{ currencySymbol(contract.currency) }}{{ Number(contract.metadata?.financed_amount || contract.metadata?.total_principal || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
           </div>
           <span class="text-[10px] text-zinc-500 mt-1 block">
             Flat Rate: {{ contract.metadata?.flat_rate_pa || '0.00' }}% p.a.
@@ -242,7 +242,7 @@
                 <tr class="border-b border-zinc-800/80 bg-zinc-950/60 text-[11px] text-zinc-500 uppercase tracking-wider font-semibold">
                   <th class="py-3 px-4">Term</th>
                   <th class="py-3 px-4">Due Date</th>
-                  <th class="py-3 px-4 text-right">Payment (฿)</th>
+                  <th class="py-3 px-4 text-right">Payment</th>
                   <th class="py-3 px-4 text-right">Principal</th>
                   <th class="py-3 px-4 text-right">Interest</th>
                   <th class="py-3 px-4 text-right">Remaining Principal</th>
@@ -264,16 +264,16 @@
                     {{ term.due_date }}
                   </td>
                   <td class="py-3 px-4 text-right font-semibold text-zinc-100 tabular-nums">
-                    ฿{{ term.installment_amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                    {{ currencySymbol(contract.currency) }}{{ term.installment_amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
                   </td>
                   <td class="py-3 px-4 text-right text-zinc-400 tabular-nums">
-                    ฿{{ term.principal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                    {{ currencySymbol(contract.currency) }}{{ term.principal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
                   </td>
                   <td class="py-3 px-4 text-right text-zinc-500 tabular-nums">
-                    ฿{{ term.interest.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                    {{ currencySymbol(contract.currency) }}{{ term.interest.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
                   </td>
                   <td class="py-3 px-4 text-right text-zinc-300 tabular-nums">
-                    ฿{{ term.remaining_principal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                    {{ currencySymbol(contract.currency) }}{{ term.remaining_principal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
                   </td>
                   <td class="py-3 px-4 text-center">
                     <span
@@ -355,7 +355,7 @@
             <div class="p-4 rounded-xl bg-zinc-950 border border-zinc-800 font-mono text-xs space-y-1">
               <span class="text-[10px] text-zinc-500 uppercase block">Regular Remaining Commitment</span>
               <div class="text-lg font-bold text-zinc-300 tabular-nums">
-                ฿{{ simCalculation.regularRemainingTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                {{ currencySymbol(contract.currency) }}{{ simCalculation.regularRemainingTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
               </div>
               <p class="text-[10px] text-zinc-500">If paid on normal monthly installments without payoff</p>
             </div>
@@ -364,7 +364,7 @@
             <div class="p-4 rounded-xl bg-zinc-950 border border-zinc-800 font-mono text-xs space-y-1">
               <span class="text-[10px] text-zinc-500 uppercase block">Statutory Payoff Settlement</span>
               <div class="text-lg font-bold text-zinc-100 tabular-nums">
-                ฿{{ simCalculation.payoffTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                {{ currencySymbol(contract.currency) }}{{ simCalculation.payoffTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
               </div>
               <p class="text-[10px] text-zinc-500">Includes principal, discounted interest + 7% VAT</p>
             </div>
@@ -373,7 +373,7 @@
             <div class="p-4 rounded-xl bg-zinc-950 border border-zinc-800 font-mono text-xs space-y-1">
               <span class="text-[10px] text-zinc-500 uppercase block">Net Interest Saved</span>
               <div class="text-lg font-bold text-emerald-400 tabular-nums">
-                +฿{{ simCalculation.netSavings.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
+                +{{ currencySymbol(contract.currency) }}{{ simCalculation.netSavings.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
               </div>
               <p class="text-[10px] text-emerald-400/80">Direct cash savings by settling early at term #{{ simTerm }}</p>
             </div>
@@ -386,27 +386,27 @@
             </h3>
             <div class="flex justify-between text-zinc-400">
               <span>Outstanding Financed Principal:</span>
-              <span class="text-zinc-200">฿{{ simCalculation.remainingPrincipal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
+              <span class="text-zinc-200">{{ currencySymbol(contract.currency) }}{{ simCalculation.remainingPrincipal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
             </div>
             <div class="flex justify-between text-zinc-400">
               <span>Remaining Unearned Interest (Full):</span>
-              <span class="text-zinc-300">฿{{ simCalculation.remainingInterestBefore.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
+              <span class="text-zinc-300">{{ currencySymbol(contract.currency) }}{{ simCalculation.remainingInterestBefore.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
             </div>
             <div class="flex justify-between text-emerald-400 font-medium">
               <span>Legal OCPB Discount ({{ simDiscountPct }}%):</span>
-              <span>-฿{{ simCalculation.interestSaved.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
+              <span>-{{ currencySymbol(contract.currency) }}{{ simCalculation.interestSaved.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
             </div>
             <div class="flex justify-between text-zinc-400">
               <span>Discounted Interest Payable:</span>
-              <span class="text-zinc-200">฿{{ simCalculation.discountedInterest.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
+              <span class="text-zinc-200">{{ currencySymbol(contract.currency) }}{{ simCalculation.discountedInterest.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
             </div>
             <div class="flex justify-between text-zinc-400">
               <span>Value-Added Tax (VAT 7.0%):</span>
-              <span class="text-zinc-200">฿{{ simCalculation.vat.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
+              <span class="text-zinc-200">{{ currencySymbol(contract.currency) }}{{ simCalculation.vat.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
             </div>
             <div class="pt-2 border-t border-zinc-800 flex justify-between font-bold text-sm text-zinc-100">
               <span>Net Settlement Amount:</span>
-              <span>฿{{ simCalculation.payoffTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
+              <span>{{ currencySymbol(contract.currency) }}{{ simCalculation.payoffTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
             </div>
           </div>
         </div>
@@ -572,7 +572,7 @@
                   <td class="py-2.5 px-3 text-zinc-400">{{ formatDate(pay.paid_at) }}</td>
                   <td class="py-2.5 px-3 font-semibold text-zinc-200">#{{ pay.term_number || '-' }}</td>
                   <td class="py-2.5 px-3 text-right font-semibold text-zinc-100 tabular-nums">
-                    ฿{{ Number(pay.paid_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                    {{ currencySymbol(contract.currency) }}{{ Number(pay.paid_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                   </td>
                   <td class="py-2.5 px-3 text-zinc-400">{{ pay.note || '-' }}</td>
                   <td class="py-2.5 px-3 text-right">
@@ -621,7 +621,7 @@
           </div>
 
           <div class="space-y-1">
-            <label class="text-zinc-400 block">Payment Amount (฿)</label>
+            <label class="text-zinc-400 block">Payment Amount</label>
             <input
               v-model.number="payForm.paid_amount"
               type="number"
@@ -785,6 +785,7 @@
 </template>
 
 <script setup lang="ts">
+import { currencySymbol } from '../../utils/currency'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useInstallments, type InstallmentScheduleItem } from '../../composables/finance/useInstallments'

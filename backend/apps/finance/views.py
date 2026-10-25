@@ -579,13 +579,14 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
 
             entry = debtor_map[key]
             entry['total_principal'] += debt.amount
-            if debt.status == ObligationStatus.ACTIVE:
-                entry['active_count'] += 1
 
             strategy = ObligationStrategyFactory.get_strategy(debt.type)
             summary = strategy.get_summary(debt)
             remaining = Decimal(str(summary.get('remaining_balance', debt.amount)))
             entry['outstanding_balance'] += remaining
+
+            if debt.status == ObligationStatus.ACTIVE and remaining > Decimal('0.00'):
+                entry['active_count'] += 1
 
             repaid = sum((h.paid_amount for h in debt.payment_histories.all()), Decimal('0.00'))
             entry['total_repaid'] += repaid

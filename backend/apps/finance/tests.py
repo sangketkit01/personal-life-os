@@ -9,6 +9,7 @@ from apps.finance.models import (
     ObligationType,
     ObligationSubtype,
     ObligationStatus,
+    FlowDirection,
     PaymentHistory,
     ObligationAttachment
 )
@@ -1392,3 +1393,311 @@ class FinancialAPITestCase(TestCase):
         strategy = ObligationStrategyFactory.get_strategy(trial.type)
         summary = strategy.on_paid(trial, paid_amount=Decimal('299.00'), statement_month='2026-11')
         self.assertIsNotNone(summary.get('payment_id'))
+
+    def test_debtor_separation_and_expected_inflow_breakdown_regression(self):
+        """
+        Regression tests:
+        1. MA A (6,000 THB) + MA B (6,000 THB) recurring in-scope, no DEBT:
+           - active_debtor_records_count == 0
+           - debtors directory is empty
+           - expected_inflow_amount == 12,000.00 THB
+           - breakdown has MA A 6,000 + MA B 6,000, and sum equals 12,000.00 THB
+        2. Inflow DEBT with partial payment:
+           - uses remaining balance
+           - counted as 1 active debtor
+        3. Outflow DEBT:
+           - not counted in debtors or expected inflow
+        4. Zero remaining / cancelled DEBT:
+           - not counted as active debtor
+        5. Multi-user isolation:
+           - User 2's data does not bleed into User 1
+        """
+        target_date = date(2026, 10, 15)
+
+        # Clear existing active obligations for this user for a pristine test scenario
+        FinancialObligation.objects.filter(user=self.user).delete()
+
+        # Step 1: Create MA A = 6,000 THB, MA B = 6,000 THB
+        ma_a = FinancialObligation.objects.create(
+            user=self.user,
+            title='MA: Project Alpha',
+            type=ObligationType.SUBSCRIPTION,
+            direction=FlowDirection.INFLOW,
+            amount=Decimal('6000.00'),
+            currency='THB',
+            due_date=date(2026, 10, 25),
+            metadata={'source_type': 'MA_CONTRACT', 'billing_cycle': 'MONTHLY', 'client_name': 'Client Alpha'}
+        )
+        ma_b = FinancialObligation.objects.create(
+            user=self.user,
+            title='MA: Project Beta',
+            type=ObligationType.SUBSCRIPTION,
+            direction=FlowDirection.INFLOW,
+            amount=Decimal('6000.00'),
+            currency='THB',
+            due_date=date(2026, 10, 28),
+            metadata={'source_type': 'MA_CONTRACT', 'billing_cycle': 'MONTHLY', 'client_name': 'Client Beta'}
+        )
+
+        overview = get_financial_overview(self.user, target_date=target_date)
+
+        # DEBT debtors count must be 0
+        self.assertEqual(overview['active_debtor_records_count'], 0)
+        self.assertEqual(overview['debt_total_count'], 0)
+
+        # Debtors directory API endpoint must be empty
+        res_debtors = self.client.get('/api/finance/obligations/debtors/')
+        self.assertEqual(res_debtors.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res_debtors.data), 0)
+
+        # Expected inflow must be 12,000.00 THB
+        self.assertEqual(overview['expected_inflow_amount'], Decimal('12000.00'))
+        breakdown = overview['expected_inflow_breakdown']
+        self.assertEqual(breakdown['ma_amount'], Decimal('12000.00'))
+        self.assertEqual(breakdown['debt_amount'], Decimal('0.00'))
+        self.assertEqual(len(breakdown['items']), 2)
+        items_sum = sum((item['amount_thb'] for item in breakdown['items']), Decimal('0.00'))
+        self.assertEqual(items_sum, overview['expected_inflow_amount'])
+
+        # Step 2: Add DEBT (INFLOW) 10,000 THB with partial payment of 4,000 THB -> remaining 6,000 THB
+        debt_in = FinancialObligation.objects.create(
+            user=self.user,
+            title='Lent to Friend Bob',
+            type=ObligationType.DEBT,
+            direction=FlowDirection.INFLOW,
+            amount=Decimal('10000.00'),
+            currency='THB',
+            due_date=date(2026, 10, 30),
+            metadata={'counterparty': 'Bob', 'remaining_balance': '6000.00'}
+        )
+        overview2 = get_financial_overview(self.user, target_date=target_date)
+        self.assertEqual(overview2['active_debtor_records_count'], 1)
+        self.assertEqual(overview2['debt_total_count'], 1)
+        self.assertEqual(overview2['total_debtors_outstanding_amount'], Decimal('6000.00'))
+        # Expected inflow is now 12,000 (MA) + 6,000 (DEBT remaining) = 18,000.00
+        self.assertEqual(overview2['expected_inflow_amount'], Decimal('18000.00'))
+        self.assertEqual(overview2['expected_inflow_breakdown']['debt_amount'], Decimal('6000.00'))
+        self.assertEqual(overview2['expected_inflow_breakdown']['ma_amount'], Decimal('12000.00'))
+        self.assertEqual(len(overview2['expected_inflow_breakdown']['items']), 3)
+
+        # Step 3: Add OUTFLOW debt (user owes someone)
+        debt_out = FinancialObligation.objects.create(
+            user=self.user,
+            title='Borrowed from Alice',
+            type=ObligationType.DEBT,
+            direction=FlowDirection.OUTFLOW,
+            amount=Decimal('5000.00'),
+            currency='THB',
+            due_date=date(2026, 10, 20),
+            metadata={'counterparty': 'Alice', 'remaining_balance': '5000.00'}
+        )
+        overview3 = get_financial_overview(self.user, target_date=target_date)
+        # OUTFLOW must NOT increase active_debtor_records_count or expected_inflow_amount
+        self.assertEqual(overview3['active_debtor_records_count'], 1)
+        self.assertEqual(overview3['expected_inflow_amount'], Decimal('18000.00'))
+        self.assertEqual(overview3['debt_total_count'], 2)
+
+        # Step 4: Add completed/zero-balance DEBT
+        debt_completed = FinancialObligation.objects.create(
+            user=self.user,
+            title='Lent to Charlie (Paid)',
+            type=ObligationType.DEBT,
+            direction=FlowDirection.INFLOW,
+            status=ObligationStatus.COMPLETED,
+            amount=Decimal('3000.00'),
+            currency='THB',
+            due_date=date(2026, 10, 10),
+            metadata={'counterparty': 'Charlie', 'remaining_balance': '0.00'}
+        )
+        overview4 = get_financial_overview(self.user, target_date=target_date)
+        self.assertEqual(overview4['active_debtor_records_count'], 1)
+        self.assertEqual(overview4['expected_inflow_amount'], Decimal('18000.00'))
+
+        # Step 5: Multi-currency - Add USD MA subscription $200
+        usd_rate = get_exchange_rate_to_thb('USD')
+        ma_usd = FinancialObligation.objects.create(
+            user=self.user,
+            title='MA: Global Client',
+            type=ObligationType.SUBSCRIPTION,
+            direction=FlowDirection.INFLOW,
+            amount=Decimal('200.00'),
+            currency='USD',
+            due_date=date(2026, 10, 20),
+            metadata={'source_type': 'MA_CONTRACT', 'billing_cycle': 'MONTHLY', 'client_name': 'Global Client'}
+        )
+        overview5 = get_financial_overview(self.user, target_date=target_date)
+        usd_thb = (Decimal('200.00') * usd_rate).quantize(Decimal('0.01'))
+        expected_total = Decimal('18000.00') + usd_thb
+        self.assertEqual(overview5['expected_inflow_amount'], expected_total)
+        # Breakdown sum matches expected total
+        items_sum5 = sum((item['amount_thb'] for item in overview5['expected_inflow_breakdown']['items']), Decimal('0.00'))
+        self.assertEqual(items_sum5, expected_total)
+
+        # Step 6: Pagination test - add 25 more DEBT INFLOW records
+        for i in range(25):
+            FinancialObligation.objects.create(
+                user=self.user,
+                title=f'Debtor #{i+1}',
+                type=ObligationType.DEBT,
+                direction=FlowDirection.INFLOW,
+                amount=Decimal('100.00'),
+                currency='THB',
+                due_date=date(2026, 10, 25),
+                metadata={'counterparty': f'Debtor #{i+1}', 'remaining_balance': '100.00'}
+            )
+        overview6 = get_financial_overview(self.user, target_date=target_date)
+        # 1 existing debtor + 25 new debtors = 26 active debtor records
+        self.assertEqual(overview6['active_debtor_records_count'], 26)
+        # Breakdown item count = 3 MA + 1 original debt + 25 new debts = 29 items
+        self.assertEqual(len(overview6['expected_inflow_breakdown']['items']), 29)
+        items_sum6 = sum((item['amount_thb'] for item in overview6['expected_inflow_breakdown']['items']), Decimal('0.00'))
+        self.assertEqual(items_sum6, overview6['expected_inflow_amount'])
+
+        # Step 7: Multi-user isolation
+        friend_overview = get_financial_overview(self.friend, target_date=target_date)
+        self.assertEqual(friend_overview['active_debtor_records_count'], 0)
+        self.assertEqual(friend_overview['expected_inflow_amount'], Decimal('0.00'))
+        self.assertEqual(len(friend_overview['expected_inflow_breakdown']['items']), 0)
+
+    def test_monthly_due_date_weekly_actual_occurrences_and_project_ma_separation(self):
+        """
+        Verify:
+        1. Monthly subscription scheduled next month is excluded this month.
+        2. Recording payment advances due date to next month, excluding it from this month's pending inflow.
+        3. Weekly subscription calculates actual calendar occurrences in the target month (e.g. 5 dates * 1,000 = 5,000).
+        4. When a weekly installment is paid, remaining occurrences reflect paid status (e.g. 4 * 1,000 = 4,000).
+        5. Inflow subscription linked to CLIENT_DEV project without source_type=MA_CONTRACT is categorized as RECURRING, not MA.
+        6. Inflow installment respects due_date month matching.
+        """
+        from apps.workspace.models import WorkspaceProject, ProjectType
+
+        october = date(2026, 10, 15)
+        FinancialObligation.objects.filter(user=self.user).delete()
+
+        # 1. Monthly subscription starting in November (2026-11-20)
+        sub_nov = FinancialObligation.objects.create(
+            user=self.user,
+            title='Contract Nov Start',
+            type=ObligationType.SUBSCRIPTION,
+            direction=FlowDirection.INFLOW,
+            amount=Decimal('6000.00'),
+            currency='THB',
+            due_date=date(2026, 11, 20),
+            metadata={'billing_cycle': 'MONTHLY'}
+        )
+        overview_oct = get_financial_overview(self.user, target_date=october)
+        # In October, should be 0 because due date is in November!
+        self.assertEqual(overview_oct['expected_inflow_amount'], Decimal('0.00'))
+
+        # In November, should be 6,000.00
+        november = date(2026, 11, 15)
+        overview_nov = get_financial_overview(self.user, target_date=november)
+        self.assertEqual(overview_nov['expected_inflow_amount'], Decimal('6000.00'))
+
+        # 2. Monthly subscription due in October (2026-10-20), recorded payment shifts to November
+        sub_oct = FinancialObligation.objects.create(
+            user=self.user,
+            title='Contract Oct Due',
+            type=ObligationType.SUBSCRIPTION,
+            direction=FlowDirection.INFLOW,
+            amount=Decimal('3000.00'),
+            currency='THB',
+            due_date=date(2026, 10, 20),
+            metadata={'billing_cycle': 'MONTHLY'}
+        )
+        overview_oct2 = get_financial_overview(self.user, target_date=october)
+        self.assertEqual(overview_oct2['expected_inflow_amount'], Decimal('3000.00'))
+
+        # Record payment for October -> due_date moves to 2026-11-20
+        strategy = ObligationStrategyFactory.get_strategy(sub_oct.type)
+        strategy.on_paid(sub_oct, paid_amount=Decimal('3000.00'))
+        sub_oct.refresh_from_db()
+        self.assertEqual(sub_oct.due_date, date(2026, 11, 20))
+
+        # After payment, October pending inflow no longer includes it
+        overview_oct3 = get_financial_overview(self.user, target_date=october)
+        self.assertEqual(overview_oct3['expected_inflow_amount'], Decimal('0.00'))
+
+        # Clean up for next test
+        FinancialObligation.objects.filter(user=self.user).delete()
+
+        # 3. Weekly subscription: 1,000 THB/week with due date 2026-10-02
+        # In October 2026: Fridays are 2, 9, 16, 23, 30 -> exactly 5 occurrences
+        sub_weekly = FinancialObligation.objects.create(
+            user=self.user,
+            title='Weekly Consulting Inflow',
+            type=ObligationType.SUBSCRIPTION,
+            direction=FlowDirection.INFLOW,
+            amount=Decimal('1000.00'),
+            currency='THB',
+            due_date=date(2026, 10, 2),
+            metadata={'billing_cycle': 'WEEKLY'}
+        )
+        overview_weekly = get_financial_overview(self.user, target_date=october)
+        # 5 occurrences * 1,000 THB = 5,000.00 THB (NOT 4,333.30)
+        self.assertEqual(overview_weekly['expected_inflow_amount'], Decimal('5000.00'))
+        self.assertEqual(overview_weekly['expected_inflow_breakdown']['recurring_amount'], Decimal('5000.00'))
+
+        # 4. Record 1 week payment -> due date moves to 2026-10-09
+        strategy_weekly = ObligationStrategyFactory.get_strategy(sub_weekly.type)
+        strategy_weekly.on_paid(sub_weekly, paid_amount=Decimal('1000.00'))
+        sub_weekly.refresh_from_db()
+        self.assertEqual(sub_weekly.due_date, date(2026, 10, 9))
+
+        # Remaining in October: 9, 16, 23, 30 -> 4 occurrences = 4,000.00 THB
+        overview_weekly2 = get_financial_overview(self.user, target_date=october)
+        self.assertEqual(overview_weekly2['expected_inflow_amount'], Decimal('4000.00'))
+
+        # 5. Project CLIENT_DEV subscription (linked to project, but NOT MA_CONTRACT)
+        project_dev = WorkspaceProject.objects.create(
+            user=self.user,
+            name='Client Dev Portal',
+            project_type=ProjectType.CLIENT_DEV
+        )
+        sub_dev = FinancialObligation.objects.create(
+            user=self.user,
+            title='Dev Retainer',
+            type=ObligationType.SUBSCRIPTION,
+            direction=FlowDirection.INFLOW,
+            amount=Decimal('8000.00'),
+            currency='THB',
+            due_date=date(2026, 10, 25),
+            project=project_dev,
+            metadata={'project_id': str(project_dev.id), 'billing_cycle': 'MONTHLY'}
+        )
+        overview_dev = get_financial_overview(self.user, target_date=october)
+        # sub_weekly (4,000) + sub_dev (8,000) = 12,000
+        self.assertEqual(overview_dev['expected_inflow_amount'], Decimal('12000.00'))
+        # sub_dev must be categorized as RECURRING, NOT MA!
+        self.assertEqual(overview_dev['expected_inflow_breakdown']['ma_amount'], Decimal('0.00'))
+        self.assertEqual(overview_dev['expected_inflow_breakdown']['recurring_amount'], Decimal('12000.00'))
+        dev_item = next(i for i in overview_dev['expected_inflow_breakdown']['items'] if i['id'] == str(sub_dev.id))
+        self.assertEqual(dev_item['category'], 'RECURRING')
+
+        # 6. Inflow installment: due in Oct vs due in Nov
+        inst_oct = FinancialObligation.objects.create(
+            user=self.user,
+            title='Sold Laptop Installment Oct',
+            type=ObligationType.INSTALLMENT,
+            direction=FlowDirection.INFLOW,
+            amount=Decimal('2500.00'),
+            currency='THB',
+            due_date=date(2026, 10, 28),
+            metadata={'total_terms': 4, 'current_term': 1}
+        )
+        inst_nov = FinancialObligation.objects.create(
+            user=self.user,
+            title='Sold Laptop Installment Nov',
+            type=ObligationType.INSTALLMENT,
+            direction=FlowDirection.INFLOW,
+            amount=Decimal('2500.00'),
+            currency='THB',
+            due_date=date(2026, 11, 28),
+            metadata={'total_terms': 4, 'current_term': 2}
+        )
+        overview_inst = get_financial_overview(self.user, target_date=october)
+        # inst_oct is included (+2,500), inst_nov is excluded
+        self.assertEqual(overview_inst['expected_inflow_amount'], Decimal('14500.00'))
+        inst_item = next(i for i in overview_inst['expected_inflow_breakdown']['items'] if i['id'] == str(inst_oct.id))
+        self.assertEqual(inst_item['type'], ObligationType.INSTALLMENT)
+        self.assertFalse(any(i['id'] == str(inst_nov.id) for i in overview_inst['expected_inflow_breakdown']['items']))

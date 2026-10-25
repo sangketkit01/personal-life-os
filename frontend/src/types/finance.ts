@@ -106,11 +106,36 @@ export interface UpcomingBill {
   summary: ObligationSummary
 }
 
+export interface ExpectedInflowItem {
+  id: string
+  title: string
+  category: 'DEBT' | 'MA' | 'RECURRING'
+  category_label: string
+  type: ObligationType
+  amount: string | number
+  amount_thb: string | number
+  currency: string
+  due_date?: string | null
+  counterparty?: string
+  project_id?: string | null
+}
+
+export interface ExpectedInflowBreakdown {
+  debt_amount: string | number
+  ma_amount: string | number
+  recurring_amount: string | number
+  items: ExpectedInflowItem[]
+}
+
 export interface FinancialOverview {
   target_month: string
   confirmed_burn_rate: string | number
   potential_risk_amount: string | number
   expected_inflow_amount?: string | number
+  expected_inflow_breakdown?: ExpectedInflowBreakdown
+  active_debtor_records_count?: number
+  total_debtors_outstanding_amount?: string | number
+  debt_total_count?: number
   active_trials_count: number
   critical_trials_count: number
   upcoming_7_days_count: number

@@ -231,12 +231,12 @@
             </div>
             <div class="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
               <button
-                v-if="asset.ip_address"
+                v-if="asset.ip_address || asset.hostname"
                 type="button"
-                @click="copyText(asset.ip_address, t('infra.ipCopied'))"
+                @click="copyText(asset.ip_address || asset.hostname, t('infra.ipCopied'))"
                 class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors font-mono text-[10px]"
                 :title="t('infra.copyIp')"
-              >{{ asset.ip_address }}</button>
+              >{{ asset.ip_address || asset.hostname }}</button>
               <button
                 type="button"
                 @click="openAssetForm(asset)"
@@ -340,7 +340,7 @@
           <div class="px-4 py-3 flex items-center gap-2 flex-wrap">
             <button
               type="button"
-              :disabled="asset.ssh_auth_type === 'NONE' || !asset.ip_address"
+              :disabled="asset.ssh_auth_type === 'NONE' || (!asset.ip_address && !asset.hostname)"
               @click="terminalAsset = asset"
               class="px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 hover:border-zinc-600 text-zinc-200 text-[11px] font-medium transition-colors flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -349,7 +349,7 @@
             </button>
             <button
               type="button"
-              :disabled="asset.ssh_auth_type === 'NONE' || !asset.ip_address"
+              :disabled="asset.ssh_auth_type === 'NONE' || (!asset.ip_address && !asset.hostname)"
               @click="runbookAsset = asset"
               class="px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 hover:border-zinc-600 text-zinc-200 text-[11px] font-medium transition-colors flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -368,10 +368,10 @@
             <button
               v-if="asset.console_url"
               type="button"
-              @click="copyText(`ssh ${asset.ssh_username}@${asset.ip_address} -p ${asset.ssh_port}`, t('infra.sshCopied'))"
+              @click="copyText(`ssh ${asset.ssh_username}@${asset.ip_address || asset.hostname} -p ${asset.ssh_port}`, t('infra.sshCopied'))"
               class="sm:ml-auto max-w-full px-2 py-1 rounded bg-zinc-950/80 border border-zinc-800/80 text-[10px] font-mono text-zinc-500 hover:text-zinc-200 flex items-center gap-1 transition-colors min-w-0"
             >
-              <Copy class="w-2.5 h-2.5 shrink-0" /> <span class="truncate">ssh {{ asset.ssh_username }}@{{ asset.ip_address || '—' }} -p {{ asset.ssh_port }}</span>
+              <Copy class="w-2.5 h-2.5 shrink-0" /> <span class="truncate">ssh {{ asset.ssh_username }}@{{ asset.ip_address || asset.hostname || '—' }} -p {{ asset.ssh_port }}</span>
             </button>
             <a
               v-if="asset.console_url"

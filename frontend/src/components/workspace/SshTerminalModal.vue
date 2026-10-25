@@ -110,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -196,6 +196,7 @@ function ensureTerminal() {
     }
   })
 
+  resizeObserver?.disconnect()
   resizeObserver = new ResizeObserver(() => {
     try { fitAddon?.fit() } catch { /* host hidden */ }
   })
@@ -256,12 +257,11 @@ function connect() {
     if (event.code === 4401) term?.writeln(`\r\n\x1b[38;2;251;113;133m${t('term.authFailed')}\x1b[0m`)
     else if (event.code === 4403) term?.writeln(`\r\n\x1b[38;2;251;113;133m${t('term.forbidden')}\x1b[0m`)
     else if (event.code === 1011 && !lastErrorMessage.value) term?.writeln(`\r\n\x1b[38;2;251;113;133m${t('term.sshFailed')}\x1b[0m`)
-    else term?.writeln(`\r\n\x1b[38;5;245m${t('term.disconnected')}\x1b[0m`)
+    else if (!lastErrorMessage.value) term?.writeln(`\r\n\x1b[38;5;245m${t('term.disconnected')}\x1b[0m`)
   }
 }
 
 function reconnect() {
-  if (wsStatus.value === 'connecting') return
   term?.clear()
   connect()
 }
@@ -287,7 +287,11 @@ function requestClose() {
   emit('close')
 }
 
+let isMounted = false
+let startId = 0
+
 function teardown() {
+  startId++
   if (reconnectTimer) {
     window.clearTimeout(reconnectTimer)
     reconnectTimer = null
@@ -307,12 +311,39 @@ function teardown() {
   fitAddon = null
 }
 
-watch(() => props.isOpen, async (open) => {
-  if (open) {
+async function start() {
+  if (!props.isOpen || !isMounted) return
+  const currentStartId = ++startId
+
+  await nextTick()
+  if (currentStartId !== startId || !props.isOpen || !isMounted) return
+
+  if (!terminalHost.value) {
     await nextTick()
-    ensureTerminal()
-    connect()
-    nextTick(() => { try { fitAddon?.fit() } catch { /* noop */ } })
+    if (currentStartId !== startId || !props.isOpen || !isMounted) return
+  }
+
+  ensureTerminal()
+  if (currentStartId !== startId || !props.isOpen || !isMounted) return
+
+  connect()
+  nextTick(() => {
+    if (currentStartId === startId && props.isOpen && isMounted) {
+      try { fitAddon?.fit() } catch { /* noop */ }
+    }
+  })
+}
+
+onMounted(() => {
+  isMounted = true
+  if (props.isOpen) {
+    start()
+  }
+})
+
+watch(() => props.isOpen, (open) => {
+  if (open) {
+    start()
   } else {
     teardown()
   }
@@ -320,10 +351,17 @@ watch(() => props.isOpen, async (open) => {
 
 watch(() => props.asset.id, () => {
   if (props.isOpen) {
-    term?.clear()
-    connect()
+    if (!term) {
+      start()
+    } else {
+      term.clear()
+      connect()
+    }
   }
 })
 
-onBeforeUnmount(teardown)
+onBeforeUnmount(() => {
+  isMounted = false
+  teardown()
+})
 </script>

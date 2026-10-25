@@ -65,7 +65,7 @@
               v-model="form.currency"
               class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-mono focus:outline-none focus:border-zinc-600 transition-colors"
             >
-              <option value="THB">THB (฿)</option>
+              <option value="THB">THB </option>
               <option value="USD">USD ($)</option>
             </select>
           </div>
@@ -107,7 +107,7 @@
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label class="block text-[10px] text-zinc-500 mb-1">Financed Principal (฿)</label>
+              <label class="block text-[10px] text-zinc-500 mb-1">Financed Principal </label>
               <input
                 v-model.number="form.metadata.financed_amount"
                 type="number"
@@ -150,7 +150,7 @@
           <div class="text-[11px] font-semibold text-zinc-200 uppercase tracking-wider">BNPL Account Parameters</div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label class="block text-[10px] text-zinc-500 mb-1">Credit Limit (฿)</label>
+              <label class="block text-[10px] text-zinc-500 mb-1">Credit Limit </label>
               <input
                 v-model.number="form.metadata.credit_limit"
                 type="number"
@@ -298,7 +298,7 @@
               />
             </div>
             <div>
-              <label class="block text-[10px] text-zinc-500 mb-1">Remaining Balance (฿)</label>
+              <label class="block text-[10px] text-zinc-500 mb-1">Remaining Balance </label>
               <input
                 v-model.number="form.metadata.remaining_balance"
                 type="number"

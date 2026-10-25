@@ -19,7 +19,7 @@
             {{ obligation.subtype }}
           </span>
           <span class="text-xs text-zinc-400 font-mono">
-            ฿{{ Number(obligation.amount).toLocaleString('th-TH') }} {{ obligation.currency }}
+            {{ currencySymbol(obligation.currency) }}{{ Number(obligation.amount).toLocaleString('th-TH') }} {{ obligation.currency }}
           </span>
         </div>
         <h2 class="text-base font-semibold text-zinc-100 tracking-tight">{{ obligation.title }}</h2>
@@ -37,7 +37,7 @@
         <div class="text-right">
           <span class="text-[10px] text-zinc-500 block uppercase">Total Settled</span>
           <span class="text-sm font-semibold text-emerald-400 tabular-nums">
-            ฿{{ totalPaidAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
+            {{ currencySymbol(obligation.currency) }}{{ totalPaidAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
           </span>
         </div>
       </div>
@@ -110,7 +110,7 @@
 
           <div class="text-right shrink-0">
             <span class="text-sm font-semibold text-zinc-100 tabular-nums">
-              +฿{{ Number(hist.paid_amount).toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
+              +{{ currencySymbol(obligation.currency) }}{{ Number(hist.paid_amount).toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
             </span>
           </div>
         </div>
@@ -249,6 +249,7 @@
 </template>
 
 <script setup lang="ts">
+import { currencySymbol } from '../../utils/currency'
 import { ref, computed } from 'vue'
 import { useFinanceStore } from '../../stores/finance'
 import { useStorageStore } from '../../stores/storage'

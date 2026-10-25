@@ -63,7 +63,7 @@
 
             <div class="text-right font-mono">
               <span class="text-xs font-semibold text-rose-400 tabular-nums">
-                ฿{{ Number(trial.amount).toLocaleString('th-TH') }}
+                {{ currencySymbol(trial.currency) }}{{ Number(trial.amount).toLocaleString('th-TH') }}
               </span>
               <span class="text-[9px] text-zinc-500 block">if renewed</span>
             </div>
@@ -219,6 +219,7 @@
 </template>
 
 <script setup lang="ts">
+import { currencySymbol } from '../../../utils/currency'
 import { computed } from 'vue'
 import type { FinancialObligation } from '../../../types/finance'
 import {

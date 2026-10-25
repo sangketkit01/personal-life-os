@@ -77,7 +77,7 @@
         <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-1">
           <span class="text-[10px] font-mono uppercase text-zinc-500 block">Initial Principal</span>
           <div class="text-xl font-semibold font-mono text-zinc-100 tabular-nums">
-            ฿{{ Number(debt.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+            {{ currencySymbol(debt.currency) }}{{ Number(debt.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
           </div>
           <span class="text-[10px] text-zinc-500 font-mono block">Original loan amount</span>
         </div>
@@ -91,7 +91,7 @@
             </span>
           </div>
           <div class="text-xl font-semibold font-mono text-emerald-400 tabular-nums">
-            ฿{{ Number(debt.summary?.total_paid || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+            {{ currencySymbol(debt.currency) }}{{ Number(debt.summary?.total_paid || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
           </div>
           <!-- Progress bar -->
           <div class="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden mt-1.5">
@@ -109,7 +109,7 @@
             class="text-xl font-semibold font-mono tabular-nums"
             :class="debt.direction === 'INFLOW' ? 'text-amber-400' : 'text-rose-400'"
           >
-            ฿{{ Number(debt.summary?.remaining_balance ?? debt.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+            {{ currencySymbol(debt.currency) }}{{ Number(debt.summary?.remaining_balance ?? debt.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
           </div>
           <span class="text-[10px] text-zinc-500 font-mono block">Unpaid balance</span>
         </div>
@@ -242,7 +242,7 @@
                     {{ new Date(p.paid_at).toLocaleString('en-GB') }}
                   </td>
                   <td class="py-2.5 text-right font-semibold text-emerald-400 tabular-nums">
-                    ฿{{ Number(p.paid_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                    {{ currencySymbol(debt.currency) }}{{ Number(p.paid_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                   </td>
                   <td class="py-2.5 text-zinc-400">
                     {{ p.note || 'Partial settlement' }}
@@ -440,6 +440,7 @@
 </template>
 
 <script setup lang="ts">
+import { currencySymbol } from '../../utils/currency'
 import {
  ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

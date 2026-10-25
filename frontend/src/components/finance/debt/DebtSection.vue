@@ -8,7 +8,7 @@
         <div class="mt-2 text-xl font-bold font-mono text-rose-400 tabular-nums">
           -฿{{ totalMyDebtsRemaining.toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[10px] text-zinc-500 mt-1 block">{{ myDebtsList.length }} active debt obligations</span>
+        <span class="text-[10px] text-zinc-500 mt-1 block">{{ myDebtsList.length }} active liability records to settle</span>
       </div>
 
       <!-- Receivables (Inflow) -->
@@ -17,7 +17,7 @@
         <div class="mt-2 text-xl font-bold font-mono text-emerald-400 tabular-nums">
           +฿{{ totalDebtorsRemaining.toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[10px] text-zinc-500 mt-1 block">{{ debtorsList.length }} active debtors to collect</span>
+        <span class="text-[10px] text-zinc-500 mt-1 block">{{ debtorsList.length }} active debtor records to collect</span>
       </div>
 
       <!-- Net Position -->
@@ -156,15 +156,15 @@
           <div class="grid grid-cols-3 gap-2 p-2.5 rounded-lg bg-zinc-950/60 border border-zinc-800/60 font-mono text-xs">
             <div>
               <span class="text-[9px] text-zinc-500 block uppercase">Total Lent</span>
-              <span class="text-zinc-200 font-semibold">฿{{ Number(debtor.amount).toLocaleString('th-TH') }}</span>
+              <span class="text-zinc-200 font-semibold">{{ currencySymbol(debtor.currency) }}{{ Number(debtor.amount).toLocaleString('th-TH') }}</span>
             </div>
             <div>
               <span class="text-[9px] text-zinc-500 block uppercase">Paid Back</span>
-              <span class="text-emerald-400 font-semibold">฿{{ Number(debtor.summary?.total_paid || 0).toLocaleString('th-TH') }}</span>
+              <span class="text-emerald-400 font-semibold">{{ currencySymbol(debtor.currency) }}{{ Number(debtor.summary?.total_paid || 0).toLocaleString('th-TH') }}</span>
             </div>
             <div class="text-right">
               <span class="text-[9px] text-zinc-500 block uppercase">Remaining</span>
-              <span class="text-amber-400 font-semibold">฿{{ Number(debtor.summary?.remaining_balance || debtor.amount).toLocaleString('th-TH') }}</span>
+              <span class="text-amber-400 font-semibold">{{ currencySymbol(debtor.currency) }}{{ Number(debtor.summary?.remaining_balance || debtor.amount).toLocaleString('th-TH') }}</span>
             </div>
           </div>
 
@@ -254,10 +254,10 @@
                   </span>
                 </td>
                 <td class="py-2.5 text-right text-zinc-400 tabular-nums">
-                  ฿{{ Number(debt.amount).toLocaleString('th-TH') }}
+                  {{ currencySymbol(debt.currency) }}{{ Number(debt.amount).toLocaleString('th-TH') }}
                 </td>
                 <td class="py-2.5 text-right font-semibold text-rose-400 tabular-nums">
-                  ฿{{ Number(debt.summary?.remaining_balance || debt.amount).toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
+                  {{ currencySymbol(debt.currency) }}{{ Number(debt.summary?.remaining_balance || debt.amount).toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
                 </td>
                 <td class="py-2.5 text-zinc-400">
                   {{ debt.due_date ? new Date(debt.due_date).toLocaleDateString('en-GB') : 'N/A' }}
@@ -311,6 +311,7 @@
 </template>
 
 <script setup lang="ts">
+import { currencySymbol } from '../../../utils/currency'
 import {
  ref, computed } from 'vue'
 import { useToastStore } from '../../../stores/toast'
@@ -348,11 +349,21 @@ const activeSubTab = ref<'DEBTORS' | 'LIABILITIES'>('DEBTORS')
 const copiedIds = ref<Record<string, boolean>>({})
 
 const debtorsList = computed(() => {
-  return props.obligations.filter(o => o.direction === 'INFLOW' && o.status === 'ACTIVE')
+  return props.obligations.filter(o =>
+    o.type === 'DEBT' &&
+    o.direction === 'INFLOW' &&
+    o.status === 'ACTIVE' &&
+    Number(o.summary?.remaining_balance ?? o.amount ?? 0) > 0
+  )
 })
 
 const myDebtsList = computed(() => {
-  return props.obligations.filter(o => o.type === 'DEBT' && o.direction !== 'INFLOW' && o.status === 'ACTIVE')
+  return props.obligations.filter(o =>
+    o.type === 'DEBT' &&
+    o.direction !== 'INFLOW' &&
+    o.status === 'ACTIVE' &&
+    Number(o.summary?.remaining_balance ?? o.amount ?? 0) > 0
+  )
 })
 
 const totalDebtorsRemaining = computed(() => {

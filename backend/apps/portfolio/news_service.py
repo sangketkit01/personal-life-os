@@ -82,11 +82,42 @@ def scrape_article_content(url: str, timeout: int = 8) -> Dict[str, str]:
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(html, 'html.parser')
 
-    # Remove non-content HTML tags
+        # 0. Extract JSON-LD metadata and articleBody BEFORE removing <script> tags
+        json_ld_body = ''
+        json_ld_lead = ''
+        for script in soup.find_all('script', attrs={'type': 'application/ld+json'}):
+            try:
+                raw_json = script.string or script.get_text()
+                if not raw_json:
+                    continue
+                data = json.loads(raw_json.strip())
+                items = data if isinstance(data, list) else [data]
+                expanded_items = []
+                for it in items:
+                    if isinstance(it, dict) and '@graph' in it and isinstance(it['@graph'], list):
+                        expanded_items.extend(it['@graph'])
+                    else:
+                        expanded_items.append(it)
+
+                for item in expanded_items:
+                    if not isinstance(item, dict):
+                        continue
+                    schema_type = str(item.get('@type', '')).lower()
+                    if any(t in schema_type for t in ['article', 'newsarticle', 'report', 'blogposting']):
+                        body = item.get('articleBody') or item.get('text')
+                        if body and len(body.strip()) > len(json_ld_body):
+                            json_ld_body = body.strip()
+                        desc = item.get('description')
+                        if desc and not json_ld_lead:
+                            json_ld_lead = desc.strip()
+            except Exception:
+                continue
+
+        # Remove non-content HTML tags
         for tag in soup(['script', 'style', 'noscript', 'header', 'footer', 'nav', 'aside', 'form', 'svg']):
             tag.decompose()
 
-    # 1. Extract Meta Description (lead summary)
+        # 1. Extract Meta Description (lead summary)
         desc_tag = (
             soup.find('meta', attrs={'name': 'description'})
             or soup.find('meta', attrs={'property': 'og:description'})
@@ -94,33 +125,78 @@ def scrape_article_content(url: str, timeout: int = 8) -> Dict[str, str]:
         )
         if desc_tag and desc_tag.get('content'):
             lead = desc_tag['content'].strip()
+        elif json_ld_lead:
+            lead = json_ld_lead
 
-    # 2. Locate main article body
-        container = (
-            soup.find('article')
-            or soup.find('div', class_=re.compile(r'caas-body|article-body|story-body|entry-content|wysiwyg|post-content', re.I))
-            or soup.find('main')
-            or soup.body
-        )
-
-        paragraphs = []
+        # 2. Locate main article body (select best container by content volume, not just first <article>)
         skip_phrases = [
             'all rights reserved', 'cookie policy', 'privacy policy',
-            'terms of service', 'sign up', 'subscribe to', 'read more:',
-            'click here', 'advertisement', 'photo by', 'getty images'
+            'terms of service', 'terms of use', 'sign up for', 'subscribe to',
+            'read more:', 'click here', 'advertisement', 'photo by',
+            'getty images', 'follow us on'
         ]
+        noise_prefixes = re.compile(
+            r'^(share|tweet|email|print|save|subscribe|sign up|advertisement|sponsored|click here|all rights reserved|photo by|photo:|image credit:)\b',
+            re.I
+        )
 
-        if container:
-            for p in container.find_all('p'):
+        def is_meaningful_paragraph(text: str) -> bool:
+            clean = text.strip()
+            if not clean:
+                return False
+            lower = clean.lower()
+            if any(phrase in lower for phrase in skip_phrases):
+                return False
+            if noise_prefixes.search(lower):
+                return False
+            words = clean.split()
+            if len(words) >= 2:
+                return True
+            if len(words) == 1 and bool(re.search(r'[\d%$\u0e00-\u0e7f]', clean)) and len(clean) >= 3:
+                return True
+            return False
+
+        def extract_paragraphs(element):
+            paras = []
+            if not element:
+                return paras
+            for p in element.find_all('p'):
                 text = p.get_text().strip()
-                if len(text) > 35:
-                    lower = text.lower()
-                    if not any(phrase in lower for phrase in skip_phrases):
-                        paragraphs.append(text)
+                if is_meaningful_paragraph(text):
+                    paras.append(text)
+            return paras
 
-        full_text = '\n\n'.join(paragraphs)
-        if not lead and paragraphs:
-            lead = paragraphs[0]
+        candidates = []
+        for art in soup.find_all('article'):
+            candidates.append(art)
+        for cdiv in soup.find_all('div', class_=re.compile(r'caas-body|article-body|story-body|entry-content|wysiwyg|post-content', re.I)):
+            candidates.append(cdiv)
+        main_tag = soup.find('main') or soup.find(attrs={'role': 'main'})
+        if main_tag:
+            candidates.append(main_tag)
+
+        best_paragraphs = []
+        for cand in candidates:
+            cand_paras = extract_paragraphs(cand)
+            if sum(len(p) for p in cand_paras) > sum(len(p) for p in best_paragraphs):
+                best_paragraphs = cand_paras
+
+        # If candidates returned insufficient text, fallback to entire body
+        if sum(len(p) for p in best_paragraphs) < 100 and soup.body:
+            body_paras = extract_paragraphs(soup.body)
+            if sum(len(p) for p in body_paras) > sum(len(p) for p in best_paragraphs):
+                best_paragraphs = body_paras
+
+        full_text = '\n\n'.join(best_paragraphs)
+
+        # Prefer JSON-LD articleBody if HTML paragraph extraction yielded less content
+        if json_ld_body and len(json_ld_body) > len(full_text):
+            full_text = json_ld_body
+
+        if not lead and best_paragraphs:
+            lead = best_paragraphs[0]
+        elif not lead and json_ld_body:
+            lead = json_ld_body[:300]
     except Exception as e:
         print(f"Notice: Parsing failed for {resolved_url}: {e}")
 
@@ -280,19 +356,17 @@ def translate_edge_batch(texts: List[str]) -> List[Optional[str]]:
     return results
 
 
-def translate_rpc(text: str) -> str:
-    # 1. Tier 1: Microsoft Edge AI Translator (fast, accurate, no rate limit)
-    if not text or not text.strip():
+def _translate_single_rpc_chunk(chunk: str) -> str:
+    """Helper to translate a single text chunk (<= 2800 chars) through the 4-tier engine."""
+    clean_text = chunk.strip()
+    if not clean_text:
         return ''
-
-    clean_text = text.strip()
-    # If already in target language, return as is
     if bool(re.search(r'[\u0e00-\u0e7f]', clean_text)):
         return clean_text
 
     # 1. Tier 1: Microsoft Edge AI Translator (fast, accurate, no rate limit)
     try:
-        edge_res = translate_edge_batch([clean_text[:3000]])
+        edge_res = translate_edge_batch([clean_text])
         if edge_res and edge_res[0]:
             if bool(re.search(r'[\u0e00-\u0e7f]', edge_res[0])) or not bool(re.search(r'[a-zA-Z]', clean_text)):
                 return edge_res[0]
@@ -357,6 +431,97 @@ def translate_rpc(text: str) -> str:
     return clean_text
 
 
+def _chunk_text_safely(text: str, max_chars: int = 2400) -> List[str]:
+    """
+    Safely divides text into chunks of at most `max_chars` without cutting off trailing content.
+    Splits along natural boundaries (paragraphs -> sentences -> words -> characters).
+    """
+    text = text.strip()
+    if not text:
+        return []
+    if len(text) <= max_chars:
+        return [text]
+
+    units = []
+    lines = text.split('\n')
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if len(line) <= max_chars:
+            units.append(line)
+        else:
+            sentences = re.split(r'(?<=[.!?])\s+', line)
+            for s in sentences:
+                s = s.strip()
+                if not s:
+                    continue
+                if len(s) <= max_chars:
+                    units.append(s)
+                else:
+                    words = s.split(' ')
+                    curr_word_chunk = []
+                    curr_word_len = 0
+                    for w in words:
+                        if not w:
+                            continue
+                        if len(w) > max_chars:
+                            if curr_word_chunk:
+                                units.append(' '.join(curr_word_chunk))
+                                curr_word_chunk = []
+                                curr_word_len = 0
+                            for i in range(0, len(w), max_chars):
+                                units.append(w[i:i+max_chars])
+                        elif curr_word_len + len(w) + (1 if curr_word_chunk else 0) > max_chars:
+                            units.append(' '.join(curr_word_chunk))
+                            curr_word_chunk = [w]
+                            curr_word_len = len(w)
+                        else:
+                            curr_word_chunk.append(w)
+                            curr_word_len += len(w) + (1 if len(curr_word_chunk) > 1 else 0)
+                    if curr_word_chunk:
+                        units.append(' '.join(curr_word_chunk))
+
+    chunks = []
+    current_chunk = []
+    current_len = 0
+    for u in units:
+        added_len = len(u) + (1 if current_chunk else 0)
+        if current_len + added_len > max_chars and current_chunk:
+            chunks.append(' '.join(current_chunk))
+            current_chunk = [u]
+            current_len = len(u)
+        else:
+            current_chunk.append(u)
+            current_len += added_len
+    if current_chunk:
+        chunks.append(' '.join(current_chunk))
+
+    return chunks
+
+
+def translate_rpc(text: str) -> str:
+    """
+    Translates arbitrary length text into Thai without truncating trailing paragraphs.
+    Splits long inputs into natural sentence/paragraph/word chunks <= 2400 chars.
+    """
+    if not text or not text.strip():
+        return ''
+
+    clean_text = text.strip()
+    if bool(re.search(r'[\u0e00-\u0e7f]', clean_text)):
+        return clean_text
+
+    chunks = _chunk_text_safely(clean_text, max_chars=2400)
+    if not chunks:
+        return clean_text
+
+    results = []
+    for c in chunks:
+        results.append(_translate_single_rpc_chunk(c))
+    return ' '.join(results)
+
+
 def translate_full_text(text: str) -> str:
     """
     Translates full article content across all paragraphs.
@@ -394,12 +559,39 @@ def translate_with_gemini(
     """
     Translates and generates Executive Summary plus full content via Google Gemini AI.
     Returns JSON: {"title_th": "...", "summary_th": "...", "content_th": "...", "sentiment": "..."}
+    If content exceeds the ceiling (30,000 chars), Gemini generates the title, executive summary,
+    and sentiment within its scope, while the full body is translated via the chunked pipeline (translate_full_text).
     """
     endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
 
-    article_sample = (content[:12000] if content else lead[:1000]) or title
+    MAX_GEMINI_CONTENT = 30000
+    is_over_limit = bool(content and len(content) > MAX_GEMINI_CONTENT)
+    article_sample = (content[:MAX_GEMINI_CONTENT] if content else lead[:2000]) or title
 
-    prompt = f"""You are a professional equity research analyst and financial journalist.
+    if is_over_limit:
+        prompt = f"""You are a professional equity research analyst and financial journalist.
+Analyze the following financial news article about stock/asset {ticker}.
+
+Tasks:
+1. Translate the headline to natural, high-level Thai financial journalism language ("title_th").
+2. Write a structured Thai Executive Summary ("summary_th") formatted with 3 bullet points (- ...) covering:
+   - Core news event and key financial metrics/figures (percentages, revenue, product launches, etc.)
+   - Direct impact, potential risks or growth drivers for {ticker}
+   - Key strategic takeaway for an active investor
+3. Classify the market sentiment strictly as: BULLISH, BEARISH, or NEUTRAL.
+
+Headline: "{title}"
+Article Content (Excerpt):
+{article_sample}
+
+Respond ONLY with a valid JSON object matching this schema:
+{{
+  "title_th": "Translated News Headline",
+  "summary_th": "- Key Takeaway: ...\\n- Market Impact: ...\\n- Strategic View: ...",
+  "sentiment": "BULLISH"
+}}"""
+    else:
+        prompt = f"""You are a professional equity research analyst and financial journalist.
 Analyze the following financial news article about stock/asset {ticker}.
 
 Tasks:
@@ -418,8 +610,8 @@ Article Content:
 Respond ONLY with a valid JSON object matching this schema:
 {{
   "title_th": "Translated News Headline",
-  "summary_th": "- Key Takeaway: ...\n- Market Impact: ...\n- Strategic View: ...",
-  "content_th": "Full translated article content across all paragraphs..."
+  "summary_th": "- Key Takeaway: ...\\n- Market Impact: ...\\n- Strategic View: ...",
+  "content_th": "Full translated article content across all paragraphs...",
   "sentiment": "BULLISH"
 }}"""
 
@@ -444,10 +636,19 @@ Respond ONLY with a valid JSON object matching this schema:
                 sentiment = str(parsed.get('sentiment', 'NEUTRAL')).upper()
                 if sentiment not in ['BULLISH', 'BEARISH', 'NEUTRAL']:
                     sentiment = 'NEUTRAL'
+
+                if is_over_limit:
+                    has_thai_content = bool(re.search(r'[\u0e00-\u0e7f]', content or ''))
+                    content_th = content if has_thai_content else translate_full_text(content)
+                else:
+                    content_th = parsed.get('content_th', '').strip()
+                    if content and not content_th:
+                        content_th = translate_full_text(content)
+
                 return {
                     'title_th': parsed.get('title_th', '').strip(),
                     'summary_th': parsed.get('summary_th', '').strip(),
-                    'content_th': parsed.get('content_th', '').strip(),
+                    'content_th': content_th,
                     'sentiment': sentiment
                 }
     except Exception as e:
@@ -489,22 +690,42 @@ def translate_with_fallback(
     elif any(w in combined_text for w in bearish_words):
         sentiment = 'BEARISH'
 
-    # 3. Generate Executive Summary as 3 bullet points
+    # 3. Generate Executive Summary as 3 bullet points (all in Thai, no boilerplate English)
     lead_source = lead or (content.split('\n\n')[0] if content else title)
     has_thai_lead = bool(re.search(r'[\u0e00-\u0e7f]', lead_source or ''))
     translated_lead = lead_source if has_thai_lead else translate_rpc(lead_source)
 
     if sentiment == 'BULLISH':
-        sentiment_summary = f"Positive signal: positive catalyst identified for {ticker}"
+        sentiment_th = f"สัญญาณบวก: พบปัจจัยเร่งเชิงบวกและโอกาสเติบโตสำหรับ {ticker}"
     elif sentiment == 'BEARISH':
-        sentiment_summary = f"Risk signal: downward pressure or headwind identified for {ticker}"
+        sentiment_th = f"สัญญาณความเสี่ยง: พบแรงกดดันเชิงลบหรือปัจจัยท้าทายสำหรับ {ticker}"
     else:
-        sentiment_summary = f"Neutral outlook: monitoring market developments for {ticker}"
+        sentiment_th = f"มุมมองเป็นกลาง: ติดตามความคืบหน้าและปฏิกิริยาของตลาดสำหรับ {ticker}"
+
+    paras = [p.strip() for p in (content or '').split('\n\n') if p.strip()]
+
+    # Bullet 2: Market impact - incorporate 2nd paragraph if available
+    if len(paras) > 1 and len(paras[1]) > 20:
+        impact_source = paras[1][:400]
+        has_thai_impact = bool(re.search(r'[\u0e00-\u0e7f]', impact_source))
+        translated_impact = impact_source if has_thai_impact else translate_rpc(impact_source)
+        market_impact_bullet = f"• ผลกระทบต่อตลาด: {sentiment_th} — {translated_impact}"
+    else:
+        market_impact_bullet = f"• ผลกระทบต่อตลาด: {sentiment_th}"
+
+    # Bullet 3: Strategic takeaway / follow-up - incorporate 3rd paragraph if available
+    if len(paras) > 2 and len(paras[2]) > 20:
+        follow_source = paras[2][:400]
+        has_thai_follow = bool(re.search(r'[\u0e00-\u0e7f]', follow_source))
+        translated_follow = follow_source if has_thai_follow else translate_rpc(follow_source)
+        strategic_bullet = f"• ข้อสรุปเชิงกลยุทธ์: {translated_follow}"
+    else:
+        strategic_bullet = f"• ข้อสรุปเชิงกลยุทธ์: ติดตามรายงานทางการเงินและความเคลื่อนไหวของ {ticker} อย่างใกล้ชิด"
 
     summary_bullets = [
-        f"• Key Highlight: {translated_lead}",
-        f"• Market Impact: {sentiment_summary}",
-        f"• Source & Follow-up: Refer to full financial market report",
+        f"• ประเด็นสำคัญ: {translated_lead}",
+        market_impact_bullet,
+        strategic_bullet,
     ]
     summary_th = '\n'.join(summary_bullets)
 
@@ -537,7 +758,15 @@ def translate_and_enrich_article(
     if gemini_key:
         ai_res = translate_with_gemini(title, ticker, lead, content, gemini_key)
         if ai_res and ai_res.get('title_th'):
-            return ai_res
+            has_thai_title = bool(re.search(r'[\u0e00-\u0e7f]', ai_res['title_th']))
+            has_thai_sum = bool(re.search(r'[\u0e00-\u0e7f]', ai_res.get('summary_th', '')))
+            has_thai_cnt = bool(re.search(r'[\u0e00-\u0e7f]', ai_res.get('content_th', '')))
+            # Only accept Gemini output if title is in Thai AND summary/content are non-empty with Thai text
+            # If content was provided, content_th must be non-empty (never accept empty translation body)
+            has_valid_content = bool(not content or (has_thai_cnt and len(ai_res.get('content_th', '')) > 30))
+            if has_thai_title and (has_thai_sum or has_thai_cnt) and has_valid_content:
+                return ai_res
+            print("Notice: Gemini returned partial or empty translation body, falling back to multi-tier engine.")
 
     return translate_with_fallback(title, ticker, lead, content)
 
@@ -630,29 +859,71 @@ def ingest_news_for_ticker(ticker: str, limit_per_source: int = 3) -> int:
     return new_articles_count
 
 
+def is_article_incomplete(article: StockNewsArticle) -> bool:
+    """
+    Checks whether an existing article is incomplete, has legacy English boilerplate,
+    or needs re-scraping and re-translation.
+    """
+    title_th = (article.title_th or '').strip()
+    summary_th = (article.summary_th or '').strip()
+    content = (article.content or '').strip()
+    content_th = (article.content_th or '').strip()
+
+    has_thai_title = bool(re.search(r'[\u0e00-\u0e7f]', title_th))
+    has_thai_summary = bool(re.search(r'[\u0e00-\u0e7f]', summary_th))
+    has_thai_content = bool(re.search(r'[\u0e00-\u0e7f]', content_th))
+
+    # Must have Thai title and summary
+    if not has_thai_title or not has_thai_summary:
+        return True
+
+    # Detect legacy English boilerplate in summary_th
+    boilerplate_phrases = [
+        'market impact: positive signal',
+        'market impact: risk signal',
+        'market impact: neutral outlook',
+        'source & follow-up: refer to full financial market report',
+        'refer to full financial market report',
+        'positive signal: positive catalyst identified',
+        'risk signal: downward pressure',
+        'neutral outlook: monitoring market developments'
+    ]
+    sum_lower = summary_th.lower()
+    if any(bp in sum_lower for bp in boilerplate_phrases):
+        return True
+
+    # If content exists, it must have translated Thai content and paragraph parity
+    if content:
+        if not content_th or not has_thai_content:
+            return True
+        eng_paras = [p.strip() for p in content.split('\n\n') if p.strip()]
+        th_paras = [p.strip() for p in content_th.split('\n\n') if p.strip()]
+        if len(eng_paras) > len(th_paras) + 1:
+            return True
+
+    # If content is empty or short teaser (< 180 chars)
+    if not content or len(content) < 180:
+        return True
+
+    return False
+
+
 def enrich_article_if_empty(article: StockNewsArticle, force: bool = False) -> StockNewsArticle:
     """
     Backfills news body and translated summary for existing incomplete articles.
+    Automatically repairs legacy boilerplate or partial translations.
     """
-    has_thai_title = bool(re.search(r'[\u0e00-\u0e7f]', article.title_th or ''))
-    has_thai_summary = bool(re.search(r'[\u0e00-\u0e7f]', article.summary_th or ''))
-    has_thai_content = bool(re.search(r'[\u0e00-\u0e7f]', article.content_th or ''))
+    incomplete = is_article_incomplete(article)
+    if not force and not incomplete:
+        return article
 
-    eng_paras = [p.strip() for p in (article.content or '').split('\n\n') if p.strip()]
-    th_paras = [p.strip() for p in (article.content_th or '').split('\n\n') if p.strip()]
-
-    # Skip if already translated unless force=True
-    if not force and article.content and has_thai_content and has_thai_title and has_thai_summary and len(article.summary_th) > 30:
-        if len(eng_paras) <= len(th_paras) + 1:
-            return article
-
-    # Fetch from source if content is empty or force=True
-    content = article.content
-    lead = article.summary
-    if not content or force or not has_thai_content:
+    # Fetch from source if content is empty or short teaser or incomplete or force=True
+    content = article.content or ''
+    lead = article.summary or ''
+    if not content or len(content) < 200 or force or incomplete:
         scraped = scrape_article_content(article.url, timeout=8)
         scraped_content = scraped.get('full_text', '')
-        if scraped_content:
+        if scraped_content and len(scraped_content) > len(content):
             content = scraped_content
             lead = scraped.get('lead') or lead
 

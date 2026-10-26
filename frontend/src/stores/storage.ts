@@ -9,6 +9,7 @@ import {
   completeResumableUpload,
   disconnectGoogleDrive,
   deleteFileByDriveId,
+  getFileByDriveId,
   type GoogleDriveStatus,
   type DriveFileItem
 } from '../api/storage'
@@ -120,15 +121,48 @@ export const useStorageStore = defineStore('storage', () => {
         if (onProgress) onProgress(pct)
       })
 
-      // Step 3: Register metadata in backend
-      const savedFile = await completeResumableUpload({
-        drive_file_id: gdriveResult.id,
-        domain,
-        target_id: targetId,
-        file_name: file.name,
-        file_type: file.type || 'application/octet-stream',
-        file_size: file.size
-      })
+      // Step 3: Register metadata in backend with retry & orphan compensation
+      let savedFile: DriveFileItem | null = null
+      let registerError: any = null
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          savedFile = await completeResumableUpload({
+            drive_file_id: gdriveResult.id,
+            domain,
+            target_id: targetId,
+            file_name: file.name,
+            file_type: file.type || 'application/octet-stream',
+            file_size: file.size
+          })
+          break
+        } catch (err: any) {
+          registerError = err
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, 1000 * (attempt + 1)))
+          }
+        }
+      }
+
+      if (!savedFile) {
+        // Double-check if the file was actually registered on the backend (e.g. response dropped)
+        const existingFile = await getFileByDriveId(gdriveResult.id)
+        if (existingFile && existingFile.id) {
+          uploadProgress.value = null
+          return existingFile
+        }
+
+        // Step 3 failed after retries and file is not registered: compensate to prevent orphan file on Google Drive
+        try {
+          await deleteFileByDriveId(gdriveResult.id)
+        } catch (cleanupErr) {
+          console.warn('Failed to clean up orphaned Drive file:', cleanupErr)
+        }
+        throw new Error(
+          registerError?.response?.data?.error ||
+          registerError?.message ||
+          'Upload to Google Drive completed, but backend registration failed. The upload was safely rolled back.'
+        )
+      }
 
       uploadProgress.value = null
       return savedFile

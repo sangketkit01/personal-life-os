@@ -685,16 +685,11 @@ class StockNewsViewSet(viewsets.ReadOnlyModelViewSet):
         return qs.order_by('-published_at', '-created_at')
 
     def retrieve(self, request, *args, **kwargs):
-        """Retrieve news detail and trigger backfill for full content if needed."""
-        import re
+        """Retrieve news detail and trigger backfill/repair for full content if needed."""
         instance = self.get_object()
-        has_thai_title = bool(re.search(r'[\u0e00-\u0e7f]', instance.title_th or ''))
-        has_thai_content = bool(re.search(r'[\u0e00-\u0e7f]', instance.content_th or ''))
-        eng_paras = len([p for p in (instance.content or '').split('\n\n') if p.strip()])
-        th_paras = len([p for p in (instance.content_th or '').split('\n\n') if p.strip()])
-        if not instance.content or not instance.content_th or not has_thai_title or not has_thai_content or eng_paras > th_paras + 1:
-            from .news_service import enrich_article_if_empty
-            instance = enrich_article_if_empty(instance, force=(not has_thai_title or not has_thai_content))
+        from .news_service import is_article_incomplete, enrich_article_if_empty
+        if is_article_incomplete(instance):
+            instance = enrich_article_if_empty(instance, force=True)
         serializer = self.get_serializer(instance)
         return response.Response(serializer.data)
 
@@ -713,7 +708,7 @@ class StockNewsViewSet(viewsets.ReadOnlyModelViewSet):
         """On-demand news translation and article backfill action."""
         article = self.get_object()
         from .news_service import enrich_article_if_empty
-        article = enrich_article_if_empty(article)
+        article = enrich_article_if_empty(article, force=True)
         return response.Response(StockNewsArticleSerializer(article).data)
 
 

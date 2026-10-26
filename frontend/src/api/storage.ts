@@ -130,6 +130,19 @@ export async function deleteDriveFile(id: string): Promise<void> {
   await apiClient.delete(`/storage/files/${id}/`)
 }
 
+/** Fetch metadata of a Drive file by its Google Drive file id, or null if not found (404). */
+export async function getFileByDriveId(driveFileId: string): Promise<DriveFileItem | null> {
+  try {
+    const res = await apiClient.get<DriveFileItem>(`/storage/files/by-drive-id/${driveFileId}/`)
+    return res.data
+  } catch (err: any) {
+    if (err?.response?.status === 404) {
+      return null
+    }
+    throw err
+  }
+}
+
 /** Idempotent DELETE of a Drive file by its Google Drive file id. */
 export async function deleteFileByDriveId(driveFileId: string): Promise<void> {
   await apiClient.delete(`/storage/files/by-drive-id/${driveFileId}/`)

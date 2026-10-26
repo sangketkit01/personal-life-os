@@ -342,8 +342,22 @@ class StorageGoogleDriveTests(TestCase):
         resp = self.client.get('/api/storage/files/deleted_file_1/stream/')
         self.assertEqual(resp.status_code, status.HTTP_502_BAD_GATEWAY)
 
-    def test_delete_file_by_drive_id(self):
+    @patch('apps.storage.services.requests.delete')
+    def test_delete_file_by_drive_id(self, mock_delete):
         """DELETE by drive id removes the remote file and the metadata record (idempotent)."""
+        GoogleDriveConnection.objects.create(
+            user=self.user,
+            google_email='user@gmail.com',
+            access_token='mock_access_token',
+            refresh_token='mock_refresh_token',
+            token_expiry=timezone.now() + timedelta(hours=1),
+            root_folder_id='folder_root_123',
+            is_connected=True
+        )
+        mock_resp = MagicMock()
+        mock_resp.status_code = 204
+        mock_delete.return_value = mock_resp
+
         DriveFile.objects.create(
             user=self.user,
             drive_file_id='deleteme_file_1',
@@ -356,11 +370,26 @@ class StorageGoogleDriveTests(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(DriveFile.objects.filter(drive_file_id='deleteme_file_1').exists())
 
-        # Idempotent: deleting an absent id still returns 204
+        # Idempotent: deleting an absent id still calls Drive API and returns 204
         resp_again = self.client.delete('/api/storage/files/by-drive-id/deleteme_file_1/')
         self.assertEqual(resp_again.status_code, status.HTTP_204_NO_CONTENT)
 
-    def test_delete_file_by_drive_id_bola_isolation(self):
+    def test_delete_file_disconnected_preserves_metadata(self):
+        """When Drive is disconnected, delete must NOT delete metadata and must return 502."""
+        DriveFile.objects.create(
+            user=self.user,
+            drive_file_id='deleteme_disconnected_1',
+            file_name='keepme.png',
+            file_type='image/png',
+            domain=StorageDomain.NOTE
+        )
+
+        resp = self.client.delete('/api/storage/files/by-drive-id/deleteme_disconnected_1/')
+        self.assertEqual(resp.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertTrue(DriveFile.objects.filter(drive_file_id='deleteme_disconnected_1').exists())
+
+    @patch('apps.storage.services.requests.delete')
+    def test_delete_file_by_drive_id_bola_isolation(self, mock_delete):
         """User B deleting User A's drive file id must leave User A's record intact."""
         other = User.objects.create_user(
             username='owneruser',
@@ -378,6 +407,7 @@ class StorageGoogleDriveTests(TestCase):
         resp = self.client.delete('/api/storage/files/by-drive-id/foreign_owned_1/')
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
         self.assertTrue(DriveFile.objects.filter(drive_file_id='foreign_owned_1', user=other).exists())
+        mock_delete.assert_not_called()
 
     @patch('requests.get')
     def test_note_upload_no_longer_duplicates_attachments(self, mock_get):

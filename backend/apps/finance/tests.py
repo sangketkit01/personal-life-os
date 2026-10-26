@@ -1,6 +1,8 @@
+import tempfile
+import shutil
 from decimal import Decimal
 from datetime import date
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -253,6 +255,19 @@ from apps.accounts.tokens import generate_access_token
 
 
 class FinancialAPITestCase(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._temp_media = tempfile.mkdtemp()
+        cls._media_override = override_settings(MEDIA_ROOT=cls._temp_media)
+        cls._media_override.enable()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._media_override.disable()
+        shutil.rmtree(cls._temp_media, ignore_errors=True)
+        super().tearDownClass()
+
     def setUp(self):
         self.user = User.objects.create_user(
             username='api_user',

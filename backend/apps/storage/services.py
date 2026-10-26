@@ -280,17 +280,19 @@ def complete_resumable_upload(
             logger.warning(f"Error fetching Google Drive file metadata for {drive_file_id}: {e}")
             raise ValueError(f"Could not verify file with Google Drive: {str(e)}")
 
-    drive_file = DriveFile.objects.create(
+    drive_file, _ = DriveFile.objects.update_or_create(
         user=user,
         drive_file_id=drive_file_id,
-        file_name=file_name,
-        file_type=file_type,
-        file_size=file_size,
-        web_view_link=web_view_link,
-        web_content_link=web_content_link,
-        thumbnail_link=thumbnail_link,
-        domain=domain,
-        target_id=target_id or ''
+        defaults={
+            'file_name': file_name,
+            'file_type': file_type,
+            'file_size': file_size,
+            'web_view_link': web_view_link,
+            'web_content_link': web_content_link,
+            'thumbnail_link': thumbnail_link,
+            'domain': domain,
+            'target_id': target_id or ''
+        }
     )
     return drive_file
 
@@ -328,22 +330,48 @@ def stream_file_from_drive(user, drive_file: DriveFile):
         return None
 
 
+def delete_file_from_drive_by_id(user, drive_file_id: str) -> bool:
+    """
+    Deletes the raw file directly from Google Drive by its Google Drive file ID,
+    and removes any matching local DriveFile metadata records.
+    Returns True if deletion succeeded or file was already absent (404).
+    Returns False if Drive is disconnected, token fails, or remote delete fails (5xx, 4xx).
+    """
+    connection = getattr(user, 'google_drive_connection', None)
+    if not connection or not connection.is_connected:
+        logger.warning(
+            "Cannot delete file %s from Google Drive: User %s is not connected to Google Drive.",
+            drive_file_id, getattr(user, 'username', str(user))
+        )
+        return False
+
+    try:
+        token = refresh_access_token_if_needed(connection)
+        headers = {'Authorization': f'Bearer {token}'}
+        del_url = f"{GOOGLE_DRIVE_FILES_URL}/{drive_file_id}"
+        resp = requests.delete(del_url, headers=headers, timeout=10)
+        if resp.status_code not in (200, 204, 404):
+            logger.warning(
+                "Google Drive file delete failed for %s (HTTP %s): %s",
+                drive_file_id, resp.status_code, resp.text
+            )
+            return False
+    except Exception as e:
+        logger.warning(f"Failed to delete file {drive_file_id} from Google Drive: {e}")
+        return False
+
+    DriveFile.objects.filter(user=user, drive_file_id=drive_file_id).delete()
+    return True
+
+
 def delete_file_from_drive(user, drive_file: DriveFile) -> bool:
     """
     Deletes the file from Google Drive and removes the local metadata record.
+    Returns True only if remote file deletion succeeded (or was already absent 404).
+    If remote deletion fails (5xx, 4xx other than 404) or Drive is disconnected,
+    preserves the local record so that the file is not orphaned on Google Drive without metadata.
     """
-    connection = getattr(user, 'google_drive_connection', None)
-    if connection and connection.is_connected:
-        try:
-            token = refresh_access_token_if_needed(connection)
-            headers = {'Authorization': f'Bearer {token}'}
-            del_url = f"{GOOGLE_DRIVE_FILES_URL}/{drive_file.drive_file_id}"
-            requests.delete(del_url, headers=headers, timeout=10)
-        except Exception as e:
-            logger.warning(f"Failed to delete file {drive_file.drive_file_id} from Google Drive: {e}")
-
-    drive_file.delete()
-    return True
+    return delete_file_from_drive_by_id(user, drive_file.drive_file_id)
 
 
 def revoke_and_disconnect(user) -> bool:

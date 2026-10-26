@@ -201,16 +201,17 @@ class CompleteUploadView(APIView):
                         {'error': f"Ledger transaction '{target_id}' not found or does not belong to user."},
                         status=status.HTTP_400_BAD_REQUEST
                     )
-                TransactionAttachment.objects.create(
-                    transaction=tx,
-                    file_name=drive_file.file_name,
-                    file_type=drive_file.file_type or 'application/octet-stream',
-                    file_size=drive_file.file_size,
-                    drive_file_id=drive_file.drive_file_id,
-                    drive_view_link=drive_file.web_view_link,
-                    drive_download_link=drive_file.web_content_link,
-                    slip_reference=''
-                )
+                if not TransactionAttachment.objects.filter(transaction=tx, drive_file_id=drive_file.drive_file_id).exists():
+                    TransactionAttachment.objects.create(
+                        transaction=tx,
+                        file_name=drive_file.file_name,
+                        file_type=drive_file.file_type or 'application/octet-stream',
+                        file_size=drive_file.file_size,
+                        drive_file_id=drive_file.drive_file_id,
+                        drive_view_link=drive_file.web_view_link,
+                        drive_download_link=drive_file.web_content_link,
+                        slip_reference=''
+                    )
 
             elif domain == 'finance' and target_id:
                 from apps.finance.models import FinancialObligation, ObligationAttachment
@@ -220,17 +221,18 @@ class CompleteUploadView(APIView):
                         {'error': f"Financial obligation '{target_id}' not found or does not belong to user."},
                         status=status.HTTP_400_BAD_REQUEST
                     )
-                file_type_choice = data.get('category', 'OTHER')
-                ObligationAttachment.objects.create(
-                    user=request.user,
-                    obligation=obl,
-                    file_name=drive_file.file_name,
-                    file_size=drive_file.file_size,
-                    file_type=file_type_choice,
-                    drive_file_id=drive_file.drive_file_id,
-                    drive_view_link=drive_file.web_view_link,
-                    drive_download_link=drive_file.web_content_link
-                )
+                if not ObligationAttachment.objects.filter(obligation=obl, drive_file_id=drive_file.drive_file_id).exists():
+                    file_type_choice = data.get('category', 'OTHER')
+                    ObligationAttachment.objects.create(
+                        user=request.user,
+                        obligation=obl,
+                        file_name=drive_file.file_name,
+                        file_size=drive_file.file_size,
+                        file_type=file_type_choice,
+                        drive_file_id=drive_file.drive_file_id,
+                        drive_view_link=drive_file.web_view_link,
+                        drive_download_link=drive_file.web_content_link
+                    )
 
             elif domain == 'note' and target_id:
                 import uuid as uuid_lib
@@ -254,19 +256,20 @@ class CompleteUploadView(APIView):
                 # Inline blocks (image/audio/file) are the single source of truth for
                 # note media. Only opt-in legacy callers duplicate into note.attachments.
                 if request.data.get('legacy_attachment') is True:
-                    attachment_entry = {
-                        'id': str(uuid_lib.uuid4()),
-                        'file_name': drive_file.file_name,
-                        'file_type': drive_file.file_type or 'application/octet-stream',
-                        'file_size': drive_file.file_size,
-                        'drive_file_id': drive_file.drive_file_id,
-                        'drive_view_link': drive_file.web_view_link,
-                        'uploaded_at': timezone.now().isoformat()
-                    }
                     attachments = note.attachments if isinstance(note.attachments, list) else []
-                    attachments.append(attachment_entry)
-                    note.attachments = attachments
-                    note.save(update_fields=['attachments'])
+                    if not any(isinstance(a, dict) and a.get('drive_file_id') == drive_file.drive_file_id for a in attachments):
+                        attachment_entry = {
+                            'id': str(uuid_lib.uuid4()),
+                            'file_name': drive_file.file_name,
+                            'file_type': drive_file.file_type or 'application/octet-stream',
+                            'file_size': drive_file.file_size,
+                            'drive_file_id': drive_file.drive_file_id,
+                            'drive_view_link': drive_file.web_view_link,
+                            'uploaded_at': timezone.now().isoformat()
+                        }
+                        attachments.append(attachment_entry)
+                        note.attachments = attachments
+                        note.save(update_fields=['attachments'])
 
             elif domain == 'workspace' and target_id:
                 import uuid as uuid_lib
@@ -282,18 +285,19 @@ class CompleteUploadView(APIView):
 
                 project = WorkspaceProject.objects.filter(id=target_uuid, user=request.user).first()
                 if project:
-                    ProjectAttachment.objects.create(
-                        user=request.user,
-                        project=project,
-                        task=None,
-                        file_name=drive_file.file_name,
-                        file_type=drive_file.file_type or 'application/octet-stream',
-                        file_size=drive_file.file_size,
-                        category=data.get('category', 'DOCUMENT'),
-                        drive_file_id=drive_file.drive_file_id,
-                        drive_view_link=drive_file.web_view_link,
-                        drive_download_link=drive_file.web_content_link
-                    )
+                    if not ProjectAttachment.objects.filter(project=project, drive_file_id=drive_file.drive_file_id).exists():
+                        ProjectAttachment.objects.create(
+                            user=request.user,
+                            project=project,
+                            task=None,
+                            file_name=drive_file.file_name,
+                            file_type=drive_file.file_type or 'application/octet-stream',
+                            file_size=drive_file.file_size,
+                            category=data.get('category', 'DOCUMENT'),
+                            drive_file_id=drive_file.drive_file_id,
+                            drive_view_link=drive_file.web_view_link,
+                            drive_download_link=drive_file.web_content_link
+                        )
                 else:
                     task = TaskDocument.objects.filter(id=target_uuid, user=request.user).select_related('project').first()
                     if not task:
@@ -304,18 +308,19 @@ class CompleteUploadView(APIView):
                     task.file_url = drive_file.web_view_link or drive_file.web_content_link
                     task.save(update_fields=['file_url'])
                     # Always register the attachment, even for tasks without a project
-                    ProjectAttachment.objects.create(
-                        user=request.user,
-                        project=task.project,
-                        task=task,
-                        file_name=drive_file.file_name,
-                        file_type=drive_file.file_type or 'application/octet-stream',
-                        file_size=drive_file.file_size,
-                        category=data.get('category', 'DOCUMENT'),
-                        drive_file_id=drive_file.drive_file_id,
-                        drive_view_link=drive_file.web_view_link,
-                        drive_download_link=drive_file.web_content_link
-                    )
+                    if not ProjectAttachment.objects.filter(task=task, drive_file_id=drive_file.drive_file_id).exists():
+                        ProjectAttachment.objects.create(
+                            user=request.user,
+                            project=task.project,
+                            task=task,
+                            file_name=drive_file.file_name,
+                            file_type=drive_file.file_type or 'application/octet-stream',
+                            file_size=drive_file.file_size,
+                            category=data.get('category', 'DOCUMENT'),
+                            drive_file_id=drive_file.drive_file_id,
+                            drive_view_link=drive_file.web_view_link,
+                            drive_download_link=drive_file.web_content_link
+                        )
 
             return Response(
                 DriveFileSerializer(drive_file).data,
@@ -338,17 +343,30 @@ class DriveFileByDriveIdView(APIView):
     """
     Idempotent DELETE of the authenticated user's Drive file by its Google Drive file id.
     Deletes the remote file from Google Drive and the local metadata record.
+    Also provides GET to check if the file is registered in the database.
     """
     permission_classes = [permissions.IsAuthenticated]
 
-    def delete(self, request, drive_file_id):
+    def get(self, request, drive_file_id):
         drive_file = DriveFile.objects.filter(
             drive_file_id=drive_file_id,
             user=request.user
         ).first()
-        if drive_file:
-            services.delete_file_from_drive(request.user, drive_file)
-        # Idempotent: absent (or already deleted) still returns 204.
+        if not drive_file:
+            return Response({'error': 'File not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(DriveFileSerializer(drive_file).data, status=status.HTTP_200_OK)
+
+    def delete(self, request, drive_file_id):
+        # BOLA protection: If the file belongs to another user, do not touch their file or remote Drive
+        if DriveFile.objects.filter(drive_file_id=drive_file_id).exclude(user=request.user).exists():
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        success = services.delete_file_from_drive_by_id(request.user, drive_file_id)
+        if not success:
+            return Response(
+                {'error': 'Failed to delete file from Google Drive.'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -424,5 +442,10 @@ class DriveFileDetailView(APIView):
         if not drive_file:
             return Response({'error': 'File not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        services.delete_file_from_drive(request.user, drive_file)
+        success = services.delete_file_from_drive(request.user, drive_file)
+        if not success:
+            return Response(
+                {'error': 'Failed to delete file from Google Drive. Metadata has been preserved.'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -181,12 +181,29 @@
       <!-- Full Article Body Reader -->
       <div class="p-6 sm:p-8 rounded-xl bg-zinc-950 border border-zinc-800 shadow-xl space-y-6">
         <div class="flex items-center justify-between border-b border-zinc-800/80 pb-3">
-          <div class="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-zinc-300 font-semibold">
-            <FileText class="w-4 h-4 text-zinc-400" />
-            <span>Full Article Journalism</span>
+          <div
+            class="flex items-center gap-2 text-xs font-mono uppercase tracking-wider font-semibold"
+            :class="isPartialContent ? 'text-amber-400' : 'text-zinc-300'"
+          >
+            <FileText class="w-4 h-4" />
+            <span>{{ isPartialContent ? 'Partial Coverage / Excerpt' : 'Full Article Journalism' }}</span>
+            <span v-if="isPartialContent" class="text-[10px] px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-800/60 text-amber-300 normal-case font-sans">
+              เนื้อหาบางส่วน
+            </span>
           </div>
-          <div class="text-[11px] font-mono text-zinc-500">
-            {{ activeLang === 'th' ? 'Translated Text' : 'Direct Source Scrape' }}
+          <div class="flex items-center gap-2 text-[11px] font-mono text-zinc-500">
+            <button
+              v-if="isPartialContent"
+              type="button"
+              @click="retranslateArticle"
+              :disabled="isRetranslating"
+              class="px-2 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-colors flex items-center gap-1 disabled:opacity-50"
+              title="Re-scrape from publisher and re-translate"
+            >
+              <RefreshCw class="w-3 h-3" :class="{ 'animate-spin': isRetranslating }" />
+              <span>{{ isRetranslating ? 'Fetching...' : 'Re-fetch Full' }}</span>
+            </button>
+            <span>{{ activeLang === 'th' ? 'Translated Text' : 'Direct Source Scrape' }}</span>
           </div>
         </div>
 
@@ -289,7 +306,8 @@ import {
   ChevronDown,
   Copy,
   Check,
-  BarChart3
+  BarChart3,
+  RefreshCw
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -457,6 +475,32 @@ function viewAsset(ticker: string) {
   router.push(`/portfolio/asset/${encodeURIComponent(ticker)}`)
 }
 
+const isRetranslating = ref(false)
+
+const isPartialContent = computed(() => {
+  if (!article.value) return false
+  const activeText = activeLang.value === 'th'
+    ? (article.value.content_th || article.value.summary_th || '')
+    : (article.value.content || article.value.summary || '')
+  const paras = activeText.split('\n\n').filter((p: string) => p.trim())
+  return paras.length <= 1 || activeText.length < 350
+})
+
+async function retranslateArticle() {
+  if (!article.value || isRetranslating.value) return
+  isRetranslating.value = true
+  try {
+    const updated = await portfolioStore.translateArticle(article.value.id)
+    if (updated) {
+      article.value = updated
+    }
+  } catch (err: any) {
+    console.warn('Failed to re-fetch/re-translate article:', err)
+  } finally {
+    isRetranslating.value = false
+  }
+}
+
 onMounted(async () => {
   const articleId = route.params.id as string
   if (!articleId) {
@@ -465,22 +509,28 @@ onMounted(async () => {
     return
   }
 
-  // 1. Look up in Pinia Store cache
+  // 1. Look up in Pinia Store cache for instant display
   const existing = portfolioStore.news.find(n => n.id === articleId)
-  if (existing && existing.content) {
+  if (existing) {
     article.value = existing
-    activeLang.value = 'en'
-    isLoading.value = false
-    return
+    activeLang.value = preferredArticleLang()
+    // Only turn off loading spinner early if we already have substantive body content
+    if (existing.content && existing.content.length > 350) {
+      isLoading.value = false
+    }
   }
 
-  // 2. Fetch from Backend API with lazy scraper
+  // 2. Always query backend API detail endpoint to trigger lazy scraping / auto-repair of incomplete news
   try {
     const fetched = await portfolioStore.fetchNewsArticle(articleId)
     article.value = fetched
-    activeLang.value = 'en'
+    if (activeLang.value === 'en' && !article.value.content && article.value.content_th) {
+      activeLang.value = 'th'
+    }
   } catch (err: any) {
-    errorMessage.value = err?.response?.data?.detail || 'Unable to retrieve article content'
+    if (!article.value) {
+      errorMessage.value = err?.response?.data?.detail || 'Unable to retrieve article content'
+    }
   } finally {
     isLoading.value = false
   }

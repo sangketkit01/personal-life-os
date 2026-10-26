@@ -200,6 +200,23 @@
                   <span class="w-1.5 h-1.5 rounded-full" :class="healthDot(asset.health_status)" />
                   {{ asset.health_status }}
                 </span>
+                <!-- SSH Host Key verification status badge -->
+                <span
+                  v-if="asset.ssh_host_fingerprint"
+                  class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono border border-emerald-800/60 text-emerald-400 bg-emerald-950/40"
+                  :title="`${t('infra.hostKey.trusted')}: ${asset.ssh_host_fingerprint}`"
+                >
+                  <ShieldCheck class="w-2.5 h-2.5" />
+                  {{ asset.ssh_host_fingerprint.slice(0, 16) }}...
+                </span>
+                <span
+                  v-else
+                  class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono border border-amber-800/60 text-amber-400 bg-amber-950/40"
+                  :title="t('infra.hostKey.unverified')"
+                >
+                  <ShieldAlert class="w-2.5 h-2.5" />
+                  {{ t('infra.hostKey.unverified') }}
+                </span>
                 <span v-if="asset.is_shared" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold uppercase border border-amber-700/60 text-amber-400 bg-amber-950/40">
                   <Share2 class="w-2.5 h-2.5" />
                   {{ t('infra.sharedBadge', { n: String(asset.share_count || 1) }) }}
@@ -287,9 +304,55 @@
                 :threshold="asset.alert_disk_threshold"
               />
             </template>
-            <p v-else-if="asset.last_telemetry?.error" class="text-[10px] font-mono text-rose-400/90 break-all">
-              {{ asset.last_telemetry.error }}
-            </p>
+            <div v-else-if="asset.last_telemetry?.error">
+              <div
+                v-if="parseSshHostKeyError(asset.last_telemetry.error).isHostKeyError"
+                class="p-3 rounded-lg border text-left space-y-2.5 my-1"
+                :class="parseSshHostKeyError(asset.last_telemetry.error).isMismatch ? 'bg-rose-950/30 border-rose-800/80' : 'bg-amber-950/30 border-amber-800/80'"
+              >
+                <div class="flex items-start gap-2">
+                  <AlertTriangle v-if="parseSshHostKeyError(asset.last_telemetry.error).isMismatch" class="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <ShieldAlert v-else class="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div class="space-y-1 min-w-0">
+                    <h4 class="text-xs font-semibold" :class="parseSshHostKeyError(asset.last_telemetry.error).isMismatch ? 'text-rose-200' : 'text-amber-200'">
+                      {{ parseSshHostKeyError(asset.last_telemetry.error).isMismatch ? t('infra.hostKey.mismatchTitle') : t('infra.hostKey.verifyRequired') }}
+                    </h4>
+                    <p class="text-[11px] text-zinc-300">
+                      {{ parseSshHostKeyError(asset.last_telemetry.error).isMismatch ? t('infra.hostKey.mismatchDesc') : t('infra.hostKey.verifyDesc') }}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="p-2 rounded bg-zinc-950/80 border border-zinc-800 text-[10px] font-mono space-y-1 overflow-x-auto">
+                  <div v-if="parseSshHostKeyError(asset.last_telemetry.error).trustedFingerprint" class="text-zinc-400">
+                    <span class="text-zinc-500 font-semibold uppercase">{{ t('infra.hostKey.trustedFp') }}:</span>
+                    <span class="text-zinc-300 ml-1">{{ parseSshHostKeyError(asset.last_telemetry.error).trustedFingerprint }}</span>
+                  </div>
+                  <div class="text-zinc-400">
+                    <span class="text-zinc-500 font-semibold uppercase">{{ t('infra.hostKey.remoteFp') }}:</span>
+                    <span class="ml-1" :class="parseSshHostKeyError(asset.last_telemetry.error).isMismatch ? 'text-rose-400 font-bold' : 'text-amber-300 font-medium'">
+                      {{ parseSshHostKeyError(asset.last_telemetry.error).remoteFingerprint }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2 pt-0.5">
+                  <button
+                    type="button"
+                    @click="handleTrustHostKey(asset, parseSshHostKeyError(asset.last_telemetry.error))"
+                    :disabled="trustingAssetId === asset.id"
+                    class="px-2.5 py-1 rounded text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                    :class="parseSshHostKeyError(asset.last_telemetry.error).isMismatch ? 'bg-rose-600 hover:bg-rose-500 text-white' : 'bg-amber-600 hover:bg-amber-500 text-zinc-950'"
+                  >
+                    <ShieldCheck class="w-3.5 h-3.5" :class="{ 'animate-spin': trustingAssetId === asset.id }" />
+                    <span>{{ parseSshHostKeyError(asset.last_telemetry.error).isMismatch ? t('infra.hostKey.overrideTrust') : t('infra.hostKey.confirmTrust') }}</span>
+                  </button>
+                </div>
+              </div>
+              <p v-else class="text-[10px] font-mono text-rose-400/90 break-all">
+                {{ asset.last_telemetry.error }}
+              </p>
+            </div>
             <p v-else class="text-[10px] font-mono text-zinc-600">
               {{ asset.last_checked_at ? t('infra.lastCheck', { time: formatLocaleDate(asset.last_checked_at, 'datetime') }) : t('infra.neverProbed') }}
             </p>
@@ -745,9 +808,10 @@ import {
   FileSignature, Pencil, Banknote, Scale, Server, Plus, Trash2, Activity, Radar,
   Container, ChevronDown, Play, Square, RotateCw, FileText, TerminalSquare, Zap,
   Share2, Link2, CreditCard, Globe, Mail, HardDrive, Code2,
-  Copy, ExternalLink, ShieldCheck, KeyRound, Eye, X,
+  Copy, ExternalLink, ShieldCheck, ShieldAlert, AlertTriangle, KeyRound, Eye, X,
   Database, Lock, Loader2
 } from 'lucide-vue-next'
+import { parseSshHostKeyError, type SshHostKeyErrorInfo } from '../../utils/sshSafety'
 import { t, formatLocaleDate } from '../../i18n'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
@@ -1002,6 +1066,24 @@ async function probe(asset: InfrastructureAsset) {
     toast.error(err?.response?.data?.detail || t('infra.probeFailed'))
   } finally {
     probingId.value = null
+  }
+}
+
+const trustingAssetId = ref<string | null>(null)
+
+async function handleTrustHostKey(asset: InfrastructureAsset, errorInfo: SshHostKeyErrorInfo) {
+  if (errorInfo.isMismatch) {
+    if (!confirm(t('infra.hostKey.overrideConfirm'))) return
+  }
+  trustingAssetId.value = asset.id
+  try {
+    await workspaceStore.trustInfraAssetHostKey(asset.id, errorInfo.remoteFingerprint)
+    toast.success(t('infra.hostKey.trustSuccess'))
+    await probe(asset)
+  } catch (err: any) {
+    toast.error(err?.response?.data?.detail || t('infra.hostKey.trustFailed'))
+  } finally {
+    trustingAssetId.value = null
   }
 }
 

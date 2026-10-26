@@ -35,20 +35,23 @@ class SshTerminalConsumer(AsyncWebsocketConsumer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.user = None
+        self.session_id = None
         self.asset = None
         self.ssh_client = None
         self.channel = None
         self._reader_task = None
+        self._watchdog_task = None
         self.session_opened = False
 
     # ----- lifecycle -----
 
     async def connect(self):
-        user = await self._authenticate_from_cookie()
-        if user is None:
+        auth_result = await self._authenticate_from_cookie()
+        if auth_result is None:
             await self.close(code=WS_CLOSE_UNAUTHORIZED)
             return
 
+        user, session_id = auth_result
         asset_id = self.scope['url_route']['kwargs'].get('asset_id')
         asset = await self._get_owned_asset(asset_id, user)
         if asset is None:
@@ -56,6 +59,7 @@ class SshTerminalConsumer(AsyncWebsocketConsumer):
             return
 
         self.user = user
+        self.session_id = session_id
         self.asset = asset
 
         # Accept BEFORE opening the PTY so the exact SSH failure reason can
@@ -79,8 +83,18 @@ class SshTerminalConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps({'type': 'ready'}))
         await self._log('SSH_SESSION_START', f'Interactive SSH session opened to {asset.name}')
         self._reader_task = asyncio.create_task(self._stream_output())
+        self._watchdog_task = asyncio.create_task(self._session_watchdog())
 
     async def disconnect(self, close_code):
+        if self._watchdog_task is not None:
+            self._watchdog_task.cancel()
+            try:
+                await self._watchdog_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+            self._watchdog_task = None
         if self._reader_task is not None:
             self._reader_task.cancel()
             try:
@@ -119,7 +133,9 @@ class SshTerminalConsumer(AsyncWebsocketConsumer):
     # ----- helpers -----
 
     def _open_pty(self):
-        client = open_ssh_client(self.asset)
+        query_str = self.scope.get('query_string', b'').decode('latin-1').lower()
+        accept_new = 'confirm_host_key=true' in query_str or 'confirm_host_key=1' in query_str
+        client = open_ssh_client(self.asset, accept_new_host_key=accept_new)
         channel = client.invoke_shell(term='xterm-256color', width=120, height=32)
         return client, channel
 
@@ -151,6 +167,53 @@ class SshTerminalConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({'type': 'closed'}))
         except Exception:
             pass
+
+    async def _session_watchdog(self):
+        """
+        Periodically verify that the bound session and user remain active and not revoked.
+        If revoked or inactive, immediately terminate SSH connection and close WebSocket.
+        """
+        try:
+            while True:
+                await asyncio.sleep(2)
+                is_valid = await self._is_session_valid()
+                if not is_valid:
+                    logger.warning(
+                        'SSH WebSocket terminated: session revoked or inactive for %s',
+                        getattr(self.user, 'username', 'unknown')
+                    )
+                    try:
+                        await self.send(text_data=json.dumps({
+                            'type': 'error',
+                            'message': 'Session has been revoked or expired.'
+                        }))
+                    except Exception:
+                        pass
+                    if self.channel is not None or self.ssh_client is not None:
+                        await asyncio.to_thread(self._close_ssh)
+                    await self.close(code=WS_CLOSE_UNAUTHORIZED)
+                    break
+        except asyncio.CancelledError:
+            pass
+
+    @database_sync_to_async
+    def _is_session_valid(self):
+        from django.contrib.auth import get_user_model
+        from apps.accounts.models import UserDeviceSession
+
+        if not self.user:
+            return False
+
+        if self.session_id:
+            return UserDeviceSession.objects.filter(
+                id=self.session_id,
+                user_id=self.user.id,
+                is_revoked=False,
+                user__is_active=True
+            ).exists()
+
+        user_model = get_user_model()
+        return user_model.objects.filter(id=self.user.id, is_active=True).exists()
 
     def _cookie_token(self):
         for name, value in self.scope.get('headers', []):
@@ -199,11 +262,12 @@ class SshTerminalConsumer(AsyncWebsocketConsumer):
                 is_revoked=False,
                 user__is_active=True
             ).first()
-            return session.user if session else None
+            return (session.user, session.id) if session else None
 
         user_model = get_user_model()
         try:
-            return user_model.objects.get(id=user_id, is_active=True)
+            user = user_model.objects.get(id=user_id, is_active=True)
+            return (user, None)
         except user_model.DoesNotExist:
             return None
 

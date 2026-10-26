@@ -1,4 +1,6 @@
+from html.parser import HTMLParser
 import html as html_lib
+from django.core.cache import cache
 from django.db.models import Q
 import re
 import uuid
@@ -355,6 +357,150 @@ class NoteFolderSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+ALLOWED_RICH_TAGS = {'b', 'strong', 'i', 'em', 'u', 's', 'strike', 'del', 'code', 'a', 'span', 'mark', 'br'}
+DROP_RICH_TAGS = {'script', 'style', 'iframe', 'object', 'embed', 'form', 'svg', 'math'}
+ALLOWED_RICH_STYLE_PROPS = {'color', 'background-color'}
+
+
+class _RichHTMLSanitizer(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.output = []
+        self.drop_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in DROP_RICH_TAGS:
+            self.drop_depth += 1
+            return
+        if self.drop_depth > 0:
+            return
+        if tag in ALLOWED_RICH_TAGS:
+            clean_attrs = []
+            for name, val in attrs:
+                name = name.lower()
+                val = val or ''
+                if name.startswith('on'):
+                    continue
+                if tag == 'a' and name == 'href':
+                    if re.match(r'^(https?://|mailto:)', val.strip(), re.I):
+                        clean_attrs.append(('href', val.strip()))
+                elif tag in ('span', 'mark') and name == 'style':
+                    safe_decls = []
+                    for decl in val.split(';'):
+                        if ':' in decl:
+                            prop, pval = decl.split(':', 1)
+                            if prop.strip().lower() in ALLOWED_RICH_STYLE_PROPS:
+                                safe_decls.append(f'{prop.strip().lower()}: {pval.strip()}')
+                    if safe_decls:
+                        clean_attrs.append(('style', '; '.join(safe_decls)))
+                elif tag in ('span', 'mark') and name in ('data-color', 'data-bg'):
+                    clean_attrs.append((name, val))
+
+            if tag == 'a':
+                clean_attrs.append(('target', '_blank'))
+                clean_attrs.append(('rel', 'noopener noreferrer'))
+
+            attr_str = ''.join(f' {k}="{html_lib.escape(v, quote=True)}"' for k, v in clean_attrs)
+            if tag == 'br':
+                self.output.append('<br>')
+            else:
+                self.output.append(f'<{tag}{attr_str}>')
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in DROP_RICH_TAGS:
+            if self.drop_depth > 0:
+                self.drop_depth -= 1
+            return
+        if self.drop_depth > 0:
+            return
+        if tag in ALLOWED_RICH_TAGS and tag != 'br':
+            self.output.append(f'</{tag}>')
+
+    def handle_data(self, data):
+        if self.drop_depth > 0:
+            return
+        self.output.append(html_lib.escape(data, quote=False))
+
+
+def sanitize_rich_html(raw_html: str) -> str:
+    """Sanitize inline rich HTML down to a strict allowlist of formatting tags & attributes."""
+    if not raw_html:
+        return ''
+    sanitizer = _RichHTMLSanitizer()
+    try:
+        sanitizer.feed(raw_html)
+        sanitizer.close()
+        return ''.join(sanitizer.output)
+    except Exception:
+        return html_lib.escape(raw_html)
+
+
+def get_request_session_id(request) -> str:
+    """Return an isolated session identifier unique to this device/browser session."""
+    if not request:
+        return 'anonymous'
+    if hasattr(request, 'device_session_id') and request.device_session_id:
+        return str(request.device_session_id)
+    # Check if request.auth is the raw JWT token
+    auth = getattr(request, 'auth', None)
+    if isinstance(auth, str):
+        try:
+            from apps.accounts.tokens import decode_token
+            payload = decode_token(auth)
+            sid = payload.get('session_id')
+            if sid:
+                return str(sid)
+        except Exception:
+            pass
+    # Check cookie / authorization header if auth not yet processed
+    raw_token = getattr(request, 'COOKIES', {}).get('access_token')
+    if not raw_token and hasattr(request, 'META'):
+        auth_hdr = request.META.get('HTTP_AUTHORIZATION', '')
+        if auth_hdr.startswith('Bearer '):
+            raw_token = auth_hdr.split(' ')[1]
+    if raw_token:
+        try:
+            from apps.accounts.tokens import decode_token
+            payload = decode_token(raw_token)
+            sid = payload.get('session_id')
+            if sid:
+                return str(sid)
+        except Exception:
+            pass
+    # Check explicit custom device/session header
+    if hasattr(request, 'META'):
+        custom_sid = request.META.get('HTTP_X_DEVICE_SESSION_ID') or request.META.get('HTTP_X_SESSION_ID')
+        if custom_sid:
+            return str(custom_sid)
+    # Django session fallback
+    session = getattr(request, 'session', None)
+    if session is not None:
+        if getattr(session, 'session_key', None):
+            return str(session.session_key)
+        try:
+            if hasattr(session, 'save'):
+                session.save()
+            if getattr(session, 'session_key', None):
+                return str(session.session_key)
+        except Exception:
+            pass
+    return 'default_session'
+
+
+def is_note_unlocked_for_request(request, note) -> bool:
+    """Checks if a locked note has been verified with its PIN for the current session/user."""
+    if not note.is_locked or not note.lock_pin:
+        return True
+    if not request or not hasattr(request, 'user') or not request.user.is_authenticated:
+        return False
+
+    session_id = get_request_session_id(request)
+    cache_key = f"note_unlocked:{request.user.id}:{session_id}:{note.id}"
+    return bool(cache.get(cache_key))
+
+
 class NoteSerializer(serializers.ModelSerializer):
     project_name = serializers.CharField(source='project.name', read_only=True, default=None)
     folder_name = serializers.CharField(source='folder.name', read_only=True, default=None)
@@ -384,9 +530,21 @@ class NoteSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at'
         )
-        read_only_fields = ('id', 'created_at', 'updated_at')
-        # lock_pin is intentionally excluded - it is only managed via the
-        # set-lock / verify-lock actions and never exposed or writable here.
+        read_only_fields = ('id', 'is_locked', 'created_at', 'updated_at')
+        # lock_pin and is_locked are intentionally excluded from direct modification -
+        # they are only managed via the set-lock action and never exposed or writable here.
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        view = self.context.get('view')
+        is_list = getattr(view, 'action', None) == 'list'
+        if instance.is_locked and instance.lock_pin:
+            if is_list or not is_note_unlocked_for_request(request, instance):
+                data['content'] = ''
+                data['blocks'] = []
+                data['attachments'] = []
+        return data
 
     def get_has_lock_pin(self, obj):
         return bool(obj.lock_pin)
@@ -469,10 +627,14 @@ class NoteSerializer(serializers.ModelSerializer):
             if str(block.get('type') or '') == 'table' and not rows:
                 rows = [list(r) for r in self.DEFAULT_TABLE_ROWS]
 
+            block_type = str(block.get('type') or 'paragraph')
+            raw_content = str(block.get('content') or '')
+            content = raw_content if block_type == 'code' else sanitize_rich_html(raw_content)
+
             cleaned.append({
                 'id': str(block.get('id') or uuid.uuid4()),
-                'type': str(block.get('type') or 'paragraph'),
-                'content': str(block.get('content') or ''),
+                'type': block_type,
+                'content': content,
                 'checked': bool(block.get('checked', False)),
                 'indent': max(0, min(4, indent)),
                 'language': str(block.get('language') or ''),
@@ -696,6 +858,7 @@ class InfrastructureAssetSerializer(serializers.ModelSerializer):
             'ssh_password',
             'ssh_private_key',
             'ssh_passphrase',
+            'ssh_host_fingerprint',
             'has_ssh_password',
             'has_ssh_key',
             'has_ssh_passphrase',
@@ -805,7 +968,7 @@ class InfrastructureAssetSerializer(serializers.ModelSerializer):
         return self._validate_threshold(value, 'Disk')
 
     def _pop_and_encrypt_secrets(self, validated_data):
-        from apps.storage.encryption import encrypt_token
+        from apps.storage.encryption import encrypt_token, EncryptionError
         secrets = {}
         for payload_key, model_key in (
             ('ssh_password', 'ssh_password_encrypted'),
@@ -813,7 +976,11 @@ class InfrastructureAssetSerializer(serializers.ModelSerializer):
             ('ssh_passphrase', 'ssh_passphrase_encrypted'),
         ):
             if payload_key in validated_data:
-                secrets[model_key] = encrypt_token(validated_data.pop(payload_key) or '')
+                raw_val = validated_data.pop(payload_key) or ''
+                try:
+                    secrets[model_key] = encrypt_token(raw_val)
+                except EncryptionError as e:
+                    raise serializers.ValidationError({payload_key: f'Encryption failed: {e}'})
         return secrets
 
     def _apply_shared_projects(self, asset, shared_projects):
@@ -887,18 +1054,24 @@ class ServerCredentialSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        from apps.storage.encryption import encrypt_token
+        from apps.storage.encryption import encrypt_token, EncryptionError
         validated_data['user'] = self.context['request'].user
         secret = validated_data.pop('secret', None)
         if secret:
-            validated_data['secret_encrypted'] = encrypt_token(secret)
+            try:
+                validated_data['secret_encrypted'] = encrypt_token(secret)
+            except EncryptionError as e:
+                raise serializers.ValidationError({'secret': f'Encryption failed: {e}'})
         return ServerCredential.objects.create(**validated_data)
 
     def update(self, instance, validated_data):
-        from apps.storage.encryption import encrypt_token
+        from apps.storage.encryption import encrypt_token, EncryptionError
         secret = validated_data.pop('secret', None)
         if secret is not None:
-            instance.secret_encrypted = encrypt_token(secret)
+            try:
+                instance.secret_encrypted = encrypt_token(secret)
+            except EncryptionError as e:
+                raise serializers.ValidationError({'secret': f'Encryption failed: {e}'})
         return super().update(instance, validated_data)
 
 

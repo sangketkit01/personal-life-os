@@ -318,6 +318,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'verified', noteId: string): void
+  (e: 'locked', noteId: string): void
   (e: 'trashed', noteId: string): void
 }>()
 
@@ -441,24 +442,25 @@ function createDefaultParagraphBlock(): NoteBlock {
   }
 }
 
-function syncFromNote() {
+function syncFromNote(sourceNote?: Note) {
   suppressSyncWatch = true
-  const rawTitle = props.note.title || ''
+  const n = sourceNote || props.note
+  const rawTitle = n.title || ''
   editorTitle.value = rawTitle === 'Untitled' ? '' : rawTitle
-  editorIcon.value = props.note.icon || 'file-text'
-  editorTags.value = [...(props.note.tags || [])]
+  editorIcon.value = n.icon || 'file-text'
+  editorTags.value = [...(n.tags || [])]
   newTagDraft.value = ''
 
-  const incomingBlocks = (props.note.blocks || []).map(b => ({ ...b }))
+  const incomingBlocks = (n.blocks || []).map(b => ({ ...b }))
   if (incomingBlocks.length > 0) {
     editorBlocks.value = incomingBlocks
-  } else if ((props.note.content || '').trim()) {
+  } else if ((n.content || '').trim()) {
     // Pre-block-era note: the text lives in note.content - lift it into a
     // paragraph block instead of showing an empty page (autosave persists it).
     editorBlocks.value = [{
       id: crypto.randomUUID(),
       type: 'paragraph',
-      content: props.note.content,
+      content: n.content,
       indent: 0
     }]
     nextTick(() => {
@@ -491,20 +493,22 @@ watch(
         clearTimeout(saveTimer)
         saveTimer = null
       }
-      const oldPayload = {
-        title: editorTitle.value.trim() || 'Untitled',
-        icon: editorIcon.value,
-        tags: editorTags.value,
-        blocks: editorBlocks.value
-      }
-      try {
-        await workspaceStore.updateNote(oldId, oldPayload)
-        toast.showToast(t('common.allSaved'), 'success', 2000, undefined, `autosave-note-${oldId}`)
-      } catch (err) {
-        toast.showToast(t('common.saveFailedEditsPreserved'), 'error', 0, {
-          label: t('common.retry'),
-          onClick: () => workspaceStore.updateNote(oldId, oldPayload)
-        }, `autosave-note-${oldId}`)
+      if (!props.note.is_locked || props.isVerified) {
+        const oldPayload = {
+          title: editorTitle.value.trim() || 'Untitled',
+          icon: editorIcon.value,
+          tags: editorTags.value,
+          blocks: editorBlocks.value
+        }
+        try {
+          await workspaceStore.updateNote(oldId, oldPayload)
+          toast.showToast(t('common.allSaved'), 'success', 2000, undefined, `autosave-note-${oldId}`)
+        } catch (err) {
+          toast.showToast(t('common.saveFailedEditsPreserved'), 'error', 0, {
+            label: t('common.retry'),
+            onClick: () => workspaceStore.updateNote(oldId, oldPayload)
+          }, `autosave-note-${oldId}`)
+        }
       }
     }
     syncFromNote()
@@ -513,10 +517,19 @@ watch(
   { immediate: true }
 )
 
+watch(() => props.isVerified, (verifiedNow) => {
+  if (verifiedNow) {
+    syncFromNote()
+  }
+})
+
 onBeforeUnmount(() => {
   if (saveTimer) {
     clearTimeout(saveTimer)
     saveTimer = null
+  }
+  if (locked.value || (props.note.is_locked && !props.isVerified)) {
+    return
   }
   if (saveState.value === 'dirty' || hasPendingChangesWhileSaving) {
     const payload = {
@@ -539,6 +552,9 @@ onBeforeUnmount(() => {
 })
 
 function markDirty() {
+  if (locked.value || (props.note.is_locked && !props.isVerified)) {
+    return
+  }
   editRevision++
   saveState.value = 'dirty'
   if (saveTimer) clearTimeout(saveTimer)
@@ -553,6 +569,9 @@ async function flushAutosave(): Promise<void> {
     clearTimeout(saveTimer)
     saveTimer = null
   }
+  if (locked.value || (props.note.is_locked && !props.isVerified)) {
+    return
+  }
   if (saveState.value === 'dirty' || hasPendingChangesWhileSaving || inFlightPromise) {
     if (!inFlightPromise) {
       await saveNow()
@@ -565,6 +584,9 @@ async function flushAutosave(): Promise<void> {
 }
 
 async function saveNow(): Promise<void> {
+  if (locked.value || (props.note.is_locked && !props.isVerified)) {
+    return
+  }
   if (inFlightPromise) {
     hasPendingChangesWhileSaving = true
     return inFlightPromise
@@ -719,7 +741,7 @@ async function submitLockModal() {
     try {
       await workspaceStore.setNoteLock(props.note.id, { is_locked: true, pin })
       showLockModal.value = false
-      emit('verified', props.note.id)
+      emit('locked', props.note.id)
       toast.success('Note locked')
     } catch (err: any) {
       toast.error(err?.response?.data?.error || 'Failed to lock note')
@@ -728,8 +750,10 @@ async function submitLockModal() {
   }
 
   try {
-    await workspaceStore.setNoteLock(props.note.id, { is_locked: false, pin })
+    const res = await workspaceStore.setNoteLock(props.note.id, { is_locked: false, pin })
     showLockModal.value = false
+    syncFromNote(res)
+    emit('verified', props.note.id)
     toast.success('Lock removed')
   } catch (err: any) {
     toast.error(err?.response?.data?.error || 'Incorrect PIN')
@@ -738,9 +762,10 @@ async function submitLockModal() {
 
 async function verifyInlinePin() {
   try {
-    const ok = await workspaceStore.verifyNoteLock(props.note.id, inlinePin.value)
-    if (ok) {
+    const res = await workspaceStore.verifyNoteLock(props.note.id, inlinePin.value)
+    if (res.verified && res.note) {
       inlinePin.value = ''
+      syncFromNote(res.note)
       emit('verified', props.note.id)
     } else {
       toast.error('Incorrect PIN')

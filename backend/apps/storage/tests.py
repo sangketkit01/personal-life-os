@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 from rest_framework import status
 
 from apps.storage.models import GoogleDriveConnection, DriveFile, StorageDomain
+from apps.storage.encryption import encrypt_token, decrypt_token, EncryptionError
 from apps.ledger.models import Account, Transaction, TransactionType
 from apps.workspace.models import TaskDocument
 
@@ -61,8 +62,8 @@ class StorageGoogleDriveTests(TestCase):
         GoogleDriveConnection.objects.create(
             user=self.user,
             google_email='user@gmail.com',
-            access_token='mock_access_token',
-            refresh_token='mock_refresh_token',
+            access_token=encrypt_token('mock_access_token'),
+            refresh_token=encrypt_token('mock_refresh_token'),
             token_expiry=timezone.now() + timedelta(hours=1),
             root_folder_id='folder_root_123',
             subfolder_ids={'ledger': 'folder_ledger_456'},
@@ -95,7 +96,7 @@ class StorageGoogleDriveTests(TestCase):
         GoogleDriveConnection.objects.create(
             user=self.user,
             google_email='user@gmail.com',
-            access_token='mock_access_token',
+            access_token=encrypt_token('mock_access_token'),
             token_expiry=timezone.now() + timedelta(hours=1),
             is_connected=True
         )
@@ -154,8 +155,8 @@ class StorageGoogleDriveTests(TestCase):
         conn = GoogleDriveConnection.objects.create(
             user=self.user,
             google_email='user@gmail.com',
-            access_token='token123',
-            refresh_token='refresh123',
+            access_token=encrypt_token('token123'),
+            refresh_token=encrypt_token('refresh123'),
             is_connected=True
         )
 
@@ -191,7 +192,7 @@ class StorageGoogleDriveTests(TestCase):
         GoogleDriveConnection.objects.create(
             user=self.user,
             google_email='user@gmail.com',
-            access_token='mock_token',
+            access_token=encrypt_token('mock_token'),
             token_expiry=timezone.now() + timedelta(hours=1),
             is_connected=True
         )
@@ -220,7 +221,7 @@ class StorageGoogleDriveTests(TestCase):
         GoogleDriveConnection.objects.create(
             user=self.user,
             google_email='user@gmail.com',
-            access_token='mock_token',
+            access_token=encrypt_token('mock_token'),
             token_expiry=timezone.now() + timedelta(hours=1),
             is_connected=True
         )
@@ -264,8 +265,8 @@ class StorageGoogleDriveTests(TestCase):
         GoogleDriveConnection.objects.create(
             user=self.user,
             google_email='user@gmail.com',
-            access_token='mock_access_token',
-            refresh_token='mock_refresh_token',
+            access_token=encrypt_token('mock_access_token'),
+            refresh_token=encrypt_token('mock_refresh_token'),
             token_expiry=timezone.now() + timedelta(hours=1),
             root_folder_id='folder_root_123',
             subfolder_ids={'note': 'folder_notes'},
@@ -321,8 +322,8 @@ class StorageGoogleDriveTests(TestCase):
         GoogleDriveConnection.objects.create(
             user=self.user,
             google_email='user@gmail.com',
-            access_token='mock_access_token',
-            refresh_token='mock_refresh_token',
+            access_token=encrypt_token('mock_access_token'),
+            refresh_token=encrypt_token('mock_refresh_token'),
             token_expiry=timezone.now() + timedelta(hours=1),
             root_folder_id='folder_root_123',
             is_connected=True
@@ -348,8 +349,8 @@ class StorageGoogleDriveTests(TestCase):
         GoogleDriveConnection.objects.create(
             user=self.user,
             google_email='user@gmail.com',
-            access_token='mock_access_token',
-            refresh_token='mock_refresh_token',
+            access_token=encrypt_token('mock_access_token'),
+            refresh_token=encrypt_token('mock_refresh_token'),
             token_expiry=timezone.now() + timedelta(hours=1),
             root_folder_id='folder_root_123',
             is_connected=True
@@ -429,8 +430,8 @@ class StorageGoogleDriveTests(TestCase):
         GoogleDriveConnection.objects.create(
             user=self.user,
             google_email='user@gmail.com',
-            access_token='mock_access_token',
-            refresh_token='mock_refresh_token',
+            access_token=encrypt_token('mock_access_token'),
+            refresh_token=encrypt_token('mock_refresh_token'),
             token_expiry=timezone.now() + timedelta(hours=1),
             root_folder_id='folder_root_123',
             subfolder_ids={'note': 'folder_notes'},
@@ -466,3 +467,20 @@ class StorageGoogleDriveTests(TestCase):
         note.refresh_from_db()
         self.assertEqual(len(note.attachments), 1)
         self.assertEqual(note.attachments[0]['drive_file_id'], 'legacy_att_file_1')
+
+    def test_encryption_failure_raises_error_and_does_not_return_plaintext(self):
+        """
+        Security Test (B5): Failure during encryption must raise EncryptionError
+        and never silently return or store plaintext.
+        """
+        with patch('apps.storage.encryption._get_fernet', side_effect=Exception("Fernet initialization failed")):
+            with self.assertRaises(EncryptionError):
+                encrypt_token("super_sensitive_token")
+
+    def test_decryption_failure_raises_error_and_does_not_return_ciphertext(self):
+        """
+        Security Test (B5): Failure during decryption must raise EncryptionError
+        and never fall back to returning raw/corrupted ciphertext.
+        """
+        with self.assertRaises(EncryptionError):
+            decrypt_token("not-a-valid-fernet-token-12345")

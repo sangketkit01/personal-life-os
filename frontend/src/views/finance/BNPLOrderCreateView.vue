@@ -3,14 +3,13 @@
     <!-- Header -->
     <div class="flex items-center justify-between pb-4 border-b border-zinc-800/80">
       <div class="flex items-center gap-3">
-        <button
-          type="button"
-          @click="router.push(`/finance/bnpl/${accountId}`)"
-          class="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+        <RouterLink
+          :to="`/finance/bnpl/${accountId}`"
+          class="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400"
           title="Back to Account"
         >
           <ArrowLeft class="w-4 h-4" />
-        </button>
+        </RouterLink>
         <div>
           <h1 class="text-base font-semibold text-zinc-100 tracking-tight">New Purchase Order</h1>
           <p class="text-xs text-zinc-500 mt-0.5">

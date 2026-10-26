@@ -267,6 +267,41 @@ class LedgerAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreater(len(response.data), 0)
 
+    def test_category_subcategory_isolation_between_users(self):
+        """
+        Security Test (B3): Subcategories created by User B under a system category
+        must NEVER leak to User A in either list or retrieve actions.
+        """
+        user_b = User.objects.create_user(username='user_b', password='password123')
+        sub_b = Category.objects.create(
+            user=user_b,
+            parent=self.food_category,
+            name="User B Private Subcat",
+            category_type=self.food_category.category_type,
+            is_system=False
+        )
+
+        # 1. User A lists categories
+        res_list = self.client.get('/api/ledger/categories/')
+        self.assertEqual(res_list.status_code, status.HTTP_200_OK)
+        food_item = next((c for c in res_list.data if str(c['id']) == str(self.food_category.id)), None)
+        self.assertIsNotNone(food_item)
+        sub_names_for_user_a = [s['name'] for s in food_item.get('subcategories', [])]
+        self.assertNotIn("User B Private Subcat", sub_names_for_user_a)
+
+        # 2. User A retrieves parent system category
+        res_detail = self.client.get(f'/api/ledger/categories/{self.food_category.id}/')
+        self.assertEqual(res_detail.status_code, status.HTTP_200_OK)
+        detail_sub_names = [s['name'] for s in res_detail.data.get('subcategories', [])]
+        self.assertNotIn("User B Private Subcat", detail_sub_names)
+
+        # 3. User B retrieves parent system category and sees their subcategory
+        self.client.force_authenticate(user=user_b)
+        res_detail_b = self.client.get(f'/api/ledger/categories/{self.food_category.id}/')
+        self.assertEqual(res_detail_b.status_code, status.HTTP_200_OK)
+        detail_sub_names_b = [s['name'] for s in res_detail_b.data.get('subcategories', [])]
+        self.assertIn("User B Private Subcat", detail_sub_names_b)
+
     def test_create_transaction_api(self):
         payload = {
             'account': str(self.account.id),

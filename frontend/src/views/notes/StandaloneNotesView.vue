@@ -350,6 +350,7 @@
             :note="activeNote"
             :is-verified="isVerified(activeNote.id)"
             @verified="verifiedNoteIds.add(activeNote!.id)"
+            @locked="verifiedNoteIds.delete(activeNote!.id)"
             @trashed="handleTrashed"
           />
           <div v-else class="h-full flex flex-col items-center justify-center gap-3 p-12 text-center">
@@ -388,6 +389,7 @@
               :note="activeNote"
               :is-verified="isVerified(activeNote.id)"
               @verified="verifiedNoteIds.add(activeNote!.id)"
+              @locked="verifiedNoteIds.delete(activeNote!.id)"
               @trashed="handleTrashed"
             />
           </div>

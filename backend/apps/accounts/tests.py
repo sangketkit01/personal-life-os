@@ -75,6 +75,49 @@ class AuthTestCase(TestCase):
         res = self.client.post(url, data, format='json')
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_login_origin_security_check(self):
+        """
+        Security Test (C1): Login endpoint rejects requests from untrusted origins,
+        while accepting allowed frontend origins and same-origin calls.
+        """
+        url = reverse('auth-login')
+
+        # 1. Untrusted origin is rejected with 403 Forbidden
+        res_bad = self.client.post(
+            url,
+            {'username': 'boss', 'password': 'Password123!'},
+            format='json',
+            HTTP_ORIGIN='https://evil-phishing-site.com'
+        )
+        self.assertEqual(res_bad.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 2. Allowed origin (e.g. localhost:5173) is accepted with 200 OK
+        res_good = self.client.post(
+            url,
+            {'username': 'boss', 'password': 'Password123!'},
+            format='json',
+            HTTP_ORIGIN='http://localhost:5173'
+        )
+        self.assertEqual(res_good.status_code, status.HTTP_200_OK)
+
+    def test_register_origin_security_check(self):
+        """
+        Security Test (C1): Register endpoint rejects requests from untrusted origins.
+        """
+        url = reverse('auth-register')
+        res = self.client.post(
+            url,
+            {
+                'username': 'newuser',
+                'email': 'new@test.com',
+                'password': 'Password123!',
+                'invite_code': self.invite.code
+            },
+            format='json',
+            HTTP_ORIGIN='https://attacker.example.com'
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
     def test_health_check_endpoint(self):
         """API-02 Test: /api/health/ returns healthy status and connects to database."""
         res = self.client.get('/api/health/')

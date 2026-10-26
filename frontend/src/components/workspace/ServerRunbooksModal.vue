@@ -165,6 +165,17 @@
         @confirm="doConfirmedExecute"
         @cancel="confirmExecute = null; executeError = ''"
       />
+      <ConfirmModal
+        :is-open="!!confirmTrustHostKey"
+        :title="confirmTrustHostKey?.errorInfo.isMismatch ? t('infra.hostKey.mismatchTitle') : t('infra.hostKey.verifyRequired')"
+        :message="`${confirmTrustHostKey?.errorInfo.isMismatch ? t('infra.hostKey.mismatchDesc') : t('infra.hostKey.verifyDesc')}\n\n${t('infra.hostKey.fingerprint')}: ${confirmTrustHostKey?.errorInfo.remoteFingerprint}\n\nTrust this host key and execute '${confirmTrustHostKey?.rb.title}'?`"
+        :confirm-text="t('infra.hostKey.confirmTrust')"
+        :cancel-text="t('common.cancel')"
+        :is-danger="confirmTrustHostKey?.errorInfo.isMismatch"
+        :is-loading="isTrustingHostKey"
+        @confirm="doTrustHostKeyAndRerun"
+        @cancel="confirmTrustHostKey = null"
+      />
     </div>
   </Teleport>
 </template>
@@ -175,6 +186,7 @@ import { Zap, X, Plus, Pencil, Trash2, Play, Save, CheckCircle2, XCircle } from 
 import { t, formatLocaleDate } from '../../i18n'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
+import { parseSshHostKeyError, type SshHostKeyErrorInfo } from '../../utils/sshSafety'
 import ConfirmModal from '../common/ConfirmModal.vue'
 import type { InfrastructureAsset, ServerRunbook, RemoteCommandResult } from '../../types/workspace'
 
@@ -269,6 +281,27 @@ async function saveRunbook() {
   }
 }
 
+const confirmTrustHostKey = ref<{ rb: ServerRunbook; errorInfo: SshHostKeyErrorInfo } | null>(null)
+const isTrustingHostKey = ref(false)
+
+async function doTrustHostKeyAndRerun() {
+  if (!confirmTrustHostKey.value || isTrustingHostKey.value) return
+  isTrustingHostKey.value = true
+  const { rb, errorInfo } = confirmTrustHostKey.value
+  try {
+    await workspaceStore.trustInfraAssetHostKey(props.asset.id, errorInfo.remoteFingerprint)
+    toast.success(t('infra.hostKey.trustSuccess'))
+    confirmTrustHostKey.value = null
+    confirmExecute.value = null
+    executeError.value = ''
+    await execute(rb)
+  } catch (err: any) {
+    toast.error(err?.response?.data?.detail || t('infra.hostKey.trustFailed'))
+  } finally {
+    isTrustingHostKey.value = false
+  }
+}
+
 async function execute(rb: ServerRunbook) {
   executingId.value = rb.id
   try {
@@ -284,7 +317,14 @@ async function execute(rb: ServerRunbook) {
     return res
   } catch (err: any) {
     const errText = err?.response?.data?.detail || err?.message || t('rb.execError')
-    toast.error(errText)
+    const hostKeyInfo = parseSshHostKeyError(errText)
+    if (hostKeyInfo.isHostKeyError) {
+      confirmExecute.value = null
+      executeError.value = ''
+      confirmTrustHostKey.value = { rb, errorInfo: hostKeyInfo }
+    } else {
+      toast.error(errText)
+    }
     throw err
   } finally {
     executingId.value = null

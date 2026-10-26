@@ -2,16 +2,23 @@
   <div class="space-y-6 max-w-6xl mx-auto font-sans pb-16">
     <!-- Top Navigation Breadcrumbs & Controls -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-      <div class="flex items-center gap-2 text-xs font-mono text-zinc-400">
-        <RouterLink to="/portfolio" class="hover:text-zinc-200 transition-colors flex items-center gap-1">
-          <ArrowLeft class="w-3.5 h-3.5" />
-          <span>Portfolio</span>
-        </RouterLink>
-        <span class="text-zinc-600">/</span>
-        <span class="text-zinc-500">Holdings</span>
-        <span class="text-zinc-600">/</span>
-        <span class="text-zinc-100 font-bold font-mono">{{ tickerParam }}</span>
-      </div>
+      <nav aria-label="Breadcrumb" class="flex items-center gap-2 text-xs font-mono text-zinc-400">
+        <ol class="flex items-center gap-2 min-w-0">
+          <li class="flex items-center gap-2 shrink-0">
+            <RouterLink
+              :to="parentPortfolioPath"
+              class="hover:text-zinc-200 transition-colors flex items-center gap-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 rounded px-1 -mx-1"
+            >
+              <ArrowLeft class="w-3.5 h-3.5" />
+              <span>{{ parentPortfolioLabel }}</span>
+            </RouterLink>
+            <span aria-hidden="true" class="text-zinc-600 select-none">/</span>
+          </li>
+          <li class="min-w-0">
+            <span aria-current="page" class="text-zinc-100 font-bold font-mono">{{ tickerParam }}</span>
+          </li>
+        </ol>
+      </nav>
 
       <!-- Quick Actions -->
       <div class="flex flex-wrap items-center gap-2">
@@ -580,6 +587,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { t } from '../i18n'
 import { usePortfolioStore } from '../stores/portfolio'
 import type { StockHolding, StockTransaction, StockNewsArticle } from '../types/portfolio'
 import AddTransactionModal from '../components/portfolio/AddTransactionModal.vue'
@@ -605,6 +613,15 @@ const portfolioStore = usePortfolioStore()
 
 const tickerParam = computed(() => {
   return decodeURIComponent((route.params.ticker as string) || '').trim().toUpperCase()
+})
+
+const parentPortfolioPath = computed(() => {
+  const pId = route.query.portfolio_id ? String(route.query.portfolio_id) : ''
+  return pId ? `/portfolio/accounts/${pId}` : '/portfolio/overview'
+})
+
+const parentPortfolioLabel = computed(() => {
+  return route.query.portfolio_id ? t('crumb.accountDossier') : t('crumb.portfolio')
 })
 
 const holding = ref<StockHolding | null>(null)

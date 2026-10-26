@@ -495,11 +495,46 @@
           </button>
 
           <!-- Dynamic Breadcrumbs -->
-          <div class="hidden sm:flex items-center gap-2 text-xs font-mono text-zinc-500">
-            <span class="text-zinc-400">{{ currentDomainLabel }}</span>
-            <span v-if="currentSubdomainLabel" class="text-zinc-600">/</span>
-            <span v-if="currentSubdomainLabel" class="text-zinc-200 font-medium font-sans">{{ currentSubdomainLabel }}</span>
-          </div>
+          <nav aria-label="Breadcrumb" class="flex items-center min-w-0 mr-1 sm:mr-2">
+            <ol class="flex items-center gap-1.5 text-xs font-mono text-zinc-400 min-w-0">
+              <li
+                v-for="(crumb, idx) in breadcrumbs"
+                :key="idx"
+                class="flex items-center gap-1.5 min-w-0"
+                :class="{
+                  'truncate': idx === breadcrumbs.length - 1,
+                  'shrink-0': idx < breadcrumbs.length - 1,
+                  'hidden sm:flex': idx < breadcrumbs.length - 2
+                }"
+              >
+                <!-- Separator (hidden from screen reader) -->
+                <span
+                  v-if="idx > 0"
+                  aria-hidden="true"
+                  class="text-zinc-600 select-none shrink-0"
+                  :class="{ 'hidden sm:inline': idx === breadcrumbs.length - 2 && breadcrumbs.length > 2 }"
+                >/</span>
+
+                <!-- Ancestor Link -->
+                <RouterLink
+                  v-if="crumb.to"
+                  :to="crumb.to"
+                  class="hover:text-zinc-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 focus-visible:text-zinc-100 rounded px-1 -mx-1 transition-colors truncate"
+                >
+                  {{ crumb.label }}
+                </RouterLink>
+
+                <!-- Current Page Text -->
+                <span
+                  v-else
+                  aria-current="page"
+                  class="text-zinc-200 font-medium font-sans truncate select-text"
+                >
+                  {{ crumb.label }}
+                </span>
+              </li>
+            </ol>
+          </nav>
 
           <!-- Quick Search command pill -->
           <button
@@ -617,6 +652,7 @@ import { useFinanceStore } from '../stores/finance'
 import { useLedgerStore } from '../stores/ledger'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useToastStore } from '../stores/toast'
+import { useBreadcrumbs } from '../composables/useBreadcrumbs'
 import CommandPalette from '../components/common/CommandPalette.vue'
 import ToastContainer from '../components/common/ToastContainer.vue'
 import {
@@ -855,48 +891,8 @@ const workspaceNavItems: NavSubItem[] = [
   }
 ]
 
-// Dynamic Breadcrumbs
-const currentDomainLabel = computed(() => {
-  const p = route.path
-  if (p.startsWith('/finance')) return t('nav.finance')
-  if (p.startsWith('/ledger')) return t('nav.ledger')
-  if (p.startsWith('/portfolio')) return t('nav.portfolio')
-  if (p.startsWith('/workspace')) return t('nav.workspace')
-  if (p.startsWith('/notes')) return t('nav.notes')
-  if (p.startsWith('/settings')) return t('nav.settings')
-  return t('crumb.console')
-})
-
-const currentSubdomainLabel = computed(() => {
-  const p = route.path
-  if (p === '/finance/installments/new') return t('crumb.newContract')
-  if (p.startsWith('/finance/installments/')) return t('crumb.contractDossier')
-  if (p === '/finance/bnpl/new') return t('crumb.newCredit')
-  if (p.includes('/new-order')) return t('crumb.newOrder')
-  if (p.startsWith('/finance/bnpl/')) return t('crumb.accountDossier')
-  if (p === '/finance/debts/new') return t('crumb.newDebt')
-  if (p.startsWith('/finance/debts/')) return t('crumb.debtDossier')
-  if (p === '/finance/subscriptions/new') return t('crumb.newSubscription')
-  if (p.startsWith('/finance/subscriptions/')) return t('crumb.subscriptionDossier')
-  if (p === '/ledger/accounts/new') return t('crumb.newAccount')
-  if (p.startsWith('/ledger/accounts/')) return t('crumb.accountStatement')
-  if (p === '/portfolio/accounts/new') return t('crumb.newBasket')
-  if (p.startsWith('/portfolio/accounts/')) return t('crumb.accountDossier')
-  if (p === '/portfolio/executions/import') return t('crumb.importCsv')
-  if (p === '/portfolio/executions/dividends') return t('crumb.dividendLedger')
-  if (p.startsWith('/portfolio/news/')) return t('crumb.newsBriefing')
-  const fMatch = financeNavItems.find(i => i.path === p)
-  if (fMatch) return t(fMatch.labelKey)
-  const lMatch = ledgerNavItems.find(i => i.path === p)
-  if (lMatch) return t(lMatch.labelKey)
-  const pMatch = portfolioNavItems.find(i => i.path === p)
-  if (pMatch) return t(pMatch.labelKey)
-  const wMatch = workspaceNavItems.find(i => i.path === p)
-  if (wMatch) return t(wMatch.labelKey)
-  if (p.startsWith('/workspace/projects/')) return t('crumb.projectDossier')
-  if (p.includes('/asset/')) return `${t('crumb.console')}: ${route.params.ticker || ''}`
-  return ''
-})
+// Dynamic Semantic Breadcrumbs
+const { breadcrumbs } = useBreadcrumbs()
 
 async function handleLogout() {
   await authStore.logout()

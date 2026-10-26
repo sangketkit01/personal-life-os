@@ -72,6 +72,38 @@
           </div>
         </div>
 
+        <!-- Host Key verification banner -->
+        <div
+          v-if="hostKeyInfo.isHostKeyError"
+          class="px-4 py-2.5 border-b text-left flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0"
+          :class="hostKeyInfo.isMismatch ? 'bg-rose-950/90 border-rose-800' : 'bg-amber-950/90 border-amber-800'"
+        >
+          <div class="flex items-start gap-2.5 min-w-0">
+            <AlertTriangle v-if="hostKeyInfo.isMismatch" class="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <ShieldAlert v-else class="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div class="min-w-0">
+              <p class="text-xs font-semibold" :class="hostKeyInfo.isMismatch ? 'text-rose-200' : 'text-amber-200'">
+                {{ hostKeyInfo.isMismatch ? t('infra.hostKey.mismatchTitle') : t('infra.hostKey.verifyRequired') }}
+              </p>
+              <p class="text-[11px] font-mono text-zinc-300 truncate">
+                {{ t('infra.hostKey.fingerprint') }}: <span class="font-bold text-white">{{ hostKeyInfo.remoteFingerprint }}</span>
+              </p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              @click="trustAndReconnect"
+              :disabled="isTrustingHostKey"
+              class="px-3 py-1 rounded text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              :class="hostKeyInfo.isMismatch ? 'bg-rose-600 hover:bg-rose-500 text-white' : 'bg-amber-600 hover:bg-amber-500 text-zinc-950'"
+            >
+              <ShieldCheck class="w-3.5 h-3.5" :class="{ 'animate-spin': isTrustingHostKey }" />
+              <span>{{ hostKeyInfo.isMismatch ? t('infra.hostKey.overrideTrust') : t('infra.hostKey.confirmTrust') }}</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Body: terminal + quick runbooks sidebar -->
         <div class="flex-1 min-h-0 flex relative">
           <div ref="terminalHost" class="flex-1 min-w-0 p-2 bg-[#0d0f14]" />
@@ -125,9 +157,13 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import {
-  TerminalSquare, RefreshCw, Eraser, ScrollText, Maximize2, Minimize2, X, Zap, ChevronRight
+  TerminalSquare, RefreshCw, Eraser, ScrollText, Maximize2, Minimize2, X, Zap, ChevronRight,
+  ShieldCheck, ShieldAlert, AlertTriangle
 } from 'lucide-vue-next'
 import { t } from '../../i18n'
+import { useWorkspaceStore } from '../../stores/workspace'
+import { useToastStore } from '../../stores/toast'
+import { parseSshHostKeyError } from '../../utils/sshSafety'
 import ConfirmModal from '../common/ConfirmModal.vue'
 import type { InfrastructureAsset, ServerRunbook } from '../../types/workspace'
 
@@ -139,12 +175,34 @@ const props = defineProps<{
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
+const workspaceStore = useWorkspaceStore()
+const toast = useToastStore()
+
 type WsStatus = 'connecting' | 'connected' | 'disconnected'
 const wsStatus = ref<WsStatus>('disconnected')
 const lastErrorMessage = ref('')
 const isMaximized = ref(false)
 const showRunbookBar = ref(true)
 const confirmRunbook = ref<ServerRunbook | null>(null)
+const hostKeyInfo = computed(() => parseSshHostKeyError(lastErrorMessage.value))
+const isTrustingHostKey = ref(false)
+
+async function trustAndReconnect() {
+  if (hostKeyInfo.value.isMismatch) {
+    if (!confirm(t('infra.hostKey.overrideConfirm'))) return
+  }
+  isTrustingHostKey.value = true
+  try {
+    await workspaceStore.trustInfraAssetHostKey(props.asset.id, hostKeyInfo.value.remoteFingerprint)
+    toast.success(t('infra.hostKey.trustSuccess'))
+    lastErrorMessage.value = ''
+    reconnect()
+  } catch (err: any) {
+    toast.error(err?.response?.data?.detail || t('infra.hostKey.trustFailed'))
+  } finally {
+    isTrustingHostKey.value = false
+  }
+}
 
 const terminalHost = ref<HTMLElement | null>(null)
 

@@ -217,7 +217,11 @@
                 >
                   <td class="py-3 pl-4">
                     <RouterLink
-                      :to="`/portfolio/asset/${h.ticker}`"
+                      :to="{
+                        name: 'portfolio-asset-detail',
+                        params: { ticker: h.ticker },
+                        query: { portfolio_id: currentPortfolio?.id, holding_id: h.id }
+                      }"
                       class="font-semibold text-zinc-100 hover:underline flex items-center gap-1.5"
                     >
                       <span>{{ h.ticker }}</span>

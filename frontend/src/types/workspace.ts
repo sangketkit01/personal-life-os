@@ -108,6 +108,7 @@ export interface InfrastructureAsset {
   expiry_date: string | null
   ssh_auth_type: SshAuthType
   ssh_username: string
+  ssh_host_fingerprint?: string | null
   has_ssh_password: boolean
   has_ssh_key: boolean
   has_ssh_passphrase: boolean

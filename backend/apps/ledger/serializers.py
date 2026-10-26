@@ -23,7 +23,22 @@ class CategorySubSerializer(serializers.ModelSerializer):
 
 
 class CategorySerializer(serializers.ModelSerializer):
-    subcategories = CategorySubSerializer(many=True, read_only=True)
+    subcategories = serializers.SerializerMethodField()
+
+    def get_subcategories(self, obj):
+        request = self.context.get('request')
+        user = request.user if request and hasattr(request, 'user') and request.user.is_authenticated else None
+        if hasattr(obj, '_prefetched_objects_cache') and 'subcategories' in obj._prefetched_objects_cache:
+            if user:
+                subs = [s for s in obj._prefetched_objects_cache['subcategories'] if s.is_system or s.user_id == user.id]
+            else:
+                subs = [s for s in obj._prefetched_objects_cache['subcategories'] if s.is_system]
+        else:
+            if user:
+                subs = obj.subcategories.filter(Q(is_system=True) | Q(user=user)).order_by('name')
+            else:
+                subs = obj.subcategories.filter(is_system=True).order_by('name')
+        return CategorySubSerializer(subs, many=True).data
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

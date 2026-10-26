@@ -85,7 +85,10 @@ class GoogleDriveConnection(models.Model):
 
     def is_token_valid(self):
         """Returns True if access token is still valid with a 60-second safety margin."""
-        plain_access_token = self.get_access_token()
+        try:
+            plain_access_token = self.get_access_token()
+        except Exception:
+            return False
         if not plain_access_token or not self.token_expiry:
             return False
         return self.token_expiry > (timezone.now() + timezone.timedelta(seconds=60))

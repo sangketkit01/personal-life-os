@@ -5,6 +5,8 @@ Zero-Disk Policy: SSH private keys and passwords are decrypted in memory
 (io.StringIO) and handed straight to paramiko - nothing is ever written
 to temporary files on disk.
 """
+import base64
+import hashlib
 import io
 import json
 import re
@@ -68,10 +70,61 @@ def _load_private_key_from_memory(key_material: str, passphrase: str = '') -> pa
     raise SshConnectionError('Could not parse SSH private key. Tried Ed25519/RSA/ECDSA. ' + ' | '.join(errors))
 
 
-def open_ssh_client(asset: InfrastructureAsset, timeout: int = 10) -> paramiko.SSHClient:
+def calculate_key_fingerprint(key: paramiko.PKey) -> str:
+    """Calculate the SHA256 base64 fingerprint of an SSH public key."""
+    digest = hashlib.sha256(key.asbytes()).digest()
+    b64_fp = base64.b64encode(digest).decode('utf-8').rstrip('=')
+    return f"SHA256:{b64_fp}"
+
+
+class AssetHostKeyPolicy(paramiko.MissingHostKeyPolicy):
     """
-    Open a authenticated paramiko SSHClient for the given asset.
+    Host key verification policy bound to the InfrastructureAsset record:
+    - If trusted fingerprint is absent:
+        - If accept_new_host_key=True: trust and persist the remote fingerprint.
+        - If accept_new_host_key=False: reject with SshConnectionError requiring user confirmation.
+    - If trusted fingerprint is present:
+        - If matches: allow connection.
+        - If mismatch: reject with SshConnectionError (MITM alert). Never auto-accept mismatch.
+    """
+    def __init__(self, asset: InfrastructureAsset, accept_new_host_key: bool = False):
+        self.asset = asset
+        self.accept_new_host_key = accept_new_host_key
+
+    def missing_host_key(self, client: paramiko.SSHClient, hostname: str, key: paramiko.PKey):
+        remote_fp = calculate_key_fingerprint(key)
+        trusted_fp = (self.asset.ssh_host_fingerprint or '').strip()
+
+        if not trusted_fp:
+            if self.accept_new_host_key:
+                self.asset.ssh_host_fingerprint = remote_fp
+                self.asset.save(update_fields=['ssh_host_fingerprint', 'updated_at'])
+                client.get_host_keys().add(hostname, key.get_name(), key)
+                return
+            raise SshConnectionError(
+                f"SSH host key for '{hostname}' is not verified. Server fingerprint: {remote_fp}. "
+                "Explicit confirmation is required before connecting."
+            )
+
+        if remote_fp != trusted_fp:
+            raise SshConnectionError(
+                f"WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED FOR '{hostname}'! "
+                f"Remote host key fingerprint is {remote_fp}, but trusted fingerprint is {trusted_fp}. "
+                "Connection aborted to protect against Man-in-the-Middle attacks."
+            )
+
+        client.get_host_keys().add(hostname, key.get_name(), key)
+
+
+def open_ssh_client(
+    asset: InfrastructureAsset,
+    timeout: int = 10,
+    accept_new_host_key: bool = False
+) -> paramiko.SSHClient:
+    """
+    Open an authenticated paramiko SSHClient for the given asset.
     Credentials are decrypted in memory only.
+    Strict host key verification enforces stored fingerprint per asset.
     """
     host = (asset.ip_address or '').strip() or (asset.hostname or '').strip()
     if not host:
@@ -81,7 +134,9 @@ def open_ssh_client(asset: InfrastructureAsset, timeout: int = 10) -> paramiko.S
         raise SshConnectionError('Asset is marked as console-only (no SSH credentials).')
 
     client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.set_missing_host_key_policy(
+        AssetHostKeyPolicy(asset, accept_new_host_key=accept_new_host_key)
+    )
 
     connect_kwargs = {
         'hostname': host,
@@ -158,7 +213,7 @@ def _parse_docker_ps(raw_output: str) -> List[Dict[str, Any]]:
     return containers
 
 
-def probe_server_telemetry(asset: InfrastructureAsset) -> Dict[str, Any]:
+def probe_server_telemetry(asset: InfrastructureAsset, accept_new_host_key: bool = False) -> Dict[str, Any]:
     """
     Agentless Level-1 probe: uptime, load, memory, disk, kernel and the full
     docker container list via one SSH session. Persists the snapshot on the
@@ -183,7 +238,7 @@ def probe_server_telemetry(asset: InfrastructureAsset) -> Dict[str, Any]:
 
     client = None
     try:
-        client = open_ssh_client(asset)
+        client = open_ssh_client(asset, accept_new_host_key=accept_new_host_key)
 
         # One batched exec round-trip instead of seven. If the batch marker is
         # absent (e.g. a test mocking per-command responses), fall back to the
@@ -278,7 +333,8 @@ def manage_docker_container(
     asset: InfrastructureAsset,
     container_id: str,
     action: str,
-    tail: int = 100
+    tail: int = 100,
+    accept_new_host_key: bool = False
 ) -> Dict[str, Any]:
     """
     Level-1 docker management: start/stop/restart a container or fetch its
@@ -295,7 +351,7 @@ def manage_docker_container(
     except (TypeError, ValueError):
         tail = 100
 
-    client = open_ssh_client(asset)
+    client = open_ssh_client(asset, accept_new_host_key=accept_new_host_key)
     try:
         if action == 'logs':
             out, err, exit_status = _run_command(
@@ -306,7 +362,7 @@ def manage_docker_container(
                 'container_id': container_id,
                 'output': out or err,
                 'exit_status': exit_status,
-                'telemetry': probe_server_telemetry(asset),
+                'telemetry': probe_server_telemetry(asset, accept_new_host_key=accept_new_host_key),
             }
 
         out, err, exit_status = _run_command(client, f'docker {action} {container_id}', timeout=60)
@@ -315,7 +371,7 @@ def manage_docker_container(
             'container_id': container_id,
             'output': (out + err).strip(),
             'exit_status': exit_status,
-            'telemetry': probe_server_telemetry(asset),
+            'telemetry': probe_server_telemetry(asset, accept_new_host_key=accept_new_host_key),
         }
         return result
     finally:
@@ -326,7 +382,8 @@ def execute_remote_command(
     asset: InfrastructureAsset,
     command: str,
     working_dir: str = '',
-    timeout: int = 60
+    timeout: int = 60,
+    accept_new_host_key: bool = False
 ) -> Dict[str, Any]:
     """
     Level-2 one-shot command execution. working_dir is shell-quoted and
@@ -343,7 +400,7 @@ def execute_remote_command(
     full_command = f'cd {shlex.quote(working_dir)} && {command}' if working_dir.strip() else command
 
     started = time.monotonic()
-    client = open_ssh_client(asset)
+    client = open_ssh_client(asset, accept_new_host_key=accept_new_host_key)
     try:
         stdin, stdout, stderr = client.exec_command(full_command, timeout=timeout)
         try:

@@ -347,7 +347,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return res.data
   }
 
-  async function setNoteLock(id: string, payload: { is_locked: boolean; pin?: string }) {
+  async function setNoteLock(id: string, payload: { is_locked: boolean; pin?: string; old_pin?: string }) {
     const res = await apiClient.post<Note>(`/workspace/notes/${id}/set-lock/`, payload)
     const idx = standaloneNotes.value.findIndex(n => n.id === id)
     if (idx !== -1) {
@@ -356,9 +356,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return res.data
   }
 
-  async function verifyNoteLock(id: string, pin: string) {
+  async function verifyNoteLock(id: string, pin: string): Promise<{ verified: boolean; note?: Note }> {
     const res = await apiClient.post<{ verified: boolean }>(`/workspace/notes/${id}/verify-lock/`, { pin })
-    return res.data.verified
+    if (res.data.verified) {
+      const refreshed = await fetchNote(id)
+      return { verified: true, note: refreshed }
+    }
+    return { verified: false }
   }
 
   async function copyNoteToProject(id: string, projectId: string) {
@@ -454,12 +458,23 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     serverRunbooks.value = serverRunbooks.value.filter(rb => rb.asset !== id)
   }
 
-  async function probeInfraAsset(id: string) {
+  async function probeInfraAsset(id: string, confirmHostKey = false) {
     const res = await apiClient.post<{
       health_status: string
       telemetry: InfraTelemetry
       asset: InfrastructureAsset
-    }>(`/workspace/infrastructure/${id}/probe/`)
+    }>(`/workspace/infrastructure/${id}/probe/`, confirmHostKey ? { confirm_host_key: true } : {})
+    const idx = infraAssets.value.findIndex(a => a.id === id)
+    if (idx !== -1) infraAssets.value[idx] = res.data.asset
+    return res.data
+  }
+
+  async function trustInfraAssetHostKey(id: string, fingerprint?: string) {
+    const res = await apiClient.post<{
+      detail: string
+      ssh_host_fingerprint: string
+      asset: InfrastructureAsset
+    }>(`/workspace/infrastructure/${id}/trust-host-key/`, { fingerprint })
     const idx = infraAssets.value.findIndex(a => a.id === id)
     if (idx !== -1) infraAssets.value[idx] = res.data.asset
     return res.data
@@ -626,6 +641,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     unlinkInfraAssetProject,
     fetchAllUserInfraAssets,
     probeInfraAsset,
+    trustInfraAssetHostKey,
     dockerAction,
     execInfraCommand,
     fetchServerCredentials,

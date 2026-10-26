@@ -529,6 +529,12 @@ class InfrastructureAsset(models.Model):
     ssh_password_encrypted = models.TextField(blank=True, default='', verbose_name="SSH Password (Encrypted)")
     ssh_private_key_encrypted = models.TextField(blank=True, default='', verbose_name="SSH Private Key (Encrypted)")
     ssh_passphrase_encrypted = models.TextField(blank=True, default='', verbose_name="SSH Key Passphrase (Encrypted)")
+    ssh_host_fingerprint = models.CharField(
+        max_length=255,
+        blank=True,
+        default='',
+        verbose_name="Trusted SSH Host Key Fingerprint"
+    )
 
     # Watchdog & Live Telemetry Snapshot
     watchdog_enabled = models.BooleanField(default=False, verbose_name="Bot Watchdog Enabled")

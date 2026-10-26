@@ -930,7 +930,7 @@ function setBlockRef(el: any, index: number) {
       document.activeElement !== el &&
       el.innerHTML !== block.content
     ) {
-      el.innerHTML = block.content || ''
+      el.innerHTML = sanitizeRichHTML(block.content || '')
     }
   } else {
     blockRefs.delete(index)
@@ -1736,7 +1736,7 @@ function applySlashCommand(type: NoteBlockType) {
   if (type !== 'code') {
     const el2 = blockRefs.get(index)
     if (el2 && isEditable(el2)) {
-      el2.innerHTML = remainingHTML
+      el2.innerHTML = sanitizeRichHTML(remainingHTML)
     }
     focusBlock(index)
   }

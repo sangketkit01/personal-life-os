@@ -60,6 +60,7 @@ class CookieJWTAuthentication(authentication.BaseAuthentication):
             )
             if not session:
                 raise exceptions.AuthenticationFailed('Device session has been revoked or deactivated.')
+            request.device_session_id = str(session_id)
             return (session.user, token)
 
         try:

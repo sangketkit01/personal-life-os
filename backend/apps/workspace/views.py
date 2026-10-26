@@ -4,9 +4,10 @@ import uuid
 from copy import deepcopy
 from datetime import date
 from django.contrib.auth.hashers import check_password, make_password
+from django.core.cache import cache
 from django.db.models import Q, Count
 from django.utils import timezone
-from rest_framework import viewsets, views, permissions, status, response, mixins
+from rest_framework import viewsets, views, permissions, status, response, mixins, exceptions
 from rest_framework.decorators import action
 from apps.accounts.services import log_activity
 from .models import (
@@ -28,6 +29,8 @@ from .serializers import (
     TaskDocumentSerializer,
     MoveTaskStatusSerializer,
     NoteSerializer,
+    is_note_unlocked_for_request,
+    get_request_session_id,
     NoteFolderSerializer,
     ProjectLinkSerializer,
     ProjectAttachmentSerializer,
@@ -257,6 +260,13 @@ class NoteViewSet(viewsets.ModelViewSet):
 
         return qs.order_by('-is_pinned', '-updated_at')
 
+    def perform_update(self, serializer):
+        note = serializer.instance
+        if note.is_locked and note.lock_pin:
+            if not is_note_unlocked_for_request(self.request, note):
+                raise exceptions.PermissionDenied('Note is locked. PIN verification required.')
+        serializer.save()
+
     @action(detail=True, methods=['post'], url_path='toggle-pin')
     def toggle_pin(self, request, pk=None):
         """Action to pin / unpin note."""
@@ -300,6 +310,8 @@ class NoteViewSet(viewsets.ModelViewSet):
         note = self.get_object()
         is_locked = bool(request.data.get('is_locked'))
         pin = str(request.data.get('pin') or '').strip()
+        old_pin = str(request.data.get('old_pin') or request.data.get('current_pin') or '').strip()
+        is_unlocked = is_note_unlocked_for_request(request, note)
 
         if is_locked:
             if pin:
@@ -308,6 +320,13 @@ class NoteViewSet(viewsets.ModelViewSet):
                         {'error': 'PIN must be 4 to 6 digits.'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
+                # If modifying an already locked note's PIN, require old PIN or active unlock
+                if note.is_locked and note.lock_pin:
+                    if not (is_unlocked or (old_pin and check_password(old_pin, note.lock_pin))):
+                        return response.Response(
+                            {'error': 'Current PIN or active unlock is required to change PIN.'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
                 note.lock_pin = make_password(pin)
             elif not note.lock_pin:
                 return response.Response(
@@ -317,12 +336,30 @@ class NoteViewSet(viewsets.ModelViewSet):
             # Empty pin with an existing hash keeps the current PIN
         else:
             if note.lock_pin:
-                if not pin or not check_password(pin, note.lock_pin):
+                provided_pin = pin or old_pin
+                if not provided_pin or not check_password(provided_pin, note.lock_pin):
                     return response.Response(
                         {'error': 'Incorrect PIN. Could not remove the lock.'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
             note.lock_pin = ''
+
+        # Invalidate any active session unlock tokens across this and other user sessions
+        session_id = get_request_session_id(request)
+        cache.delete(f"note_unlocked:{request.user.id}:{session_id}:{note.id}")
+        cache.delete(f"note_unlocked:{request.user.id}:{note.id}")
+        try:
+            from apps.accounts.models import UserDeviceSession
+            user_sids = UserDeviceSession.objects.filter(user_id=request.user.id).values_list('id', flat=True)
+            for sid in user_sids:
+                cache.delete(f"note_unlocked:{request.user.id}:{sid}:{note.id}")
+        except Exception:
+            pass
+        if hasattr(request, 'session'):
+            unlocked = request.session.get('unlocked_notes', [])
+            if str(note.id) in unlocked:
+                unlocked.remove(str(note.id))
+                request.session.modified = True
 
         note.is_locked = is_locked
         note.save(update_fields=['is_locked', 'lock_pin', 'updated_at'])
@@ -336,12 +373,21 @@ class NoteViewSet(viewsets.ModelViewSet):
             return response.Response({'verified': True})
         pin = str(request.data.get('pin') or '')
         verified = bool(pin) and check_password(pin, note.lock_pin)
+        if verified:
+            session_id = get_request_session_id(request)
+            cache.set(f"note_unlocked:{request.user.id}:{session_id}:{note.id}", True, timeout=3600)
         return response.Response({'verified': verified})
 
     @action(detail=True, methods=['post'], url_path='copy-to-project')
     def copy_to_project(self, request, pk=None):
         """Duplicate a standalone note into a Workspace Project as a Project Page."""
         note = self.get_object()
+        if note.is_locked and note.lock_pin:
+            if not is_note_unlocked_for_request(request, note):
+                return response.Response(
+                    {'error': 'Cannot copy a locked note without PIN verification.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         raw_project_id = request.data.get('project_id')
         project_id = _clean_uuid(raw_project_id) if raw_project_id else None
         if not project_id:
@@ -569,11 +615,32 @@ class InfrastructureAssetViewSet(viewsets.ModelViewSet):
             InfrastructureAssetSerializer(asset, context={'request': request}).data
         )
 
+    @action(detail=True, methods=['post'], url_path='trust-host-key')
+    def trust_host_key(self, request, pk=None):
+        """Explicitly confirm and trust the SSH host key for this asset."""
+        asset = self.get_object()
+        fingerprint = str(request.data.get('fingerprint') or '').strip()
+        if fingerprint:
+            asset.ssh_host_fingerprint = fingerprint
+            asset.save(update_fields=['ssh_host_fingerprint', 'updated_at'])
+        else:
+            try:
+                client = open_ssh_client(asset, timeout=5, accept_new_host_key=True)
+                client.close()
+            except SshConnectionError as sce:
+                return response.Response({'detail': str(sce)}, status=status.HTTP_400_BAD_REQUEST)
+        return response.Response({
+            'detail': 'Host key trusted successfully.',
+            'ssh_host_fingerprint': asset.ssh_host_fingerprint,
+            'asset': InfrastructureAssetSerializer(asset, context={'request': request}).data
+        })
+
     @action(detail=True, methods=['post'])
     def probe(self, request, pk=None):
         """Live agentless SSH probe: uptime, CPU, RAM, disk, docker containers."""
         asset = self.get_object()
-        telemetry = probe_server_telemetry(asset)
+        confirm = bool(request.data.get('confirm_host_key') or request.query_params.get('confirm_host_key'))
+        telemetry = probe_server_telemetry(asset, accept_new_host_key=confirm)
         try:
             log_activity(
                 request.user, 'WORKSPACE', 'INFRA_PROBE',
@@ -594,8 +661,9 @@ class InfrastructureAssetViewSet(viewsets.ModelViewSet):
         container_id = request.data.get('container_id', '')
         docker_action = request.data.get('action', '')
         tail = request.data.get('tail', 100)
+        confirm = bool(request.data.get('confirm_host_key') or request.query_params.get('confirm_host_key'))
         try:
-            result = manage_docker_container(asset, container_id, docker_action, tail)
+            result = manage_docker_container(asset, container_id, docker_action, tail, accept_new_host_key=confirm)
         except ValueError as ve:
             return response.Response({'detail': str(ve)}, status=status.HTTP_400_BAD_REQUEST)
         except SshConnectionError as sce:
@@ -616,8 +684,9 @@ class InfrastructureAssetViewSet(viewsets.ModelViewSet):
         command = request.data.get('command', '')
         working_dir = request.data.get('working_dir', '')
         timeout = request.data.get('timeout', 60)
+        confirm = bool(request.data.get('confirm_host_key') or request.query_params.get('confirm_host_key'))
         try:
-            result = execute_remote_command(asset, command, working_dir, timeout)
+            result = execute_remote_command(asset, command, working_dir, timeout, accept_new_host_key=confirm)
         except ValueError as ve:
             return response.Response({'detail': str(ve)}, status=status.HTTP_400_BAD_REQUEST)
         except SshConnectionError as sce:
@@ -650,8 +719,15 @@ class ServerCredentialViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def reveal(self, request, pk=None):
         """Decrypt and return the plaintext secret for one vault entry."""
+        from apps.storage.encryption import EncryptionError
         credential = self.get_object()
-        secret = decrypt_token(credential.secret_encrypted)
+        try:
+            secret = decrypt_token(credential.secret_encrypted)
+        except EncryptionError:
+            return response.Response(
+                {'error': 'Failed to decrypt credential secret.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         try:
             log_activity(
                 request.user, 'WORKSPACE', 'REVEAL_CREDENTIAL',
@@ -686,9 +762,11 @@ class ServerRunbookViewSet(viewsets.ModelViewSet):
                 {'detail': 'Runbook has no command to execute.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        confirm = bool(request.data.get('confirm_host_key') or request.query_params.get('confirm_host_key'))
         try:
             result = execute_remote_command(
-                runbook.asset, runbook.command, runbook.working_dir, runbook.timeout_seconds
+                runbook.asset, runbook.command, runbook.working_dir, runbook.timeout_seconds,
+                accept_new_host_key=confirm
             )
         except SshConnectionError as sce:
             return response.Response({'detail': str(sce)}, status=status.HTTP_502_BAD_GATEWAY)

@@ -2,14 +2,24 @@
   <div class="space-y-6 max-w-7xl mx-auto font-sans pb-16">
     <!-- Breadcrumb & Top Bar -->
     <div class="pb-4 border-b border-zinc-800/80">
-      <div class="flex items-center gap-2 text-xs font-mono text-zinc-400 mb-2">
-        <RouterLink to="/ledger/accounts" class="inline-flex items-center gap-1 hover:text-zinc-200 transition-colors">
-          <ArrowLeft class="w-3 h-3" />
-          <span>All Accounts</span>
-        </RouterLink>
-        <span class="text-zinc-600">/</span>
-        <span class="text-zinc-300 font-medium">{{ account?.name || 'Account Details' }}</span>
-      </div>
+      <nav aria-label="Breadcrumb" class="mb-2">
+        <ol class="flex items-center gap-2 text-xs font-mono text-zinc-400 flex-wrap">
+          <li class="flex items-center gap-2">
+            <RouterLink to="/ledger" class="hover:text-zinc-200 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 rounded px-1 -mx-1">{{ t('crumb.ledger') }}</RouterLink>
+            <span aria-hidden="true" class="text-zinc-600 select-none">/</span>
+          </li>
+          <li class="flex items-center gap-2">
+            <RouterLink to="/ledger/accounts" class="inline-flex items-center gap-1 hover:text-zinc-200 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 rounded px-1 -mx-1">
+              <ArrowLeft class="w-3 h-3" />
+              <span>{{ t('crumb.accounts') }}</span>
+            </RouterLink>
+            <span aria-hidden="true" class="text-zinc-600 select-none">/</span>
+          </li>
+          <li>
+            <span aria-current="page" class="text-zinc-300 font-medium">{{ account?.name || t('crumb.accountStatement') }}</span>
+          </li>
+        </ol>
+      </nav>
 
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -209,6 +219,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { t } from '../../i18n'
 import { useLedgerStore } from '../../stores/ledger'
 import { useToastStore } from '../../stores/toast'
 import type { LedgerTransaction } from '../../types/ledger'

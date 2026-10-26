@@ -3,13 +3,13 @@
     <!-- Breadcrumb & Back Header -->
     <div class="flex items-center justify-between pb-4 border-b border-zinc-800/80">
       <div class="flex items-center gap-3">
-        <button
-          @click="router.push('/portfolio/executions')"
-          class="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
+        <RouterLink
+          to="/portfolio/executions"
+          class="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors inline-flex items-center justify-center focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400"
           title="Back to Trade Executions Log"
         >
           <ArrowLeft class="w-4 h-4" />
-        </button>
+        </RouterLink>
         <div>
           <div class="flex items-center gap-2">
             <h1 class="text-base font-semibold text-zinc-100 tracking-tight">CSV Statement Import Engine</h1>

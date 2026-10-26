@@ -1,5 +1,6 @@
 import os
 import secrets
+from urllib.parse import urlparse
 from datetime import timedelta
 from django.conf import settings
 from django.utils import timezone
@@ -76,6 +77,54 @@ def get_current_session_id(request):
     return None
 
 
+def _is_request_origin_allowed(request) -> bool:
+    """
+    Validates Origin / Referer for cookie-issuing endpoints (login & register).
+    Allows non-browser / same-origin direct calls, configured CORS / CSRF origins,
+    current host, and dev localhost variants. Rejects external cross-origin origins.
+    """
+    origin = request.META.get('HTTP_ORIGIN')
+    referer = request.META.get('HTTP_REFERER')
+    header_val = origin or referer
+    if not header_val:
+        return True
+
+    try:
+        parsed = urlparse(header_val)
+        target_origin = f"{parsed.scheme}://{parsed.netloc}".lower()
+        target_host = (parsed.hostname or '').lower()
+    except Exception:
+        return False
+
+    allowed_origins = set()
+    for o in getattr(settings, 'CORS_ALLOWED_ORIGINS', []):
+        allowed_origins.add(o.lower().rstrip('/'))
+    for o in getattr(settings, 'CSRF_TRUSTED_ORIGINS', []):
+        allowed_origins.add(o.lower().rstrip('/'))
+
+    try:
+        req_host = request.get_host().lower()
+        allowed_origins.add(f"http://{req_host}")
+        allowed_origins.add(f"https://{req_host}")
+    except Exception:
+        pass
+
+    for port in ('5173', '3000', '8000', '80', '443'):
+        allowed_origins.add(f"http://localhost:{port}")
+        allowed_origins.add(f"http://127.0.0.1:{port}")
+        allowed_origins.add(f"https://localhost:{port}")
+        allowed_origins.add(f"https://127.0.0.1:{port}")
+
+    if target_origin in allowed_origins:
+        return True
+
+    allowed_hosts = [h.lower() for h in getattr(settings, 'ALLOWED_HOSTS', []) if h != '*']
+    if target_host and target_host in allowed_hosts:
+        return True
+
+    return False
+
+
 class RegisterView(views.APIView):
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
@@ -83,6 +132,11 @@ class RegisterView(views.APIView):
     throttle_scope = 'auth_register'
 
     def post(self, request):
+        if not _is_request_origin_allowed(request):
+            return response.Response(
+                {'error': 'Cross-origin request rejected.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
@@ -126,6 +180,11 @@ class LoginView(views.APIView):
     throttle_scope = 'auth_login'
 
     def post(self, request):
+        if not _is_request_origin_allowed(request):
+            return response.Response(
+                {'error': 'Cross-origin request rejected.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         serializer = LoginSerializer(data=request.data)
         if not serializer.is_valid():
             # Record failed login attempt in audit log if account exists

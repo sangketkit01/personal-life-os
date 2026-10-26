@@ -133,12 +133,12 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
         cat_type = self.request.query_params.get('type')
         user_or_system = Q(is_system=True) | Q(user=self.request.user)
-        qs = Category.objects.filter(user_or_system)
+        sub_qs = Category.objects.filter(user_or_system).order_by('name')
+        qs = Category.objects.filter(user_or_system).prefetch_related(
+            Prefetch('subcategories', queryset=sub_qs)
+        )
         if self.action == 'list':
-            sub_qs = Category.objects.filter(user_or_system).order_by('name')
-            qs = qs.filter(parent__isnull=True).prefetch_related(
-                Prefetch('subcategories', queryset=sub_qs)
-            )
+            qs = qs.filter(parent__isnull=True)
         else:
             qs = qs.select_related('parent')
 

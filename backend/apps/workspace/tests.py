@@ -586,6 +586,200 @@ class WorkspaceTestCase(TestCase):
         self.assertFalse(res_unlock.data['is_locked'])
         self.assertFalse(res_unlock.data['has_lock_pin'])
 
+    def test_locked_note_security_enforcement(self):
+        """
+        Security Test (B4): Locked note contents must be redacted in list/retrieve,
+        PATCH/copy must be forbidden until PIN verified, and is_locked cannot be bypassed via PATCH.
+        """
+        from django.core.cache import cache
+
+        res = self.client.post('/api/workspace/notes/', {
+            'title': 'Confidential Strategy',
+            'content': 'Top secret plans and password vault',
+            'blocks': [{'type': 'paragraph', 'content': 'Top secret block'}]
+        }, format='json')
+        note_id = res.data['id']
+
+        # Lock the note with PIN
+        res_lock = self.client.post(f'/api/workspace/notes/{note_id}/set-lock/', {
+            'is_locked': True, 'pin': '5678'
+        }, format='json')
+        self.assertEqual(res_lock.status_code, status.HTTP_200_OK)
+
+        # Clear cache/session to test unverified state
+        cache.clear()
+
+        # 1. Listing notes strips content and blocks for locked notes
+        res_list = self.client.get('/api/workspace/notes/')
+        self.assertEqual(res_list.status_code, status.HTTP_200_OK)
+        results = res_list.data.get('results', res_list.data) if isinstance(res_list.data, dict) else res_list.data
+        item = next(n for n in results if n['id'] == note_id)
+        self.assertEqual(item['content'], '')
+        self.assertEqual(item['blocks'], [])
+
+        # 2. Detail GET without PIN verification strips content and blocks
+        res_get = self.client.get(f'/api/workspace/notes/{note_id}/')
+        self.assertEqual(res_get.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_get.data['content'], '')
+        self.assertEqual(res_get.data['blocks'], [])
+
+        # 3. Direct PATCH {"is_locked": False} does NOT unlock the note
+        self.client.patch(f'/api/workspace/notes/{note_id}/', {'is_locked': False}, format='json')
+        note_db = Note.objects.get(id=note_id)
+        self.assertTrue(note_db.is_locked)
+
+        # 4. PATCH content is rejected with 403 Forbidden while unverified
+        res_patch = self.client.patch(f'/api/workspace/notes/{note_id}/', {'content': 'Hacked content'}, format='json')
+        self.assertEqual(res_patch.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 5. copy-to-project is rejected with 403 Forbidden while unverified
+        res_copy_fail = self.client.post(f'/api/workspace/notes/{note_id}/copy-to-project/', {
+            'project_id': str(self.project.id)
+        }, format='json')
+        self.assertEqual(res_copy_fail.status_code, status.HTTP_403_FORBIDDEN)
+
+        # 6. Verify PIN
+        res_verify = self.client.post(f'/api/workspace/notes/{note_id}/verify-lock/', {'pin': '5678'}, format='json')
+        self.assertEqual(res_verify.status_code, status.HTTP_200_OK)
+        self.assertTrue(res_verify.data['verified'])
+
+        # 7. Detail GET after verification returns full content & blocks
+        res_get_unlocked = self.client.get(f'/api/workspace/notes/{note_id}/')
+        self.assertEqual(res_get_unlocked.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_get_unlocked.data['content'], 'Top secret plans and password vault')
+        self.assertEqual(len(res_get_unlocked.data['blocks']), 1)
+
+        # 8. copy-to-project now succeeds after PIN verification
+        res_copy_ok = self.client.post(f'/api/workspace/notes/{note_id}/copy-to-project/', {
+            'project_id': str(self.project.id)
+        }, format='json')
+        self.assertEqual(res_copy_ok.status_code, status.HTTP_201_CREATED)
+
+    def test_note_html_sanitization(self):
+        """
+        Security Test (C3): Dangerous HTML tags, event handlers, and javascript: URLs
+        in note blocks must be stripped on the backend, while code blocks and table cells
+        must preserve their text verbatim without unwanted HTML sanitization.
+        """
+        malicious_html = '<script>alert("xss")</script><b onclick="steal()">Bold Text</b> <a href="javascript:evil()">Bad</a> <a href="https://legit.com">Good</a>'
+        code_content = '<div>Hello</div>\nif (a < b && b > c) {\n    <script>alert("run")</script>\n}'
+        table_rows = [
+            ['a < b & c', '<div>Hello</div>'],
+            ['Normal col', '<script>alert("x")</script>']
+        ]
+        res = self.client.post('/api/workspace/notes/', {
+            'title': 'XSS, Code, and Table Test',
+            'blocks': [
+                {'type': 'paragraph', 'content': malicious_html},
+                {'type': 'code', 'content': code_content, 'language': 'html'},
+                {'type': 'table', 'rows': table_rows}
+            ]
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        saved_para = res.data['blocks'][0]['content']
+        self.assertNotIn('<script>', saved_para)
+        self.assertNotIn('onclick', saved_para)
+        self.assertNotIn('javascript:', saved_para)
+        self.assertIn('<b>Bold Text</b>', saved_para)
+        self.assertIn('href="https://legit.com"', saved_para)
+
+        # Code block content must remain untouched (no tag stripping, no entity escaping)
+        saved_code = res.data['blocks'][1]['content']
+        self.assertEqual(saved_code, code_content)
+        self.assertIn('<div>Hello</div>', saved_code)
+        self.assertIn('a < b', saved_code)
+        self.assertIn('<script>alert("run")</script>', saved_code)
+
+        # Table cells must preserve raw string verbatim without entity escaping or tag dropping
+        saved_table = res.data['blocks'][2]['rows']
+        self.assertEqual(saved_table[0][0], 'a < b & c')
+        self.assertEqual(saved_table[0][1], '<div>Hello</div>')
+        self.assertEqual(saved_table[1][1], '<script>alert("x")</script>')
+
+    def test_note_pin_change_security_and_session_isolation(self):
+        """
+        Security Test:
+        1. Overwriting PIN on locked note without old PIN or active session unlock is rejected (400).
+        2. Overwriting PIN with valid old PIN succeeds.
+        3. Unlock on Device A (Session A) does not unlock Device B (Session B).
+        4. Relocking note immediately revokes unlock grant on Device A.
+        """
+        res = self.client.post('/api/workspace/notes/', {
+            'title': 'Ultra Secret Note',
+            'blocks': [{'type': 'paragraph', 'content': 'Secret Data'}]
+        }, format='json')
+        note_id = res.data['id']
+
+        # Lock with PIN 1111 on Device A
+        res_lock = self.client.post(
+            f'/api/workspace/notes/{note_id}/set-lock/',
+            {'is_locked': True, 'pin': '1111'},
+            format='json',
+            HTTP_X_DEVICE_SESSION_ID='session-device-a'
+        )
+        self.assertEqual(res_lock.status_code, status.HTTP_200_OK)
+
+        # Attempt to change PIN to 9999 from Device B without old PIN or unlock -> 400
+        res_hack_pin = self.client.post(
+            f'/api/workspace/notes/{note_id}/set-lock/',
+            {'is_locked': True, 'pin': '9999'},
+            format='json',
+            HTTP_X_DEVICE_SESSION_ID='session-device-b'
+        )
+        self.assertEqual(res_hack_pin.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Current PIN or active unlock is required', res_hack_pin.data.get('error', ''))
+
+        # Change PIN with correct old PIN from Device B -> 200
+        res_change_pin = self.client.post(
+            f'/api/workspace/notes/{note_id}/set-lock/',
+            {'is_locked': True, 'pin': '2222', 'old_pin': '1111'},
+            format='json',
+            HTTP_X_DEVICE_SESSION_ID='session-device-b'
+        )
+        self.assertEqual(res_change_pin.status_code, status.HTTP_200_OK)
+
+        # Device A verifies new PIN 2222
+        res_verify_a = self.client.post(
+            f'/api/workspace/notes/{note_id}/verify-lock/',
+            {'pin': '2222'},
+            format='json',
+            HTTP_X_DEVICE_SESSION_ID='session-device-a'
+        )
+        self.assertTrue(res_verify_a.data['verified'])
+
+        # Device A can now view decrypted content
+        res_get_a = self.client.get(
+            f'/api/workspace/notes/{note_id}/',
+            HTTP_X_DEVICE_SESSION_ID='session-device-a'
+        )
+        self.assertEqual(len(res_get_a.data['blocks']), 1)
+        self.assertEqual(res_get_a.data['blocks'][0]['content'], 'Secret Data')
+
+        # Device B requests note -> must still be redacted (empty blocks)
+        res_get_b = self.client.get(
+            f'/api/workspace/notes/{note_id}/',
+            HTTP_X_DEVICE_SESSION_ID='session-device-b'
+        )
+        self.assertEqual(res_get_b.data['blocks'], [])
+        self.assertEqual(res_get_b.data['content'], '')
+
+        # Device A relocks the note (set-lock) -> grant is immediately revoked
+        res_relock = self.client.post(
+            f'/api/workspace/notes/{note_id}/set-lock/',
+            {'is_locked': True},
+            format='json',
+            HTTP_X_DEVICE_SESSION_ID='session-device-a'
+        )
+        self.assertEqual(res_relock.status_code, status.HTTP_200_OK)
+
+        # Subsequent GET from Device A is now redacted again
+        res_get_a_after = self.client.get(
+            f'/api/workspace/notes/{note_id}/',
+            HTTP_X_DEVICE_SESSION_ID='session-device-a'
+        )
+        self.assertEqual(res_get_a_after.data['blocks'], [])
+        self.assertEqual(res_get_a_after.data['content'], '')
+
     def test_note_copy_to_project(self):
         """Test copying a standalone note into a project as a Project Page."""
         res = self.client.post('/api/workspace/notes/', {
@@ -1395,6 +1589,62 @@ class SshEngineTests(InfrastructureBaseTestCase):
         self.assertIsInstance(loaded, paramiko.RSAKey)
         self.assertEqual(loaded.get_fingerprint(), key.get_fingerprint())
 
+    def test_host_key_verification_security_policy(self):
+        """
+        Security Test (B2): Strict host key verification:
+        - Unconfirmed host keys are rejected on first connect
+        - Explicit confirmation stores trusted fingerprint
+        - Fingerprint mismatch is always rejected (MITM protection)
+        """
+        import paramiko
+        from apps.workspace.ssh_service import AssetHostKeyPolicy, calculate_key_fingerprint, SshConnectionError
+
+        key1 = paramiko.RSAKey.generate(2048)
+        fp1 = calculate_key_fingerprint(key1)
+        key2 = paramiko.RSAKey.generate(2048)
+        fp2 = calculate_key_fingerprint(key2)
+
+        fake_client = MagicMock()
+
+        # 1. Unconfirmed first connect rejected
+        self.asset.ssh_host_fingerprint = ''
+        self.asset.save()
+        policy = AssetHostKeyPolicy(self.asset, accept_new_host_key=False)
+        with self.assertRaises(SshConnectionError) as ctx:
+            policy.missing_host_key(fake_client, '198.51.100.1', key1)
+        self.assertIn('Explicit confirmation is required', str(ctx.exception))
+
+        # 2. Confirmed first connect succeeds and saves trusted fingerprint
+        policy_confirm = AssetHostKeyPolicy(self.asset, accept_new_host_key=True)
+        policy_confirm.missing_host_key(fake_client, '198.51.100.1', key1)
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.ssh_host_fingerprint, fp1)
+
+        # 3. Subsequent connect with matching key succeeds
+        policy_normal = AssetHostKeyPolicy(self.asset, accept_new_host_key=False)
+        policy_normal.missing_host_key(fake_client, '198.51.100.1', key1)  # should not raise
+
+        # 4. Changed host key (mismatch) is strictly rejected
+        with self.assertRaises(SshConnectionError) as ctx:
+            policy_normal.missing_host_key(fake_client, '198.51.100.1', key2)
+        self.assertIn('REMOTE HOST IDENTIFICATION HAS CHANGED', str(ctx.exception))
+
+        # 5. Mismatch is NEVER auto-accepted even with accept_new_host_key=True
+        with self.assertRaises(SshConnectionError) as ctx:
+            policy_confirm.missing_host_key(fake_client, '198.51.100.1', key2)
+        self.assertIn('REMOTE HOST IDENTIFICATION HAS CHANGED', str(ctx.exception))
+
+    def test_trust_host_key_endpoint(self):
+        """Test API action to explicitly trust host key fingerprint."""
+        res = self.client.post(
+            f'/api/workspace/infrastructure/{self.asset.id}/trust-host-key/',
+            {'fingerprint': 'SHA256:explicit_trusted_fp_123'},
+            format='json'
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.ssh_host_fingerprint, 'SHA256:explicit_trusted_fp_123')
+
 
 class _FakePtyChannel:
     def __init__(self):
@@ -1437,12 +1687,16 @@ class SshTerminalConsumerTests(TransactionTestCase):
             ssh_password_encrypted=encrypt_token('pass')
         )
 
-    def _communicator(self, token=None, asset_id=None):
+    def _communicator(self, token=None, asset_id=None, origin=None):
         from channels.testing import WebsocketCommunicator
         from config.asgi import application
 
         url = f'/ws/workspace/ssh/{asset_id or self.asset.id}/'
-        headers = [(b'cookie', f'access_token={token}'.encode())] if token else []
+        headers = []
+        if token:
+            headers.append((b'cookie', f'access_token={token}'.encode()))
+        if origin:
+            headers.append((b'origin', origin.encode()))
         return WebsocketCommunicator(application, url, headers=headers)
 
     def test_unauthenticated_closed_4401(self):
@@ -1505,6 +1759,88 @@ class SshTerminalConsumerTests(TransactionTestCase):
                 # The consumer's disconnect hook writes an audit log row on
                 # the worker thread - close that thread's connections after.
                 await database_sync_to_async(connections.close_all)()
+
+        asyncio.run(scenario())
+
+    def test_revoked_session_terminates_ssh_terminal(self):
+        """
+        Security Test (B1): When a user's device session is revoked in DB,
+        the SSH terminal watchdog must detect it, send error frame, and terminate the connection.
+        """
+        from channels.db import database_sync_to_async
+        from django.db import connections
+        from apps.accounts.models import UserDeviceSession
+
+        fake_channel = _FakePtyChannel()
+        fake_client = MagicMock()
+        fake_client.invoke_shell.return_value = fake_channel
+
+        # Create active device session
+        session = UserDeviceSession.objects.create(
+            user=self.user,
+            device_name='Test Laptop',
+            ip_address='127.0.0.1',
+            user_agent='TestAgent',
+            refresh_token_hash='testhash'
+        )
+        token = generate_access_token(self.user, session_id=session.id)
+        communicator = self._communicator(token=token)
+
+        async def scenario():
+            with patch('apps.workspace.consumers.open_ssh_client', return_value=fake_client):
+                connected, _ = await communicator.connect()
+                assert connected
+
+                ready_frame = _json.loads(await communicator.receive_from())
+                assert ready_frame['type'] == 'ready'
+
+                # Revoke session in DB
+                @database_sync_to_async
+                def revoke_session():
+                    session.is_revoked = True
+                    session.save(update_fields=['is_revoked'])
+
+                await revoke_session()
+
+                # Watchdog runs every 2s, wait for revocation detection
+                received_error = False
+                while True:
+                    frame = await communicator.receive_from(timeout=5)
+                    msg = _json.loads(frame)
+                    if msg.get('type') == 'error' and 'revoked' in msg.get('message', '').lower():
+                        received_error = True
+                        break
+                assert received_error
+
+                await communicator.disconnect(timeout=5)
+                await database_sync_to_async(connections.close_all)()
+
+        asyncio.run(scenario())
+
+    def test_websocket_origin_security_allowlist(self):
+        """
+        Security Test (C2): WebSocket connections with untrusted Origin header
+        are rejected, while allowed frontend origins are accepted.
+        """
+        token = generate_access_token(self.user)
+
+        # 1. Untrusted origin is denied
+        bad_comm = self._communicator(token=token, origin='https://evil-hacker.com')
+        connected, _ = asyncio.run(bad_comm.connect())
+        self.assertFalse(connected)
+
+        # 2. Allowed origin (e.g. http://localhost:5173) connects successfully
+        fake_channel = _FakePtyChannel()
+        fake_client = MagicMock()
+        fake_client.invoke_shell.return_value = fake_channel
+
+        good_comm = self._communicator(token=token, origin='http://localhost:5173')
+
+        async def scenario():
+            with patch('apps.workspace.consumers.open_ssh_client', return_value=fake_client):
+                connected, _ = await good_comm.connect()
+                assert connected
+                await good_comm.disconnect(timeout=5)
 
         asyncio.run(scenario())
 

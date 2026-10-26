@@ -2,13 +2,21 @@
   <div class="space-y-6 max-w-7xl mx-auto font-sans pb-16">
     <!-- Breadcrumb & Top Navigation -->
     <div class="pb-4 border-b border-zinc-800/80">
-      <div class="flex items-center gap-2 text-xs font-mono text-zinc-500 mb-2">
-        <router-link to="/finance/overview" class="hover:text-zinc-300 transition-colors">Finance</router-link>
-        <span>/</span>
-        <router-link to="/finance/installments" class="hover:text-zinc-300 transition-colors">Installments & Contracts</router-link>
-        <span>/</span>
-        <span class="text-zinc-300 font-medium">{{ contract?.title || 'Contract Dossier' }}</span>
-      </div>
+      <nav aria-label="Breadcrumb" class="mb-2">
+        <ol class="flex items-center gap-2 text-xs font-mono text-zinc-500 flex-wrap">
+          <li class="flex items-center gap-2">
+            <RouterLink to="/finance/overview" class="hover:text-zinc-300 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 rounded px-1 -mx-1">{{ t('crumb.finance') }}</RouterLink>
+            <span aria-hidden="true" class="text-zinc-700 select-none">/</span>
+          </li>
+          <li class="flex items-center gap-2">
+            <RouterLink to="/finance/installments" class="hover:text-zinc-300 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 rounded px-1 -mx-1">{{ t('crumb.installments') }}</RouterLink>
+            <span aria-hidden="true" class="text-zinc-700 select-none">/</span>
+          </li>
+          <li>
+            <span aria-current="page" class="text-zinc-300 font-medium">{{ contract?.title || t('crumb.contractDossier') }}</span>
+          </li>
+        </ol>
+      </nav>
 
       <!-- Header Row -->
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -787,6 +795,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '../../i18n'
 import { currencySymbol } from '../../utils/currency'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

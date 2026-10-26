@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-6 max-w-7xl mx-auto font-sans">
-    <!-- Header & Watchlist Quick Add -->
+    <!-- Header & Universal Asset Search -->
     <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
       <div>
         <div class="flex items-center gap-2.5">
@@ -14,77 +14,12 @@
         </p>
       </div>
 
-      <!-- Quick Add Ticker Autocomplete Bar -->
-      <div ref="searchContainerRef" class="relative w-full lg:max-w-md">
-        <div class="flex items-center gap-2">
-          <div class="relative flex-1">
-            <Search class="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              v-model="searchQuery"
-              @input="handleSearchInput"
-              @keydown.enter.prevent="handleQuickAdd"
-              type="text"
-              placeholder="Add ticker to watchlist (e.g. TSLA, DELTA.BK, ETH-USD)..."
-              class="w-full pl-9 pr-8 py-2 rounded-lg bg-zinc-900/90 hover:bg-zinc-900 border border-zinc-800 focus:border-zinc-500 focus:bg-zinc-950 text-xs text-zinc-100 placeholder-zinc-500 font-mono transition-all outline-none"
-            />
-            <Loader2 v-if="isSearching" class="w-3.5 h-3.5 text-zinc-400 animate-spin absolute right-2.5 top-1/2 -translate-y-1/2" />
-          </div>
-          <button
-            @click="handleQuickAdd"
-            :disabled="!searchQuery.trim() || isAdding"
-            type="button"
-            class="px-3.5 py-2 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50"
-          >
-            <Plus class="w-3.5 h-3.5" />
-            <span>Add</span>
-          </button>
-        </div>
-
-        <!-- Search Autocomplete Dropdown -->
-        <div
-          v-if="showAutocomplete && searchResults.length > 0"
-          class="absolute left-0 right-0 mt-1.5 max-h-[300px] overflow-y-auto rounded-xl bg-zinc-950/95 backdrop-blur-md border border-zinc-800 shadow-2xl z-50 divide-y divide-zinc-800/80"
-        >
-          <div
-            v-for="item in searchResults"
-            :key="item.ticker"
-            @click="addTickerFromSearch(item.ticker)"
-            class="p-2.5 px-3 hover:bg-zinc-900/80 cursor-pointer transition-colors flex items-center justify-between gap-3 text-xs"
-          >
-            <div>
-              <div class="flex items-center gap-2">
-                <span class="font-mono font-bold text-zinc-100">{{ item.ticker }}</span>
-                <span class="text-[9px] font-mono px-1 py-0.2 rounded border bg-zinc-900 text-zinc-400 border-zinc-800">
-                  {{ item.asset_type }}
-                </span>
-                <span class="text-[9px] font-mono text-zinc-500">{{ item.exchange }}</span>
-              </div>
-              <div class="text-[11px] text-zinc-400 font-sans truncate mt-0.5 max-w-[260px]">{{ item.name }}</div>
-            </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                class="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
-                :title="`Open ${item.ticker} chart & analytics`"
-                @click.stop="goToAssetDetail(item.ticker)"
-              >
-                <LineChart class="w-3.5 h-3.5" />
-              </button>
-              <div class="text-right font-mono">
-                <span class="text-xs text-zinc-200">
-                  {{ (item.currency || '').toUpperCase() === 'USD' ? '$' : '฿' }}{{ formatPrice(item.price) }}
-                </span>
-              <div
-                v-if="item.change_pct !== undefined && item.change_pct !== null"
-                class="text-[10px] font-semibold"
-                :class="item.change_pct >= 0 ? 'text-emerald-400' : 'text-rose-400'"
-              >
-                {{ item.change_pct >= 0 ? '+' : '' }}{{ item.change_pct.toFixed(2) }}%
-              </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <!-- Universal Search Bar -->
+      <div class="relative w-full lg:max-w-md">
+        <UniversalAssetSearch
+          @record-trade="openTradeModal"
+          :placeholder="t('portfolio.search.placeholder')"
+        />
       </div>
     </div>
 
@@ -265,7 +200,7 @@
                 <div class="flex flex-col items-center justify-center gap-2">
                   <Star class="w-6 h-6 text-zinc-600" />
                   <p>Your watchlist is currently empty</p>
-                  <p class="text-[11px] text-zinc-600">Type any stock or crypto ticker above to start monitoring</p>
+                  <p class="text-[11px] text-zinc-600">Search any stock or crypto ticker above to inspect and monitor</p>
                 </div>
               </td>
             </tr>
@@ -286,37 +221,25 @@
 
 <script setup lang="ts">
 import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { usePortfolioStore } from '../../stores/portfolio'
+import { usePortfolioStore, isTickerMatch } from '../../stores/portfolio'
 import { useToastStore } from '../../stores/toast'
+import { t } from '../../i18n'
 import MarketStatusBar from '../../components/portfolio/MarketStatusBar.vue'
+import UniversalAssetSearch from '../../components/portfolio/UniversalAssetSearch.vue'
 import AddTransactionModal from '../../components/portfolio/AddTransactionModal.vue'
-import type { MarketAssetSearchResult } from '../../types/portfolio'
 import {
   Star,
-  Search,
-  Plus,
-  Loader2,
   Trash2,
   ArrowRight,
   TrendingUp,
-  LineChart,
   TrendingDown
 } from 'lucide-vue-next'
 
 const router = useRouter()
 const portfolioStore = usePortfolioStore()
 const toast = useToastStore()
-
-const searchQuery = ref('')
-const searchResults = ref<MarketAssetSearchResult[]>([])
-const isSearching = ref(false)
-const showAutocomplete = ref(false)
-const isAdding = ref(false)
-const searchContainerRef = ref<HTMLElement | null>(null)
-let debounceTimer: ReturnType<typeof setTimeout> | null = null
-let searchSeq = 0
 
 const showAddModal = ref(false)
 const prefillTicker = ref('')
@@ -339,79 +262,15 @@ function formatPrice(val: any): string {
 }
 
 function isTickerHeld(ticker: string) {
-  const clean = ticker.trim().toUpperCase()
-  return portfolioStore.holdings.find(h =>
-    h.ticker.toUpperCase() === clean ||
-    h.ticker.toUpperCase() === `${clean}.BK` ||
-    h.ticker.toUpperCase() === `${clean}-USD`
-  )
-}
-
-function handleSearchInput() {
-  if (debounceTimer) clearTimeout(debounceTimer)
-  const q = searchQuery.value.trim()
-  if (!q) {
-    searchResults.value = []
-    showAutocomplete.value = false
-    return
-  }
-  isSearching.value = true
-  // Sequence guard: a slow response from an EARLIER keystroke must never
-  // overwrite the results of the current one (made the first search feel
-  // like it "did not run" until the user typed again).
-  const seq = ++searchSeq
-  debounceTimer = setTimeout(async () => {
-    try {
-      const results = await portfolioStore.searchAssets(q)
-      if (seq !== searchSeq) return
-      searchResults.value = results
-      showAutocomplete.value = true
-    } catch {
-      if (seq === searchSeq) searchResults.value = []
-    } finally {
-      if (seq === searchSeq) isSearching.value = false
-    }
-  }, 160)
-}
-
-async function handleQuickAdd() {
-  const t = searchQuery.value.trim().toUpperCase()
-  if (!t) return
-  if (portfolioStore.isWatchlisted(t)) {
-    toast.info(`${t} is already in Watchlist`)
-    searchQuery.value = ''
-    showAutocomplete.value = false
-    return
-  }
-
-  isAdding.value = true
-  try {
-    const isAdded = await portfolioStore.toggleWatchlist(t)
-    searchQuery.value = ''
-    showAutocomplete.value = false
-    if (isAdded) {
-      toast.success(`Added ${t} to Watchlist`)
-      await portfolioStore.fetchWatchlist()
-    }
-  } catch (err: any) {
-    toast.error(err?.response?.data?.ticker || `Failed to add ${t} to watchlist`)
-  } finally {
-    isAdding.value = false
-  }
-}
-
-async function addTickerFromSearch(ticker: string) {
-  searchQuery.value = ticker
-  await handleQuickAdd()
+  return portfolioStore.holdings.some(h => isTickerMatch(h.ticker, ticker))
 }
 
 async function handleRemove(ticker: string) {
   try {
     await portfolioStore.toggleWatchlist(ticker)
-    toast.info(`Removed ${ticker} from Watchlist`)
-    await portfolioStore.fetchWatchlist()
+    toast.info(t('portfolio.watchlist.removeSuccess', { ticker }))
   } catch {
-    toast.error(`Failed to remove ${ticker}`)
+    toast.error(t('portfolio.watchlist.toggleFailed', { ticker }))
   }
 }
 
@@ -419,8 +278,8 @@ function goToAssetDetail(ticker: string) {
   router.push(`/portfolio/asset/${encodeURIComponent(ticker)}`)
 }
 
-function openTradeModal(ticker: string) {
-  prefillTicker.value = ticker
+function openTradeModal(ticker?: string) {
+  prefillTicker.value = ticker || ''
   showAddModal.value = true
 }
 
@@ -429,22 +288,11 @@ async function handleTradeSaved() {
   await portfolioStore.fetchHoldings()
 }
 
-function handleClickOutside(e: MouseEvent) {
-  if (searchContainerRef.value && !searchContainerRef.value.contains(e.target as Node)) {
-    showAutocomplete.value = false
-  }
-}
-
 onMounted(async () => {
-  document.addEventListener('click', handleClickOutside)
   await Promise.all([
     portfolioStore.fetchWatchlist(),
     portfolioStore.fetchHoldings(),
     portfolioStore.fetchMarketStatus()
   ])
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
 })
 </script>

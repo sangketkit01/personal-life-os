@@ -12,7 +12,7 @@
         @keydown.esc="closeSearch"
         @focus="handleFocus"
         type="text"
-        :placeholder="placeholder"
+        :placeholder="effectivePlaceholder"
         class="w-full pl-9 pr-14 py-2 rounded-lg bg-zinc-900/50 hover:bg-zinc-900/80 border border-zinc-800/80 focus:border-zinc-700 focus:bg-zinc-950 text-xs text-zinc-100 placeholder-zinc-500 font-mono transition-all outline-none"
       />
       <div class="absolute right-2.5 flex items-center gap-1.5">
@@ -28,7 +28,7 @@
         <span
           v-else
           class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-500 border border-zinc-800 pointer-events-none"
-          title="Press / anywhere to search"
+          :title="t('portfolio.search.shortcut')"
         >
           /
         </span>
@@ -43,12 +43,12 @@
       <!-- Results Header -->
       <div class="px-3.5 py-2 bg-zinc-900/40 text-[10px] font-mono text-zinc-500 flex items-center justify-between border-b border-zinc-900">
         <span v-if="results.length > 0">
-          {{ results.length }} result{{ results.length > 1 ? 's' : '' }} for "{{ query }}"
+          {{ t('portfolio.search.resultsCount', { count: results.length, query }) }}
         </span>
         <span v-else>
-          Market Search
+          {{ t('portfolio.search.marketSearch') }}
         </span>
-        <span class="text-zinc-600">Enter ↵ to inspect</span>
+        <span class="text-zinc-600">{{ t('portfolio.search.inspectHint') }}</span>
       </div>
 
       <!-- Result Items -->
@@ -79,14 +79,14 @@
                 class="text-[9px] font-mono px-1.5 py-0.2 rounded border border-zinc-800 bg-zinc-900 text-zinc-300 flex items-center gap-1"
               >
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                <span>Held</span>
+                <span>{{ t('portfolio.search.heldBadge') }}</span>
               </span>
               <span
                 v-if="portfolioStore.isWatchlisted(item.ticker)"
                 class="text-[9px] font-mono px-1.5 py-0.2 rounded border border-zinc-800 bg-zinc-900 text-zinc-400 flex items-center gap-1"
               >
                 <Star class="w-2.5 h-2.5 text-zinc-400" />
-                <span>Watchlist</span>
+                <span>{{ t('portfolio.search.watchlistBadge') }}</span>
               </span>
             </div>
             <div class="text-[11px] text-zinc-400 font-sans truncate mt-0.5">
@@ -113,12 +113,18 @@
             <div class="flex items-center gap-1" @click.stop>
               <!-- Watchlist Toggle -->
               <button
-                @click="portfolioStore.toggleWatchlist(item.ticker)"
+                @click="handleToggleWatchlist(item.ticker)"
+                :disabled="portfolioStore.isTickerToggling(item.ticker)"
                 type="button"
-                class="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors"
-                :title="portfolioStore.isWatchlisted(item.ticker) ? 'Remove from Watchlist' : 'Add to Watchlist'"
+                class="p-1 rounded hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-50"
+                :title="portfolioStore.isWatchlisted(item.ticker) ? t('portfolio.watchlist.removeFromWatchlist') : t('portfolio.watchlist.addToWatchlist')"
               >
+                <Loader2
+                  v-if="portfolioStore.isTickerToggling(item.ticker)"
+                  class="w-3.5 h-3.5 animate-spin text-zinc-400"
+                />
                 <Star
+                  v-else
                   class="w-3.5 h-3.5"
                   :class="portfolioStore.isWatchlisted(item.ticker) ? 'text-zinc-200 fill-zinc-200' : 'text-zinc-600'"
                 />
@@ -131,7 +137,7 @@
                 class="px-2 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[10px] font-mono text-zinc-300 hover:text-zinc-100 transition-colors"
                 title="Record Trade for this ticker"
               >
-                + Buy
+                {{ t('portfolio.search.buyAction') }}
               </button>
 
               <!-- View Details -->
@@ -140,7 +146,7 @@
                 type="button"
                 class="px-2 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[10px] font-mono text-zinc-300 hover:text-white transition-colors flex items-center gap-1"
               >
-                <span>View</span>
+                <span>{{ t('portfolio.search.viewAction') }}</span>
                 <ArrowRight class="w-2.5 h-2.5 text-zinc-500" />
               </button>
             </div>
@@ -156,11 +162,11 @@
       >
         <div>
           <div class="text-zinc-200 font-semibold flex items-center gap-2">
-            <span>Inspect "{{ query.toUpperCase() }}"</span>
-            <span class="text-[10px] px-1.5 py-0.2 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">Direct Lookup</span>
+            <span>{{ t('portfolio.search.inspect', { ticker: query.toUpperCase() }) }}</span>
+            <span class="text-[10px] px-1.5 py-0.2 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">{{ t('portfolio.search.directLookup') }}</span>
           </div>
           <div class="text-[11px] text-zinc-500 font-sans mt-0.5">
-            Query market quotes, price history, and news for this symbol
+            {{ t('portfolio.search.directLookupHint') }}
           </div>
         </div>
         <ArrowRight class="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-300 transition-colors" />
@@ -170,17 +176,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { usePortfolioStore } from '../../stores/portfolio'
+import { usePortfolioStore, isTickerMatch } from '../../stores/portfolio'
+import { useToastStore } from '../../stores/toast'
+import { t } from '../../i18n'
 import type { MarketAssetSearchResult } from '../../types/portfolio'
 import { Search, Loader2, X, Star, ArrowRight } from 'lucide-vue-next'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   placeholder?: string
 }>(), {
-  placeholder: 'Search any ticker (e.g. NVDA, PTT.BK, BTC-USD)...'
+  placeholder: ''
 })
+
+const effectivePlaceholder = computed(() => props.placeholder || t('portfolio.search.placeholder'))
 
 const emit = defineEmits<{
   (e: 'record-trade', ticker: string): void
@@ -188,6 +198,7 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const portfolioStore = usePortfolioStore()
+const toast = useToastStore()
 
 const query = ref('')
 const results = ref<MarketAssetSearchResult[]>([])
@@ -197,6 +208,7 @@ const selectedIndex = ref(-1)
 const containerRef = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLInputElement | null>(null)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let searchSeq = 0
 
 function formatPrice(val: any): string {
   const num = Number(val || 0)
@@ -208,16 +220,15 @@ function formatPrice(val: any): string {
 }
 
 function isTickerHeld(ticker: string) {
-  const clean = ticker.trim().toUpperCase()
-  return portfolioStore.holdings.find(h =>
-    h.ticker.toUpperCase() === clean ||
-    h.ticker.toUpperCase() === `${clean}.BK` ||
-    h.ticker.toUpperCase() === `${clean}-USD`
-  )
+  return portfolioStore.holdings.some(h => isTickerMatch(h.ticker, ticker))
 }
 
 function handleInput() {
-  if (debounceTimer) clearTimeout(debounceTimer)
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+    debounceTimer = null
+  }
+  const seq = ++searchSeq
   const q = query.value.trim()
   if (!q) {
     results.value = []
@@ -229,13 +240,19 @@ function handleInput() {
   isSearching.value = true
   debounceTimer = setTimeout(async () => {
     try {
-      results.value = await portfolioStore.searchAssets(q)
+      const data = await portfolioStore.searchAssets(q)
+      if (seq !== searchSeq || !query.value.trim()) return
+      results.value = data
       showResults.value = true
       selectedIndex.value = -1
     } catch {
-      results.value = []
+      if (seq === searchSeq) {
+        results.value = []
+      }
     } finally {
-      isSearching.value = false
+      if (seq === searchSeq) {
+        isSearching.value = false
+      }
     }
   }, 160)
 }
@@ -263,9 +280,29 @@ function handleEnter() {
 
 function selectAsset(ticker: string) {
   if (!ticker) return
+  searchSeq++
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+    debounceTimer = null
+  }
   showResults.value = false
   query.value = ''
+  results.value = []
+  isSearching.value = false
   router.push(`/portfolio/asset/${encodeURIComponent(ticker)}`)
+}
+
+async function handleToggleWatchlist(ticker: string) {
+  try {
+    const isAdded = await portfolioStore.toggleWatchlist(ticker)
+    if (isAdded) {
+      toast.success(t('portfolio.watchlist.addSuccess', { ticker }))
+    } else {
+      toast.info(t('portfolio.watchlist.removeSuccess', { ticker }))
+    }
+  } catch {
+    toast.error(t('portfolio.watchlist.toggleFailed', { ticker }))
+  }
 }
 
 function handleQuickTrade(ticker: string) {
@@ -279,8 +316,14 @@ function closeSearch() {
 }
 
 function clearSearch() {
+  searchSeq++
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+    debounceTimer = null
+  }
   query.value = ''
   results.value = []
+  isSearching.value = false
   closeSearch()
 }
 

@@ -18,6 +18,21 @@ import type {
   StockChartData
 } from '../types/portfolio'
 
+export function normalizeTicker(ticker?: string | null): string {
+  if (!ticker) return ''
+  return ticker.trim().toUpperCase()
+}
+
+export function isTickerMatch(a?: string | null, b?: string | null): boolean {
+  const cleanA = normalizeTicker(a)
+  const cleanB = normalizeTicker(b)
+  if (!cleanA || !cleanB) return false
+  if (cleanA === cleanB) return true
+  if (`${cleanA}.BK` === cleanB || `${cleanB}.BK` === cleanA) return true
+  if (`${cleanA}-USD` === cleanB || `${cleanB}-USD` === cleanA) return true
+  return false
+}
+
 export const usePortfolioStore = defineStore('portfolio', () => {
   const overview = ref<PortfolioOverview | null>(null)
   const holdings = ref<StockHolding[]>([])
@@ -26,6 +41,9 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   const newsTotalCount = ref<number>(0)
   const watchlist = ref<StockWatchlistItem[]>([])
   const isLoadingWatchlist = ref<boolean>(false)
+  const hasLoadedWatchlist = ref<boolean>(false)
+  const watchlistMutationTimestamps = ref<Record<string, number>>({})
+  const activeWatchlistToggles = ref<Record<string, Promise<boolean> | undefined>>({})
   const portfolios = ref<InvestmentPortfolio[]>([])
   const selectedPortfolioId = ref<string>('ALL')
   const selectedAssetType = ref<string>('ALL')
@@ -264,13 +282,79 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     }
   }
 
+  function getWatchlistMutationTime(ticker: string): number {
+    const clean = normalizeTicker(ticker)
+    return watchlistMutationTimestamps.value[clean] || 0
+  }
+
+  function recordWatchlistMutation(ticker: string, time?: number) {
+    const clean = normalizeTicker(ticker)
+    if (!clean) return
+    const t = time || Date.now()
+    watchlistMutationTimestamps.value[clean] = t
+    if (clean.endsWith('.BK')) {
+      watchlistMutationTimestamps.value[clean.slice(0, -3)] = t
+    } else {
+      watchlistMutationTimestamps.value[`${clean}.BK`] = t
+    }
+    if (clean.endsWith('-USD')) {
+      watchlistMutationTimestamps.value[clean.slice(0, -4)] = t
+    } else {
+      watchlistMutationTimestamps.value[`${clean}-USD`] = t
+    }
+  }
+
+  function isTickerToggling(ticker: string): boolean {
+    const clean = normalizeTicker(ticker)
+    return Boolean(activeWatchlistToggles.value[clean])
+  }
+
+  function isWatchlisted(ticker: string): boolean {
+    return watchlist.value.some(w => isTickerMatch(w.ticker, ticker))
+  }
+
+  function seedWatchlist(ticker: string, data?: Partial<StockWatchlistItem>) {
+    if (isWatchlisted(ticker)) return
+    const clean = normalizeTicker(ticker)
+    if (!clean) return
+    watchlist.value.push({
+      id: `seed-${clean}-${Date.now()}`,
+      ticker: clean,
+      name: data?.name || clean,
+      asset_type: data?.asset_type || 'STOCK',
+      currency: data?.currency || 'USD',
+      ...data
+    } as StockWatchlistItem)
+  }
+
   async function fetchWatchlist(): Promise<StockWatchlistItem[]> {
     isLoadingWatchlist.value = true
+    const fetchStart = Date.now()
     try {
       const res = await apiClient.get<StockWatchlistItem[] | { results: StockWatchlistItem[] }>('/portfolio/watchlist/')
       const items = Array.isArray(res.data) ? res.data : (res.data.results || [])
-      watchlist.value = items
-      return items
+
+      // Preserve local mutations that occurred while fetch was in flight
+      const reconciled = items.filter(serverItem => {
+        const mutTime = getWatchlistMutationTime(serverItem.ticker)
+        if (mutTime >= fetchStart) {
+          return isWatchlisted(serverItem.ticker)
+        }
+        return true
+      })
+
+      for (const localItem of watchlist.value) {
+        const mutTime = getWatchlistMutationTime(localItem.ticker)
+        if (mutTime >= fetchStart && isWatchlisted(localItem.ticker)) {
+          if (!reconciled.some(r => isTickerMatch(r.ticker, localItem.ticker))) {
+            reconciled.push(localItem)
+          }
+        }
+      }
+
+      watchlist.value = reconciled
+      hasLoadedWatchlist.value = true
+      return reconciled
     } catch (err: any) {
       console.error('Failed to fetch watchlist', err)
       return []
@@ -280,19 +364,63 @@ export const usePortfolioStore = defineStore('portfolio', () => {
   }
 
   async function toggleWatchlist(ticker: string): Promise<boolean> {
-    try {
-      const res = await apiClient.post<{ is_watchlisted: boolean; ticker: string; data?: StockWatchlistItem }>('/portfolio/watchlist/toggle/', { ticker })
-      await fetchWatchlist()
-      return res.data.is_watchlisted
-    } catch (err: any) {
-      console.error('Failed to toggle watchlist', err)
-      throw err
-    }
-  }
+    const clean = normalizeTicker(ticker)
+    if (!clean) return false
 
-  function isWatchlisted(ticker: string): boolean {
-    const clean = ticker.trim().toUpperCase()
-    return watchlist.value.some(w => w.ticker.toUpperCase() === clean)
+    const existing = activeWatchlistToggles.value[clean]
+    if (existing) {
+      return existing
+    }
+
+    const togglePromise = (async () => {
+      const mutationTime = Date.now()
+      recordWatchlistMutation(clean, mutationTime)
+
+      try {
+        const res = await apiClient.post<{
+          is_watchlisted: boolean
+          ticker: string
+          data?: StockWatchlistItem
+          message?: string
+        }>('/portfolio/watchlist/toggle/', { ticker: clean })
+
+        const serverStatus = res.data.is_watchlisted
+        const serverTicker = res.data.ticker || clean
+
+        recordWatchlistMutation(serverTicker, Date.now())
+        recordWatchlistMutation(clean, Date.now())
+
+        if (serverStatus) {
+          if (!isWatchlisted(serverTicker)) {
+            const newItem: StockWatchlistItem = res.data.data || {
+              id: `wl-${serverTicker}-${Date.now()}`,
+              ticker: serverTicker,
+              name: serverTicker,
+              asset_type: 'STOCK',
+              currency: 'USD'
+            } as StockWatchlistItem
+            watchlist.value.push(newItem)
+          }
+        } else {
+          watchlist.value = watchlist.value.filter(
+            w => !isTickerMatch(w.ticker, serverTicker) && !isTickerMatch(w.ticker, clean)
+          )
+        }
+
+        hasLoadedWatchlist.value = true
+        fetchWatchlist().catch(() => {})
+
+        return serverStatus
+      } catch (err: any) {
+        console.error('Failed to toggle watchlist', err)
+        throw err
+      } finally {
+        delete activeWatchlistToggles.value[clean]
+      }
+    })()
+
+    activeWatchlistToggles.value[clean] = togglePromise
+    return togglePromise
   }
 
   async function syncNews() {
@@ -502,6 +630,11 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     newsTotalCount,
     watchlist,
     isLoadingWatchlist,
+    hasLoadedWatchlist,
+    isTickerToggling,
+    getWatchlistMutationTime,
+    recordWatchlistMutation,
+    seedWatchlist,
     portfolios,
     selectedPortfolioId,
     selectedAssetType,

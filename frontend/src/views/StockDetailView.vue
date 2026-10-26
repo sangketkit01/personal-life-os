@@ -42,13 +42,14 @@
 
         <button
           @click="handleToggleWatchlist"
-          :disabled="isTogglingWatchlist"
+          :disabled="isWatchlistActionPending || isWatchlistLoading"
           class="px-2.5 py-1.5 rounded-md border text-xs font-mono transition-colors flex items-center gap-1.5 disabled:opacity-50"
           :class="isWatchlisted ? 'bg-zinc-800 text-zinc-200 border-zinc-700' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'"
-          :title="isWatchlisted ? 'In Watchlist' : 'Add to Watchlist'"
+          :title="isWatchlisted ? t('portfolio.watchlist.inWatchlist') : t('portfolio.watchlist.addToWatchlist')"
         >
-          <Star class="w-3.5 h-3.5" :class="{ 'fill-zinc-300 text-zinc-200': isWatchlisted }" />
-          <span>{{ isWatchlisted ? 'In Watchlist' : 'Watchlist' }}</span>
+          <Loader2 v-if="isWatchlistActionPending || isWatchlistLoading" class="w-3.5 h-3.5 animate-spin text-zinc-400" />
+          <Star v-else class="w-3.5 h-3.5" :class="{ 'fill-zinc-300 text-zinc-200': isWatchlisted }" />
+          <span>{{ isWatchlisted ? t('portfolio.watchlist.inWatchlist') : 'Watchlist' }}</span>
         </button>
 
         <button
@@ -294,12 +295,14 @@
           <div class="flex flex-wrap items-center gap-2 shrink-0">
             <button
               @click="handleToggleWatchlist"
-              :disabled="isTogglingWatchlist"
-              class="px-3 py-1.5 rounded-md border text-xs font-mono transition-colors flex items-center gap-1.5"
+              :disabled="isWatchlistActionPending || isWatchlistLoading"
+              class="px-3 py-1.5 rounded-md border text-xs font-mono transition-colors flex items-center gap-1.5 disabled:opacity-50"
               :class="isWatchlisted ? 'bg-zinc-800 text-zinc-200 border-zinc-700' : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:bg-zinc-800 hover:text-white'"
+              :title="isWatchlisted ? t('portfolio.watchlist.inWatchlist') : t('portfolio.watchlist.addToWatchlist')"
             >
-              <Star class="w-3.5 h-3.5" :class="{ 'fill-zinc-300 text-zinc-200': isWatchlisted }" />
-              <span>{{ isWatchlisted ? 'In Watchlist' : 'Add to Watchlist' }}</span>
+              <Loader2 v-if="isWatchlistActionPending || isWatchlistLoading" class="w-3.5 h-3.5 animate-spin text-zinc-400" />
+              <Star v-else class="w-3.5 h-3.5" :class="{ 'fill-zinc-300 text-zinc-200': isWatchlisted }" />
+              <span>{{ isWatchlisted ? t('portfolio.watchlist.inWatchlist') : t('portfolio.watchlist.addToWatchlist') }}</span>
             </button>
 
             <button
@@ -588,7 +591,8 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { t } from '../i18n'
-import { usePortfolioStore } from '../stores/portfolio'
+import { usePortfolioStore, isTickerMatch } from '../stores/portfolio'
+import { useToastStore } from '../stores/toast'
 import type { StockHolding, StockTransaction, StockNewsArticle } from '../types/portfolio'
 import AddTransactionModal from '../components/portfolio/AddTransactionModal.vue'
 import MoveHoldingModal from '../components/portfolio/MoveHoldingModal.vue'
@@ -604,12 +608,14 @@ import {
   History,
   Newspaper,
   Star,
-  TrendingUp
+  TrendingUp,
+  Loader2
 } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
 const portfolioStore = usePortfolioStore()
+const toast = useToastStore()
 
 const tickerParam = computed(() => {
   return decodeURIComponent((route.params.ticker as string) || '').trim().toUpperCase()
@@ -633,20 +639,41 @@ const isTogglingWatchlist = ref(false)
 const errorMessage = ref('')
 const activeTab = ref<'trades' | 'news'>('trades')
 
+const isWatchlistActionPending = computed(() => {
+  return isTogglingWatchlist.value || portfolioStore.isTickerToggling(tickerParam.value)
+})
+
+const isWatchlistLoading = computed(() => {
+  return !portfolioStore.hasLoadedWatchlist && isLoading.value
+})
+
 const isWatchlisted = computed(() => {
+  if (portfolioStore.getWatchlistMutationTime(tickerParam.value) > 0) {
+    return portfolioStore.isWatchlisted(tickerParam.value)
+  }
+  if (portfolioStore.hasLoadedWatchlist) {
+    return portfolioStore.isWatchlisted(tickerParam.value)
+  }
   return holding.value?.is_watchlisted ?? portfolioStore.isWatchlisted(tickerParam.value)
 })
 
 async function handleToggleWatchlist() {
-  if (!tickerParam.value) return
+  if (!tickerParam.value || isWatchlistActionPending.value) return
   isTogglingWatchlist.value = true
+  const targetTicker = tickerParam.value
   try {
-    const status = await portfolioStore.toggleWatchlist(tickerParam.value)
-    if (holding.value) {
+    const status = await portfolioStore.toggleWatchlist(targetTicker)
+    if (holding.value && isTickerMatch(holding.value.ticker, targetTicker)) {
       holding.value.is_watchlisted = status
+    }
+    if (status) {
+      toast.success(t('portfolio.watchlist.addSuccess', { ticker: targetTicker }))
+    } else {
+      toast.info(t('portfolio.watchlist.removeSuccess', { ticker: targetTicker }))
     }
   } catch (err) {
     console.error('Failed to toggle watchlist', err)
+    toast.error(t('portfolio.watchlist.toggleFailed', { ticker: targetTicker }))
   } finally {
     isTogglingWatchlist.value = false
   }
@@ -901,9 +928,26 @@ async function loadAssetData() {
   const portfolioId = (route.query.portfolio_id as string) || (portfolioStore.selectedPortfolioId !== 'ALL' ? portfolioStore.selectedPortfolioId : undefined)
   const holdingId = (route.query.holding_id as string) || undefined
 
+  const requestStartedAt = Date.now()
   try {
     // 1. Fetch holding info with holdingId/portfolioId filter
     const fetchedHolding = await portfolioStore.fetchHoldingByTicker(ticker, { holdingId, portfolioId })
+
+    // Check if user mutated watchlist during in-flight fetch
+    const lastMutation = portfolioStore.getWatchlistMutationTime(ticker)
+    if (lastMutation >= requestStartedAt) {
+      fetchedHolding.is_watchlisted = portfolioStore.isWatchlisted(ticker)
+    } else if (portfolioStore.hasLoadedWatchlist) {
+      fetchedHolding.is_watchlisted = portfolioStore.isWatchlisted(ticker)
+    } else if (fetchedHolding.is_watchlisted && !portfolioStore.isWatchlisted(ticker)) {
+      portfolioStore.seedWatchlist(fetchedHolding.ticker || ticker, {
+        ticker: fetchedHolding.ticker || ticker,
+        name: fetchedHolding.name || ticker,
+        asset_type: fetchedHolding.asset_type || 'STOCK',
+        currency: fetchedHolding.currency || 'USD'
+      })
+    }
+
     holding.value = fetchedHolding
 
     // If not held yet and no transactions, default tab to news
@@ -941,7 +985,10 @@ watch(
 onMounted(async () => {
   isLoading.value = true
   try {
-    await loadAssetData()
+    await Promise.all([
+      loadAssetData(),
+      portfolioStore.hasLoadedWatchlist ? Promise.resolve() : portfolioStore.fetchWatchlist()
+    ])
   } finally {
     isLoading.value = false
   }

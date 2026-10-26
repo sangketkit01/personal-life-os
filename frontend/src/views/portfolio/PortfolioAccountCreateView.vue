@@ -20,25 +20,6 @@
       </div>
     </div>
 
-    <!-- Quick Suggestion Chips -->
-    <div class="space-y-1.5">
-      <span class="text-[11px] font-mono uppercase text-zinc-500">Popular Templates</span>
-      <div class="flex flex-wrap gap-1.5">
-        <button
-          v-for="preset in brokerPresets"
-          :key="preset.name"
-          type="button"
-          @click="applyPreset(preset)"
-          class="px-2.5 py-1 rounded text-xs font-mono border transition-colors cursor-pointer"
-          :class="form.name === preset.name
-            ? 'bg-zinc-800 text-zinc-100 border-zinc-600'
-            : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:border-zinc-700'"
-        >
-          {{ preset.label }}
-        </button>
-      </div>
-    </div>
-
     <!-- Main Clean Form -->
     <form @submit.prevent="handleSubmit" class="space-y-4">
       <!-- Account Name -->
@@ -121,7 +102,7 @@
         <textarea
           v-model="form.description"
           rows="2"
-          placeholder="e.g. Long-term DCA basket, core tech holdings..."
+          placeholder="e.g. High-beta US tech equities traded via Dime app"
           class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors resize-none"
         ></textarea>
       </div>
@@ -161,29 +142,21 @@ const portfolioStore = usePortfolioStore()
 const toast = useToastStore()
 const isSubmitting = ref(false)
 
-const brokerPresets = [
-  { name: 'Dime US Growth', label: 'Dime! US Shares', currency: 'USD' as const, desc: 'Dime fractional US shares & S&P 500 ETFs' },
-  { name: 'InnovestX SET50', label: 'InnovestX (SCB)', currency: 'THB' as const, desc: 'SET50 dividend leaders and domestic equities' },
-  { name: 'Bitkub Crypto', label: 'Bitkub Digital', currency: 'THB' as const, desc: 'Thai regulated crypto holding account' },
-  { name: 'Interactive Brokers', label: 'IBKR Global', currency: 'USD' as const, desc: 'Direct international equities & global ETFs' }
-]
-
 const form = reactive({
   name: '',
-  currency: 'USD' as 'USD' | 'THB',
+  currency: '' as 'USD' | 'THB' | '',
   color: PORTFOLIO_COLORS[0] as string,
   description: ''
 })
 
-function applyPreset(preset: typeof brokerPresets[0]) {
-  form.name = preset.name
-  form.currency = preset.currency
-  form.description = preset.desc
-}
-
 async function handleSubmit() {
   if (!form.name.trim()) {
     toast.error('Please enter a portfolio name')
+    return
+  }
+
+  if (!form.currency) {
+    toast.error('Please select a base currency')
     return
   }
 

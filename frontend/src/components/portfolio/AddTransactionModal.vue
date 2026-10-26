@@ -91,6 +91,7 @@
               :disabled="!!prefillHoldingId"
               class="w-full pl-8 pr-8 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-sans focus:outline-none focus:border-zinc-600 transition-colors appearance-none cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             >
+              <option value="" disabled>Select portfolio</option>
               <option
                 v-for="p in portfolioStore.portfolios"
                 :key="p.id"
@@ -508,12 +509,12 @@ const localTzLabel = computed(() => {
 const form = ref({
   portfolio: '',
   ticker: '',
-  currency: 'THB' as 'THB' | 'USD',
+  currency: '' as unknown as ('THB' | 'USD'),
   transaction_type: 'BUY' as TransactionType,
   shares: null as number | null,
   price_per_share: null as number | null,
   fee: 0,
-  executed_at: getNowLocalDateTime(),
+  executed_at: '',
   notes: ''
 })
 
@@ -525,6 +526,14 @@ const currentSelectedPortfolio = computed(() =>
 
 const isSubmitDisabled = computed(() => {
   if (portfolioStore.isSubmitting) return true
+  // Target portfolio required when portfolios exist and not prefilled
+  if (!props.editingTransaction && !props.prefillHoldingId && portfolioStore.portfolios.length > 0 && !form.value.portfolio) {
+    return true
+  }
+  // Date/time and currency required
+  if (!form.value.executed_at) return true
+  if (!form.value.currency) return true
+
   // F09: If not editing and not prefilled, must have selected a verified asset or prefilled ticker
   if (!props.editingTransaction && !props.prefillHoldingId && !props.prefillTicker) {
     if (!selectedAsset.value || !form.value.ticker) return true
@@ -544,13 +553,12 @@ const isSubmitDisabled = computed(() => {
 })
 
 const sharesPlaceholder = computed(() => {
-  if (selectedAsset.value?.asset_type === 'CRYPTO') return 'e.g. 0.00250000'
-  return 'e.g. 100'
+  if (selectedAsset.value?.asset_type === 'CRYPTO') return '0.00000000'
+  return '0'
 })
 
 const pricePlaceholder = computed(() => {
-  if (selectedAsset.value?.asset_type === 'CRYPTO') return 'e.g. 64250.00'
-  return form.value.currency === 'USD' ? 'e.g. 182.50' : 'e.g. 35.50'
+  return '0.00'
 })
 
 // F05 & F08: Find holding matching ticker and selected portfolio
@@ -621,15 +629,6 @@ function selectAsset(item: MarketAssetSearchResult) {
   showSearchResults.value = false
   searchQuery.value = ''
   errorMessage.value = null
-
-  // Pre-fill price from existing holding snapshot if available
-  const existing = portfolioStore.holdings.find(h =>
-    h.ticker.toUpperCase() === item.ticker.toUpperCase() ||
-    h.ticker.toUpperCase() === `${item.ticker.toUpperCase()}.BK`
-  )
-  if (existing?.position?.current_price) {
-    form.value.price_per_share = Number(existing.position.current_price)
-  }
 }
 
 function clearSelectedAsset() {
@@ -655,15 +654,9 @@ watch(
       showSearchResults.value = false
       selectedAsset.value = null
 
-      // Set target portfolio default
-      const defaultPortfolio = portfolioStore.portfolios.find(p => p.is_default) || portfolioStore.portfolios[0]
-      const activePortfolioId = portfolioStore.selectedPortfolioId !== 'ALL'
-        ? portfolioStore.selectedPortfolioId
-        : (defaultPortfolio?.id || '')
-      form.value.portfolio = activePortfolioId
-
       if (props.editingTransaction) {
         const tx = props.editingTransaction
+        form.value.portfolio = tx.portfolio || ''
         form.value.ticker = tx.holding_ticker || tx.ticker || ''
         form.value.currency = (tx.currency || tx.holding_currency || 'THB').toUpperCase() as 'THB' | 'USD'
         form.value.transaction_type = tx.transaction_type
@@ -675,12 +668,13 @@ watch(
         form.value.notes = tx.notes || ''
         manualCurrency.value = true
       } else {
+        form.value.portfolio = props.prefillHoldingId && currentHolding.value?.portfolio ? currentHolding.value.portfolio : ''
         form.value.ticker = props.prefillTicker || ''
         form.value.transaction_type = props.initialType || 'BUY'
         form.value.shares = null
         form.value.price_per_share = null
         form.value.fee = 0
-        form.value.executed_at = getNowLocalDateTime()
+        form.value.executed_at = ''
         form.value.notes = ''
 
         // F05 & F09: Handle initial defaults when opened from Holding or Watchlist
@@ -688,9 +682,6 @@ watch(
           form.value.currency = (currentHolding.value.currency || 'THB').toUpperCase() as 'THB' | 'USD'
           if (currentHolding.value.portfolio) {
             form.value.portfolio = currentHolding.value.portfolio
-          }
-          if (currentHolding.value.position?.current_price) {
-            form.value.price_per_share = Number(currentHolding.value.position.current_price)
           }
           selectedAsset.value = {
             ticker: currentHolding.value.ticker,
@@ -707,9 +698,6 @@ watch(
           const held = currentHolding.value
           if (held) {
             form.value.currency = (held.currency || 'THB').toUpperCase() as 'THB' | 'USD'
-            if (held.position?.current_price) {
-              form.value.price_per_share = Number(held.position.current_price)
-            }
             selectedAsset.value = {
               ticker: held.ticker,
               name: held.name || held.ticker,
@@ -729,9 +717,6 @@ watch(
                 exchange: watch.ticker.endsWith('.BK') ? 'SET' : 'US'
               }
               form.value.currency = (watch.currency === 'USD' ? 'USD' : 'THB')
-              if (watch.current_price) {
-                form.value.price_per_share = Number(watch.current_price)
-              }
             } else {
               selectedAsset.value = {
                 ticker: t,
@@ -744,7 +729,7 @@ watch(
             }
           }
         } else {
-          form.value.currency = portfolioStore.displayCurrency
+          form.value.currency = '' as unknown as ('THB' | 'USD')
         }
       }
     }
@@ -776,6 +761,11 @@ const formattedEstimatedTotal = computed(() => {
 const handleSubmit = async () => {
   errorMessage.value = null
 
+  if (!props.editingTransaction && !props.prefillHoldingId && portfolioStore.portfolios.length > 0 && !form.value.portfolio) {
+    errorMessage.value = 'Please select a target portfolio'
+    return
+  }
+
   if (!props.editingTransaction && !props.prefillHoldingId && !form.value.ticker) {
     errorMessage.value = 'Please search and select a verified asset from the list'
     return
@@ -787,6 +777,16 @@ const handleSubmit = async () => {
   }
   if (!form.value.price_per_share || form.value.price_per_share <= 0) {
     errorMessage.value = 'Price must be greater than 0'
+    return
+  }
+
+  if (!form.value.currency) {
+    errorMessage.value = 'Please select a trade currency'
+    return
+  }
+
+  if (!form.value.executed_at) {
+    errorMessage.value = 'Please specify the execution date and time'
     return
   }
 

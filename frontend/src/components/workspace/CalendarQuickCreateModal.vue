@@ -234,8 +234,8 @@ watch(
       eventForm.title = ''
       eventForm.event_type = 'APPOINTMENT'
       eventForm.project = props.fixedProjectId || null
-      eventForm.date = props.initialDate || new Date().toISOString().slice(0, 10)
-      eventForm.time = '09:00'
+      eventForm.date = props.initialDate || ''
+      eventForm.time = ''
       eventForm.endDate = ''
       eventForm.endTime = ''
       eventForm.is_all_day = false

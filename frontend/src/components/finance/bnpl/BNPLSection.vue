@@ -180,7 +180,7 @@
               <input
                 v-model="newOrderForm.title"
                 type="text"
-                placeholder="e.g. Wireless Keyboard"
+                placeholder="Item title / Order"
                 class="w-full px-2.5 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-100 text-xs outline-none focus:border-zinc-700 font-mono"
               />
             </div>
@@ -200,7 +200,7 @@
                 v-model.number="newOrderForm.total_terms"
                 type="number"
                 min="1"
-                placeholder="3"
+                placeholder="Total terms"
                 class="w-full px-2.5 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-100 text-xs outline-none focus:border-zinc-700 font-mono"
               />
             </div>
@@ -324,7 +324,7 @@ const isSubmittingOrder = ref(false)
 const newOrderForm = reactive({
   title: '',
   monthly_amount: null as number | null,
-  total_terms: 3,
+  total_terms: null as number | null,
   current_term: 0
 })
 

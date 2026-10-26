@@ -35,6 +35,7 @@
             required
             class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
           >
+            <option value="" disabled>Select source account</option>
             <option
               v-for="acc in ledgerStore.accounts"
               :key="acc.id"
@@ -54,6 +55,7 @@
             required
             class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
           >
+            <option value="" disabled>Select target account</option>
             <option
               v-for="acc in ledgerStore.accounts"
               :key="acc.id"
@@ -98,7 +100,7 @@
             <input
               v-model="form.title"
               type="text"
-              placeholder="e.g. Credit Card Settlement"
+              placeholder="e.g. Credit card settlement"
               class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 transition-colors"
             />
           </div>
@@ -150,8 +152,8 @@ const form = reactive({
   source_account_id: '',
   target_account_id: '',
   amount: 0,
-  transaction_date: new Date().toISOString().split('T')[0],
-  title: 'Transfer Between Accounts',
+  transaction_date: '',
+  title: '',
   notes: ''
 })
 
@@ -166,18 +168,12 @@ watch(
   (open) => {
     if (open) {
       window.addEventListener('keydown', handleKeyDown)
-      if (props.defaultSourceId) {
-        form.source_account_id = props.defaultSourceId
-      } else if (ledgerStore.accounts.length > 0) {
-        form.source_account_id = ledgerStore.accounts[0].id
-      }
-
-      const other = ledgerStore.accounts.find((a) => a.id !== form.source_account_id)
-      if (other) form.target_account_id = other.id
-
+      form.source_account_id = props.defaultSourceId || ''
+      form.target_account_id = ''
       form.amount = 0
-      form.transaction_date = new Date().toISOString().split('T')[0]
-      form.title = 'Transfer Between Accounts'
+      form.transaction_date = ''
+      form.title = ''
+      form.notes = ''
       errorMessage.value = ''
     } else {
       window.removeEventListener('keydown', handleKeyDown)
@@ -190,8 +186,20 @@ onUnmounted(() => {
 })
 
 async function handleTransfer() {
+  if (!form.source_account_id || !form.target_account_id) {
+    errorMessage.value = 'Please select source and target accounts.'
+    return
+  }
   if (form.source_account_id === form.target_account_id) {
     errorMessage.value = 'Source and target accounts must be different.'
+    return
+  }
+  if (!form.transaction_date) {
+    errorMessage.value = 'Please select a transfer date.'
+    return
+  }
+  if (!form.amount || Number(form.amount) <= 0) {
+    errorMessage.value = 'Transfer amount must be greater than 0.'
     return
   }
   errorMessage.value = ''

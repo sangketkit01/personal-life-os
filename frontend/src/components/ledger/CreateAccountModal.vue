@@ -72,7 +72,7 @@
             <input
               v-model="form.account_number"
               type="text"
-              placeholder="1234"
+              placeholder="e.g. 1234"
               class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 transition-colors"
             />
           </div>
@@ -100,8 +100,10 @@
             <label class="block text-[11px] text-zinc-300 mb-1 font-medium">Currency</label>
             <select
               v-model="form.currency"
+              required
               class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 transition-colors"
             >
+              <option value="" disabled>Select currency</option>
               <option value="THB">THB (฿)</option>
               <option value="USD">USD ($)</option>
             </select>
@@ -189,11 +191,11 @@ const accountTypes = [
 
 const form = reactive({
   name: '',
-  account_type: 'BANK' as AccountType,
+  account_type: '' as unknown as AccountType,
   institution_name: '',
   account_number: '',
-  initial_balance: 0,
-  currency: 'THB',
+  initial_balance: null as any,
+  currency: '',
   credit_limit: null as number | null,
   is_default: false
 })
@@ -210,6 +212,16 @@ watch(
     if (open) {
       window.addEventListener('keydown', handleKeyDown)
       errorMessage.value = ''
+      if (!props.editingAccount) {
+        form.name = ''
+        form.account_type = '' as unknown as AccountType
+        form.institution_name = ''
+        form.account_number = ''
+        form.initial_balance = null as any
+        form.currency = ''
+        form.credit_limit = null
+        form.is_default = false
+      }
     } else {
       window.removeEventListener('keydown', handleKeyDown)
     }
@@ -234,11 +246,11 @@ watch(
       form.is_default = acc.is_default || false
     } else {
       form.name = ''
-      form.account_type = 'BANK'
+      form.account_type = '' as unknown as AccountType
       form.institution_name = ''
       form.account_number = ''
-      form.initial_balance = 0
-      form.currency = 'THB'
+      form.initial_balance = null as any
+      form.currency = ''
       form.credit_limit = null
       form.is_default = false
     }
@@ -247,6 +259,18 @@ watch(
 )
 
 async function handleSubmit() {
+  if (!form.account_type) {
+    errorMessage.value = 'Please select an account type'
+    return
+  }
+  if (!form.name.trim()) {
+    errorMessage.value = 'Account name is required'
+    return
+  }
+  if (!form.currency) {
+    errorMessage.value = 'Please select a currency'
+    return
+  }
   errorMessage.value = ''
   isSubmitting.value = true
   try {

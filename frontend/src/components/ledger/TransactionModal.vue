@@ -56,6 +56,7 @@
               required
               class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono text-xs transition-colors"
             >
+              <option value="" disabled>Select account / wallet</option>
               <option
                 v-for="acc in ledgerStore.accounts"
                 :key="acc.id"
@@ -154,7 +155,7 @@
             </label>
 
             <span v-if="isSplit" class="text-[11px] text-zinc-400 font-mono">
-              My Net Share: <strong class="text-emerald-400 font-semibold">฿{{ calculatedNetExpense.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</strong>
+              {{ splitMode === 'ITEMIZED' && harntungPayerName ? `${harntungPayerName}'s Share:` : 'My Net Share:' }} <strong class="text-emerald-400 font-semibold">฿{{ calculatedNetExpense.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</strong>
             </span>
           </div>
 
@@ -197,6 +198,7 @@
                   type="number"
                   min="2"
                   max="50"
+                  placeholder="2"
                   class="w-12 px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-center text-zinc-100 font-mono outline-none"
                   @input="handlePeopleCountInput"
                 />
@@ -211,44 +213,70 @@
                   <label class="text-[11px] font-mono text-zinc-400 font-semibold uppercase">
                     Participants ({{ harntungParticipants.length }})
                   </label>
-                  <button
-                    type="button"
-                    @click="addHarntungParticipant"
-                    class="text-[11px] font-mono text-zinc-400 hover:text-zinc-200 flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus class="w-3 h-3" />
-                    <span>Add Friend</span>
-                  </button>
+                  <div class="flex items-center gap-2">
+                    <div v-if="harntungParticipants.length > 0" class="flex items-center gap-1.5 text-[11px] font-mono">
+                      <span class="text-zinc-400">Payer:</span>
+                      <select
+                        v-model="harntungPayerName"
+                        class="bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-xs text-zinc-200 outline-none focus:border-zinc-700 cursor-pointer"
+                      >
+                        <option value="" disabled>Select payer</option>
+                        <option
+                          v-for="p in harntungParticipants"
+                          :key="p.name"
+                          :value="p.name"
+                          :disabled="!p.name"
+                        >
+                          {{ p.name || '(Enter name first)' }}
+                        </option>
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      @click="addHarntungParticipant"
+                      class="text-[11px] font-mono text-zinc-400 hover:text-zinc-200 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus class="w-3 h-3" />
+                      <span>Add Friend</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2">
                   <div
                     v-for="(p, pIdx) in harntungParticipants"
                     :key="pIdx"
-                    class="flex items-center gap-1.5 px-2 py-1 rounded bg-zinc-950 border border-zinc-800 text-xs"
+                    class="flex items-center gap-1.5 px-2 py-1 rounded bg-zinc-950 border text-xs transition-colors"
+                    :class="harntungPayerName && harntungPayerName === p.name ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-zinc-800'"
                   >
-                    <span v-if="p.name === 'Me'" class="font-semibold text-emerald-400">Me (Payer)</span>
                     <input
-                      v-else
                       v-model="p.name"
                       type="text"
-                      placeholder="Friend name"
+                      placeholder="Name"
                       class="bg-transparent text-zinc-100 text-xs outline-none w-20"
                     />
                     <input
-                      v-if="p.name !== 'Me'"
                       v-model="p.contact"
                       type="text"
                       placeholder="PromptPay"
                       class="bg-transparent text-zinc-500 text-[10px] outline-none w-20 font-mono"
                     />
                     <button
-                      v-if="p.name !== 'Me'"
+                      type="button"
+                      @click="harntungPayerName = p.name"
+                      :disabled="!p.name"
+                      class="px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      :class="harntungPayerName && harntungPayerName === p.name ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/40' : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'"
+                      :title="harntungPayerName && harntungPayerName === p.name ? 'Current payer' : 'Set as payer'"
+                    >
+                      {{ harntungPayerName && harntungPayerName === p.name ? 'Payer' : 'Set Payer' }}
+                    </button>
+                    <button
                       type="button"
                       @click="removeHarntungParticipant(pIdx)"
-                      class="text-zinc-500 hover:text-rose-400 transition-colors ml-0.5"
+                      class="text-zinc-500 hover:text-rose-400 transition-colors ml-0.5 cursor-pointer"
                     >
-                      <X class="w-3 h-3" />
+                      <Trash2 class="w-3 h-3" />
                     </button>
                   </div>
                 </div>
@@ -397,12 +425,12 @@
                     class="pt-1 flex items-center justify-between"
                   >
                     <div class="flex items-center gap-1.5">
-                      <span :class="share.name === 'Me' ? 'text-emerald-400 font-bold' : 'text-zinc-300'">
-                        {{ share.name === 'Me' ? 'Me (My Expense)' : share.name }}
+                      <span :class="harntungPayerName && share.name === harntungPayerName ? 'text-emerald-400 font-bold' : 'text-zinc-300'">
+                        {{ harntungPayerName && share.name === harntungPayerName ? `${share.name} (Payer's Expense)` : share.name }}
                       </span>
                       <span class="text-[10px] text-zinc-500">({{ share.itemsCount }} items)</span>
                     </div>
-                    <span :class="share.name === 'Me' ? 'text-emerald-400 font-semibold' : 'text-zinc-200'">
+                    <span :class="harntungPayerName && share.name === harntungPayerName ? 'text-emerald-400 font-semibold' : 'text-zinc-200'">
                       ฿{{ share.finalShare.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                     </span>
                   </div>
@@ -615,12 +643,12 @@ const selectedFile = ref<File | null>(null)
 
 const isSplit = ref(false)
 const splitMode = ref<'ITEMIZED' | 'EQUAL' | 'CUSTOM'>('ITEMIZED')
-const equalSplitPeopleCount = ref(4)
+const equalSplitPeopleCount = ref<number | null>(null)
 const autoCreateRadarDebtors = ref(true)
 
 // ============= Harntung Itemized State =============
-const serviceChargePct = ref(10)
-const vatPct = ref(7)
+const serviceChargePct = ref(0)
+const vatPct = ref(0)
 
 interface HarntungParticipant {
   name: string
@@ -634,16 +662,10 @@ interface HarntungItem {
   consumers: string[]
 }
 
-const harntungParticipants = ref<HarntungParticipant[]>([
-  { name: 'Me', contact: '' },
-  { name: 'Ball', contact: '' },
-  { name: 'Earth', contact: '' }
-])
+const harntungParticipants = ref<HarntungParticipant[]>([])
+const harntungPayerName = ref<string>('')
 
-const harntungItems = ref<HarntungItem[]>([
-  { name: 'Main Dish', price: 600, quantity: 1, consumers: ['Me', 'Ball', 'Earth'] },
-  { name: 'Special Menu', price: 350, quantity: 1, consumers: ['Ball', 'Earth'] }
-])
+const harntungItems = ref<HarntungItem[]>([])
 
 // ============= Classic Quick Split State =============
 interface ParticipantRow {
@@ -652,20 +674,16 @@ interface ParticipantRow {
   amount: number
 }
 
-const participants = ref<ParticipantRow[]>([
-  { counterparty_name: 'Ball', counterparty_contact: '', amount: 0 },
-  { counterparty_name: 'Earth', counterparty_contact: '', amount: 0 },
-  { counterparty_name: 'Bank', counterparty_contact: '', amount: 0 }
-])
+const participants = ref<ParticipantRow[]>([])
 
 const form = reactive({
   account: '',
   transaction_type: 'OUTFLOW' as TransactionType,
   category: null as string | null,
-  gross_amount: 0,
+  gross_amount: null as any,
   title: '',
   notes: '',
-  transaction_date: new Date().toISOString().split('T')[0]
+  transaction_date: ''
 })
 
 const filteredCategories = computed(() => {
@@ -719,8 +737,9 @@ const harntungCalculatedShares = computed(() => {
 })
 
 const harntungPayerShare = computed(() => {
-  const me = harntungCalculatedShares.value.find(s => s.name === 'Me')
-  return me ? me.finalShare : 0
+  if (!harntungPayerName.value) return 0
+  const payer = harntungCalculatedShares.value.find(s => s.name === harntungPayerName.value)
+  return payer ? payer.finalShare : 0
 })
 
 // Auto-sync gross amount when in Harntung mode
@@ -737,7 +756,7 @@ watch(
 const friendsTotalShare = computed(() => {
   if (splitMode.value === 'ITEMIZED') {
     return harntungCalculatedShares.value
-      .filter(s => s.name !== 'Me')
+      .filter(s => !harntungPayerName.value || s.name !== harntungPayerName.value)
       .reduce((sum, s) => sum + s.finalShare, 0)
   }
   return participants.value.reduce((sum, p) => sum + Number(p.amount || 0), 0)
@@ -765,11 +784,22 @@ watch(
   (open) => {
     if (open) {
       window.addEventListener('keydown', handleKeyDown)
-      if (!form.account && ledgerStore.accounts.length > 0) {
-        const def = ledgerStore.accounts.find((a) => a.is_default) || ledgerStore.accounts[0]
-        form.account = def.id
-      }
-      form.transaction_date = new Date().toISOString().split('T')[0]
+      form.account = ''
+      form.title = ''
+      form.gross_amount = null as any
+      form.notes = ''
+      form.category = null
+      form.transaction_type = 'OUTFLOW'
+      form.transaction_date = ''
+      isSplit.value = false
+      splitMode.value = 'ITEMIZED'
+      equalSplitPeopleCount.value = null
+      harntungParticipants.value = []
+      harntungPayerName.value = ''
+      harntungItems.value = []
+      participants.value = []
+      serviceChargePct.value = 0
+      vatPct.value = 0
       errorMessage.value = ''
       selectedFile.value = null
       storageStore.fetchStatus().catch(() => {})
@@ -800,18 +830,23 @@ watch(
 )
 
 function recalculateEqualSplits() {
-  const count = Math.max(2, equalSplitPeopleCount.value)
-  const perPerson = Number((Number(form.gross_amount) / count).toFixed(2))
+  if (!equalSplitPeopleCount.value || equalSplitPeopleCount.value <= 1) return
+  const count = equalSplitPeopleCount.value
+  const perPerson = Number((Number(form.gross_amount || 0) / count).toFixed(2))
   participants.value.forEach((p) => {
     p.amount = perPerson
   })
 }
 
 function handlePeopleCountInput() {
-  const targetFriends = Math.max(1, equalSplitPeopleCount.value - 1)
+  if (!equalSplitPeopleCount.value || equalSplitPeopleCount.value <= 1) {
+    participants.value = []
+    return
+  }
+  const targetFriends = equalSplitPeopleCount.value - 1
   while (participants.value.length < targetFriends) {
     participants.value.push({
-      counterparty_name: `Friend ${participants.value.length + 1}`,
+      counterparty_name: '',
       counterparty_contact: '',
       amount: 0
     })
@@ -824,10 +859,10 @@ function handlePeopleCountInput() {
 
 function addParticipant() {
   participants.value.push({
-    counterparty_name: `Friend ${participants.value.length + 1}`,
+    counterparty_name: '',
     counterparty_contact: '',
-    amount: splitMode.value === 'EQUAL' && form.gross_amount
-      ? Number((Number(form.gross_amount) / (participants.value.length + 2)).toFixed(2))
+    amount: splitMode.value === 'EQUAL' && form.gross_amount && equalSplitPeopleCount.value
+      ? Number((Number(form.gross_amount) / (equalSplitPeopleCount.value)).toFixed(2))
       : 0
   })
   if (splitMode.value === 'EQUAL') {
@@ -846,15 +881,17 @@ function removeParticipant(idx: number) {
 
 // ============= Harntung Participant & Dish Helpers =============
 function addHarntungParticipant() {
-  const nextNum = harntungParticipants.value.length
   harntungParticipants.value.push({
-    name: `Friend ${nextNum}`,
+    name: '',
     contact: ''
   })
 }
 
 function removeHarntungParticipant(idx: number) {
   const removedName = harntungParticipants.value[idx].name
+  if (harntungPayerName.value === removedName) {
+    harntungPayerName.value = ''
+  }
   harntungParticipants.value.splice(idx, 1)
   harntungItems.value.forEach(item => {
     item.consumers = item.consumers.filter(c => c !== removedName)
@@ -863,10 +900,10 @@ function removeHarntungParticipant(idx: number) {
 
 function addHarntungItem() {
   harntungItems.value.push({
-    name: `Dish ${harntungItems.value.length + 1}`,
-    price: 250,
+    name: '',
+    price: 0,
     quantity: 1,
-    consumers: harntungParticipants.value.map(p => p.name)
+    consumers: harntungParticipants.value.map(p => p.name).filter(Boolean)
   })
 }
 
@@ -885,9 +922,9 @@ function toggleConsumer(item: HarntungItem, name: string) {
 
 function toggleAllConsumers(item: HarntungItem) {
   if (item.consumers.length === harntungParticipants.value.length) {
-    item.consumers = ['Me']
+    item.consumers = []
   } else {
-    item.consumers = harntungParticipants.value.map(p => p.name)
+    item.consumers = harntungParticipants.value.map(p => p.name).filter(Boolean)
   }
 }
 
@@ -901,10 +938,11 @@ function copySettlementSummary() {
     text += `--------------------------------\n`
     harntungCalculatedShares.value.forEach(s => {
       const contactInfo = s.contact ? ` (${s.contact})` : ''
-      text += `• ${s.name}${contactInfo}: ฿${s.finalShare.toLocaleString('en-US', { minimumFractionDigits: 2 })}\n`
+      const isPayer = harntungPayerName.value && s.name === harntungPayerName.value
+      text += `• ${s.name}${isPayer ? ' (Payer)' : ''}${contactInfo}: ฿${s.finalShare.toLocaleString('en-US', { minimumFractionDigits: 2 })}\n`
     })
     text += `--------------------------------\n`
-    text += `My Net Share: ฿${harntungPayerShare.value.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+    text += `${harntungPayerName.value ? `${harntungPayerName.value}'s` : 'Payer'} Net Share: ฿${harntungPayerShare.value.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
   } else {
     text = `Bill: ${form.title || 'Shared Expense'} (฿${Number(form.gross_amount).toLocaleString('en-US')})\n` +
       participants.value.map((p) => `• ${p.counterparty_name}: ฿${Number(p.amount).toLocaleString('en-US')}`).join('\n') +
@@ -920,6 +958,18 @@ function copySettlementSummary() {
 
 async function handleSubmit() {
   if (isOverAllocated.value) return
+  if (!form.account) {
+    errorMessage.value = 'Please select an account'
+    return
+  }
+  if (!form.transaction_date) {
+    errorMessage.value = 'Please select a transaction date'
+    return
+  }
+  if (!form.gross_amount || Number(form.gross_amount) <= 0) {
+    errorMessage.value = 'Gross amount must be greater than 0'
+    return
+  }
   errorMessage.value = ''
   isSubmitting.value = true
   try {
@@ -936,11 +986,16 @@ async function handleSubmit() {
 
     if (isSplit.value && form.transaction_type === 'OUTFLOW') {
       if (splitMode.value === 'ITEMIZED') {
+        if (harntungParticipants.value.length > 0 && !harntungPayerName.value) {
+          errorMessage.value = 'Please select who paid for the bill (Payer)'
+          isSubmitting.value = false
+          return
+        }
         payload.split_metadata = {
           mode: 'ITEMIZED',
           service_charge_pct: Number(serviceChargePct.value || 0),
           vat_pct: Number(vatPct.value || 0),
-          payer_name: 'Me',
+          payer_name: harntungPayerName.value || 'Me',
           items: harntungItems.value,
           participants: harntungParticipants.value
         }

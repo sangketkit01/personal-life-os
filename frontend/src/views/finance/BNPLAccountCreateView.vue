@@ -20,25 +20,6 @@
       </div>
     </div>
 
-    <!-- Quick Provider Suggestion Chips -->
-    <div class="space-y-1.5">
-      <span class="text-[11px] font-mono uppercase text-zinc-500">Popular Providers</span>
-      <div class="flex flex-wrap gap-1.5">
-        <button
-          v-for="preset in providerPresets"
-          :key="preset.name"
-          type="button"
-          @click="applyPreset(preset)"
-          class="px-2.5 py-1 rounded text-xs font-mono border transition-colors cursor-pointer"
-          :class="form.title === preset.name
-            ? 'bg-zinc-800 text-zinc-100 border-zinc-600'
-            : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:border-zinc-700'"
-        >
-          {{ preset.name }}
-        </button>
-      </div>
-    </div>
-
     <!-- Main Clean Form -->
     <form @submit.prevent="handleSubmit" class="space-y-4">
       <!-- Title & Provider -->
@@ -80,7 +61,7 @@
             step="100"
             min="0"
             required
-            placeholder="20000"
+            placeholder="0.00"
             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-7 pr-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
           />
         </div>
@@ -98,7 +79,7 @@
             min="1"
             max="31"
             required
-            placeholder="25"
+            placeholder="1-31"
             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
           />
         </div>
@@ -113,7 +94,7 @@
             min="1"
             max="31"
             required
-            placeholder="10"
+            placeholder="1-31"
             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
           />
         </div>
@@ -187,33 +168,23 @@ const { createAccount, isActionLoading } = useBNPL()
 
 const showAdvanced = ref(false)
 
-const providerPresets = [
-  { name: 'Shopee SPayLater', provider: 'Shopee', cutoff: 25, due: 10 },
-  { name: 'Lazada LazPayLater', provider: 'Lazada', cutoff: 1, due: 15 },
-  { name: 'TikTok Shop PayLater', provider: 'TikTok', cutoff: 20, due: 5 },
-  { name: 'Atome BNPL', provider: 'Atome', cutoff: 15, due: 30 }
-]
-
 const form = reactive({
   title: '',
   provider: '',
-  credit_limit: 20000,
-  cutoff_day: 25,
-  due_day: 10,
+  credit_limit: null as number | null,
+  cutoff_day: null as number | null,
+  due_day: null as number | null,
   account_number: '',
   notes: ''
 })
 
-function applyPreset(preset: typeof providerPresets[0]) {
-  form.title = preset.name
-  form.provider = preset.provider
-  form.cutoff_day = preset.cutoff
-  form.due_day = preset.due
-}
-
 async function handleSubmit() {
-  if (!form.title.trim() || !form.credit_limit) {
-    toast.error('Please enter account title and credit limit')
+  if (!form.title.trim() || form.credit_limit === null || form.credit_limit <= 0) {
+    toast.error('Please enter account title and valid credit limit')
+    return
+  }
+  if (!form.cutoff_day || !form.due_day) {
+    toast.error('Please specify statement cutoff day and payment due day')
     return
   }
 

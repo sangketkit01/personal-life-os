@@ -98,7 +98,7 @@
             v-model.trim="form.description"
             rows="2"
             maxlength="200"
-            placeholder="Optional strategy notes"
+            placeholder="e.g. Long-term DCA basket, core tech holdings..."
             class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors resize-none"
           ></textarea>
         </div>
@@ -156,7 +156,7 @@ const colorPalette = [
 const form = ref({
   name: '',
   description: '',
-  currency: 'THB' as 'THB' | 'USD',
+  currency: '' as unknown as ('THB' | 'USD'),
   color: '#3B82F6'
 })
 
@@ -168,7 +168,7 @@ watch(
       form.value = {
         name: '',
         description: '',
-        currency: portfolioStore.displayCurrency,
+        currency: '' as unknown as ('THB' | 'USD'),
         color: '#3B82F6'
       }
     }
@@ -178,6 +178,10 @@ watch(
 const handleSubmit = async () => {
   if (!form.value.name.trim()) {
     errorMessage.value = 'Portfolio name is required'
+    return
+  }
+  if (!form.value.currency) {
+    errorMessage.value = 'Please select a currency (THB or USD)'
     return
   }
 

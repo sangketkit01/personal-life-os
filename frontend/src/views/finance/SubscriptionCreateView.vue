@@ -42,25 +42,6 @@
       </button>
     </div>
 
-    <!-- Quick Suggestion Chips (Compact 1-row) -->
-    <div class="space-y-1.5">
-      <span class="text-[11px] font-mono uppercase text-zinc-500">Popular Presets</span>
-      <div class="flex flex-wrap gap-1.5">
-        <button
-          v-for="p in popularPresets"
-          :key="p.title"
-          type="button"
-          @click="applyPreset(p)"
-          class="px-2.5 py-1 rounded text-xs font-mono border transition-colors"
-          :class="form.title === p.title
-            ? 'bg-zinc-800 text-zinc-100 border-zinc-600'
-            : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:border-zinc-700'"
-        >
-          {{ p.title }}
-        </button>
-      </div>
-    </div>
-
     <!-- Main Clean Form -->
     <form @submit.prevent="handleSubmit" class="space-y-4">
       <!-- Title & Plan -->
@@ -73,7 +54,7 @@
             v-model="form.title"
             type="text"
             required
-            placeholder="e.g. Netflix, ChatGPT, Spotify"
+            placeholder="e.g. Netflix, Spotify"
             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
           />
         </div>
@@ -94,15 +75,17 @@
       <!-- Category & Cycle -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label class="block text-xs font-mono text-zinc-400 mb-1.5">Category</label>
+          <label class="block text-xs font-mono text-zinc-400 mb-1.5">Category <span class="text-rose-400">*</span></label>
           <select
             v-model="form.category"
+            required
             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
           >
+            <option value="" disabled>Select category</option>
             <option value="STREAMING">Streaming & Entertainment</option>
             <option value="AI_TOOLS">AI & Machine Learning</option>
             <option value="CLOUD">Cloud & Storage</option>
-            <option value="PRODUCTIVITY">ProductIVITY</option>
+            <option value="PRODUCTIVITY">Productivity</option>
             <option value="DEVELOPER">Developer & Infrastructure</option>
             <option value="GAMING">Gaming & Hobbies</option>
             <option value="HEALTH">Health & Fitness</option>
@@ -111,11 +94,13 @@
         </div>
 
         <div>
-          <label class="block text-xs font-mono text-zinc-400 mb-1.5">Billing Cycle</label>
+          <label class="block text-xs font-mono text-zinc-400 mb-1.5">Billing Cycle <span class="text-rose-400">*</span></label>
           <select
             v-model="form.billing_cycle"
+            required
             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
           >
+            <option value="" disabled>Select billing cycle</option>
             <option value="MONTHLY">Monthly</option>
             <option value="YEARLY">Yearly</option>
             <option value="QUARTERLY">Quarterly</option>
@@ -132,7 +117,7 @@
           </label>
           <div class="relative">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono text-zinc-500">
-              {{ form.currency === 'USD' ? '$' : '฿' }}
+              {{ form.currency === 'USD' ? '$' : (form.currency === 'THB' ? '฿' : '') }}
             </span>
             <input
               v-model.number="form.amount"
@@ -146,11 +131,13 @@
         </div>
 
         <div>
-          <label class="block text-xs font-mono text-zinc-400 mb-1.5">Currency</label>
+          <label class="block text-xs font-mono text-zinc-400 mb-1.5">Currency <span class="text-rose-400">*</span></label>
           <select
             v-model="form.currency"
+            required
             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
           >
+            <option value="" disabled>Select currency</option>
             <option value="THB">THB (฿)</option>
             <option value="USD">USD ($)</option>
           </select>
@@ -172,14 +159,16 @@
         </div>
 
         <div>
-          <label class="block text-xs font-mono text-zinc-400 mb-1.5">Reminder Notification</label>
+          <label class="block text-xs font-mono text-zinc-400 mb-1.5">Reminder Notification <span class="text-rose-400">*</span></label>
           <select
             v-model.number="form.alert_days_before"
+            required
             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
           >
+            <option :value="null" disabled>Select reminder</option>
             <option :value="1">1 day prior</option>
             <option :value="2">2 days prior</option>
-            <option :value="3">3 days prior (Recommended)</option>
+            <option :value="3">3 days prior</option>
             <option :value="5">5 days prior</option>
             <option :value="7">7 days prior</option>
           </select>
@@ -190,7 +179,7 @@
       <div class="p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/80 flex items-center justify-between text-xs font-mono">
         <span class="text-zinc-400">Monthly Projection:</span>
         <span class="font-semibold text-zinc-100">
-          {{ form.currency === 'USD' ? '$' : '฿' }}{{ formatNumber(computedMonthlyCost) }} / mo
+          {{ form.currency === 'USD' ? '$' : (form.currency === 'THB' ? '฿' : '') }}{{ formatNumber(computedMonthlyCost) }} / mo
         </span>
       </div>
 
@@ -211,7 +200,7 @@
               <input
                 v-model="form.account_email"
                 type="email"
-                placeholder="user@example.com"
+                placeholder="e.g. alex@example.com"
                 class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
               />
             </div>
@@ -242,7 +231,7 @@
             <textarea
               v-model="form.cancel_steps"
               rows="2"
-              placeholder="e.g. Settings -> Subscriptions -> Cancel Plan"
+              placeholder="e.g. Settings > Account > Cancel Subscription"
               class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors resize-none"
             ></textarea>
           </div>
@@ -309,22 +298,16 @@ onMounted(async () => {
 const isSubmitting = ref(false)
 const showAdvanced = ref(false)
 
-const getFutureDate = (daysAhead: number) => {
-  const d = new Date()
-  d.setDate(d.getDate() + daysAhead)
-  return d.toISOString().split('T')[0]
-}
-
 const form = ref({
   type: 'SUBSCRIPTION' as 'SUBSCRIPTION' | 'FREE_TRIAL',
   title: '',
   plan_name: '',
-  category: 'STREAMING',
-  billing_cycle: 'MONTHLY' as 'MONTHLY' | 'YEARLY' | 'QUARTERLY' | 'WEEKLY',
-  amount: 0,
-  currency: 'THB',
-  due_date: getFutureDate(30),
-  alert_days_before: 3,
+  category: '',
+  billing_cycle: '' as 'MONTHLY' | 'YEARLY' | 'QUARTERLY' | 'WEEKLY' | '',
+  amount: null as number | null,
+  currency: '',
+  due_date: '',
+  alert_days_before: null as number | null,
   account_email: '',
   payment_method: '',
   project: null as string | null,
@@ -332,27 +315,9 @@ const form = ref({
   cancel_steps: ''
 })
 
-const popularPresets = [
-  { title: 'Netflix', plan: 'Premium 4K', category: 'STREAMING', amount: 419, currency: 'THB', cycle: 'MONTHLY' as const, url: 'https://netflix.com/youraccount' },
-  { title: 'Spotify', plan: 'Individual', category: 'STREAMING', amount: 139, currency: 'THB', cycle: 'MONTHLY' as const, url: 'https://spotify.com/account' },
-  { title: 'YouTube Premium', plan: 'Individual', category: 'STREAMING', amount: 179, currency: 'THB', cycle: 'MONTHLY' as const, url: 'https://youtube.com/paid_memberships' },
-  { title: 'ChatGPT Plus', plan: 'Plus', category: 'AI_TOOLS', amount: 20, currency: 'USD', cycle: 'MONTHLY' as const, url: 'https://chatgpt.com/#settings/Subscription' },
-  { title: 'Claude Pro', plan: 'Pro', category: 'AI_TOOLS', amount: 20, currency: 'USD', cycle: 'MONTHLY' as const, url: 'https://claude.ai/settings/billing' },
-  { title: 'iCloud+', plan: '50 GB', category: 'CLOUD', amount: 35, currency: 'THB', cycle: 'MONTHLY' as const, url: 'https://appleid.apple.com' }
-]
-
-function applyPreset(p: typeof popularPresets[0]) {
-  form.value.title = p.title
-  form.value.plan_name = p.plan
-  form.value.category = p.category
-  form.value.amount = p.amount
-  form.value.currency = p.currency
-  form.value.billing_cycle = p.cycle
-  form.value.cancel_url = p.url
-}
-
 const computedMonthlyCost = computed(() => {
   const amt = Number(form.value.amount || 0)
+  if (!amt || !form.value.billing_cycle) return 0
   if (form.value.billing_cycle === 'YEARLY') return amt / 12
   if (form.value.billing_cycle === 'QUARTERLY') return amt / 3
   if (form.value.billing_cycle === 'WEEKLY') return amt * 4.333
@@ -366,6 +331,26 @@ function formatNumber(val: number): string {
 async function handleSubmit() {
   if (!form.value.title.trim()) {
     toast.error('Please enter a service name')
+    return
+  }
+  if (form.value.amount === null || form.value.amount === undefined || isNaN(Number(form.value.amount))) {
+    toast.error('Please enter an amount')
+    return
+  }
+  if (!form.value.category) {
+    toast.error('Please select a category')
+    return
+  }
+  if (!form.value.billing_cycle) {
+    toast.error('Please select a billing cycle')
+    return
+  }
+  if (!form.value.currency) {
+    toast.error('Please select a currency')
+    return
+  }
+  if (!form.value.due_date) {
+    toast.error('Please select a date')
     return
   }
 

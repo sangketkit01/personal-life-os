@@ -111,7 +111,7 @@
           <input
             v-model="note"
             type="text"
-            placeholder="e.g. Transfer slip / Reference"
+            placeholder="e.g. Transfer slip / reference"
             class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 transition-colors"
           />
         </div>

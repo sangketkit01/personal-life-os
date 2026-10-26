@@ -610,7 +610,7 @@
           <input
             v-model="linkForm.title"
             type="text"
-            placeholder="Link title (e.g. Landing Design)"
+            :placeholder="t('pd.link.titlePlaceholder')"
             class="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-600"
           />
           <input

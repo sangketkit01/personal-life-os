@@ -169,6 +169,7 @@
               required
               class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
             >
+              <option value="" disabled>Select category</option>
               <option
                 v-for="c in expenseCategories"
                 :key="c.id"
@@ -247,7 +248,7 @@ const activeMonth = ref<string>(
 const showCreateBudgetModal = ref(false)
 const isSaving = ref(false)
 const newBudgetCategory = ref('')
-const newBudgetLimit = ref(5000)
+const newBudgetLimit = ref<number | null>(null)
 
 const totalBudgetCap = computed(() => {
   return ledgerStore.budgets.reduce((sum, b) => sum + Number(b.limit_amount || 0), 0)
@@ -303,6 +304,8 @@ const handleKeyDown = (e: KeyboardEvent) => {
 watch(showCreateBudgetModal, (open) => {
   if (open) {
     window.addEventListener('keydown', handleKeyDown)
+    newBudgetCategory.value = ''
+    newBudgetLimit.value = null
   } else {
     window.removeEventListener('keydown', handleKeyDown)
   }
@@ -317,9 +320,6 @@ onMounted(async () => {
     ledgerStore.fetchCategories('EXPENSE'),
     loadBudgets()
   ])
-  if (expenseCategories.value.length > 0) {
-    newBudgetCategory.value = expenseCategories.value[0].id
-  }
 })
 
 async function loadBudgets() {
@@ -327,6 +327,10 @@ async function loadBudgets() {
 }
 
 async function handleSaveBudget() {
+  if (!newBudgetCategory.value || newBudgetLimit.value === null || newBudgetLimit.value <= 0) {
+    toast.error('Please select category and enter a valid budget limit')
+    return
+  }
   isSaving.value = true
   try {
     await ledgerApi.createBudget({

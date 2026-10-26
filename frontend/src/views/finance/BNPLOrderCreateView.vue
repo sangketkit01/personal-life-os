@@ -90,7 +90,7 @@
                 type="number"
                 step="0.01"
                 min="0"
-                :max="form.total_price"
+                :max="form.total_price ?? undefined"
                 placeholder="0.00"
                 class="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-7 pr-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
               />
@@ -141,19 +141,7 @@
 
           <div>
             <div class="flex items-center justify-between mb-1">
-              <label class="text-xs font-mono text-zinc-400">Installment Terms</label>
-              <div class="flex items-center gap-1">
-                <button
-                  v-for="tenor in [1, 2, 3, 5, 6, 12]"
-                  :key="tenor"
-                  type="button"
-                  @click="form.total_terms = tenor"
-                  class="px-1 py-0.2 rounded text-[10px] font-mono border transition-colors cursor-pointer"
-                  :class="form.total_terms === tenor ? 'bg-zinc-800 text-zinc-100 border-zinc-600' : 'text-zinc-500 border-zinc-800 hover:text-zinc-300'"
-                >
-                  {{ tenor }}m
-                </button>
-              </div>
+              <label class="text-xs font-mono text-zinc-400">Installment Terms (Months) <span class="text-rose-400">*</span></label>
             </div>
             <input
               v-model.number="form.total_terms"
@@ -161,6 +149,7 @@
               min="1"
               max="60"
               required
+              placeholder="1"
               class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
             />
           </div>
@@ -170,7 +159,7 @@
         <div class="pt-1">
           <div class="flex items-center justify-between mb-1">
             <label class="text-xs font-mono text-zinc-400">Monthly Financing Interest Rate (%)</label>
-            <span class="text-[10px] font-mono text-zinc-500">Flat monthly rate (e.g. 1.5% SPayLater)</span>
+            <span class="text-[10px] font-mono text-zinc-500">e.g. 1.5% SPayLater</span>
           </div>
           <input
             v-model.number="form.interest_rate_pct"
@@ -225,7 +214,7 @@
               <input
                 v-model="form.store"
                 type="text"
-                placeholder="e.g. Shopee, Lazada, TikTok"
+                placeholder="e.g. Shopee, Apple Store"
                 class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
               />
             </div>
@@ -289,11 +278,11 @@ const form = reactive({
   title: '',
   store: '',
   order_number: '',
-  order_date: new Date().toISOString().split('T')[0],
-  total_price: 1500,
+  order_date: '',
+  total_price: null as number | null,
   down_payment: 0,
   down_payment_account_id: '',
-  total_terms: 3,
+  total_terms: null as number | null,
   interest_rate_pct: 0
 })
 
@@ -302,10 +291,6 @@ onMounted(async () => {
     await fetchAccountById(accountId.value)
   }
   await ledgerStore.fetchAccounts()
-  if (ledgerStore.accounts.length > 0 && !form.down_payment_account_id) {
-    const defaultAcc = ledgerStore.accounts.find(a => a.is_default) || ledgerStore.accounts[0]
-    form.down_payment_account_id = defaultAcc.id
-  }
 })
 
 const computedFinancedAmount = computed(() => {
@@ -328,6 +313,7 @@ const isDownPaymentInsufficient = computed(() => {
 })
 
 function formatMonthOffset(dateStr: string, offsetMonths: number) {
+  if (!dateStr) return '-'
   const d = new Date(dateStr)
   if (isNaN(d.getTime())) return '-'
   const target = new Date(d.getFullYear(), d.getMonth() + offsetMonths, 1)
@@ -346,6 +332,16 @@ const computedFinalDueMonth = computed(() => {
 async function handleSubmit() {
   if (!form.title.trim()) {
     toast.error('Please enter the purchase item title')
+    return
+  }
+
+  if (!form.order_date) {
+    toast.error('Please select purchase date')
+    return
+  }
+
+  if (!form.total_terms || form.total_terms <= 0) {
+    toast.error('Please enter installment terms')
     return
   }
 

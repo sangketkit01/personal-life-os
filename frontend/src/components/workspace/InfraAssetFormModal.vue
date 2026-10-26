@@ -38,27 +38,27 @@
               </label>
               <label class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.provider') }}</span>
-                <input v-model="form.provider" type="text" placeholder="DigitalOcean / AWS / Cloudflare"
+                <input v-model="form.provider" type="text" placeholder="e.g. AWS, DigitalOcean, Hetzner"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
               </label>
               <label v-if="!isServiceType" class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.region') }}</span>
-                <input v-model="form.region" type="text" placeholder="sgp1 / ap-southeast-1"
+                <input v-model="form.region" type="text" placeholder="e.g. ap-southeast-1, us-east-1"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
               </label>
               <label v-if="!isServiceType" class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.os') }}</span>
-                <input v-model="form.os_name" type="text" placeholder="Ubuntu 24.04 LTS"
+                <input v-model="form.os_name" type="text" placeholder="e.g. Ubuntu 24.04 LTS, Debian 12"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
               </label>
               <label v-if="isServiceType" class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.domain') }}</span>
-                <input v-model="form.primary_domain" type="text" placeholder="example.com / account"
+                <input v-model="form.primary_domain" type="text" placeholder="e.g. app.mydomain.com"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
               </label>
               <label v-if="isServiceType" class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.consoleUrl') }}</span>
-                <input v-model="form.console_url" type="url" placeholder="https://dash.cloudflare.com/..."
+                <input v-model="form.console_url" type="url" placeholder="https://..."
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
               </label>
               <label v-if="isServiceType" class="block">
@@ -92,7 +92,7 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.ip') }}</span>
-                <input v-model="form.ip_address" type="text" placeholder="203.0.113.10"
+                <input v-model="form.ip_address" type="text" placeholder="e.g. 1.2.3.4"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-mono focus:outline-none focus:border-zinc-600" />
               </label>
               <label class="block">
@@ -102,12 +102,12 @@
               </label>
               <label class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.domain') }}</span>
-                <input v-model="form.primary_domain" type="text" placeholder="example.com"
+                <input v-model="form.primary_domain" type="text" placeholder="e.g. app.mydomain.com"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
               </label>
               <label class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.consoleUrl') }}</span>
-                <input v-model="form.console_url" type="url" placeholder="https://cloud.digitalocean.com/..."
+                <input v-model="form.console_url" type="url" placeholder="https://..."
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
               </label>
               <label class="block">
@@ -121,7 +121,7 @@
               </label>
               <label v-if="form.ssh_auth_type !== 'NONE'" class="block">
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.sshUser') }}</span>
-                <input v-model="form.ssh_username" type="text" placeholder="root / ubuntu"
+                <input v-model="form.ssh_username" type="text" placeholder="e.g. root, ubuntu, debian"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-mono focus:outline-none focus:border-zinc-600" />
               </label>
             </div>
@@ -176,6 +176,7 @@
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.currency') }}</span>
                 <select v-model="form.cost_currency"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600">
+                  <option value="" disabled>Select currency</option>
                   <option>THB</option>
                   <option>USD</option>
                 </select>
@@ -184,6 +185,7 @@
                 <span class="text-[11px] text-zinc-400 font-mono">{{ t('infra.form.cycle') }}</span>
                 <select v-model="form.billing_cycle"
                   class="mt-1 w-full px-2.5 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600">
+                  <option value="" disabled>Select billing cycle</option>
                   <option>MONTHLY</option>
                   <option>QUARTERLY</option>
                   <option>YEARLY</option>
@@ -341,11 +343,11 @@ const emptyForm = () => ({
   primary_domain: '',
   console_url: '',
   ssh_auth_type: 'PASSWORD' as 'PASSWORD' | 'PRIVATE_KEY' | 'NONE',
-  ssh_username: 'root',
+  ssh_username: '',
   billing_ownership: 'SELF_FUNDED' as BillingOwnership,
   cost_amount: '' as string | number,
-  cost_currency: 'THB',
-  billing_cycle: 'MONTHLY',
+  cost_currency: '',
+  billing_cycle: '',
   next_billing_date: '',
   sync_to_radar: false,
   watchdog_enabled: false,

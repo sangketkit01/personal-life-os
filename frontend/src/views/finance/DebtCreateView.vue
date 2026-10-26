@@ -55,7 +55,7 @@
             v-model="form.counterparty"
             type="text"
             required
-            :placeholder="form.direction === 'INFLOW' ? 'e.g. John Doe' : 'e.g. Kasikorn Bank, Jane'"
+            :placeholder="form.direction === 'INFLOW' ? 'e.g. Alex Wong' : 'e.g. KBank, Apple Store'"
             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
           />
         </div>
@@ -244,10 +244,10 @@ const form = reactive({
   subtype: 'INFORMAL_BORROW' as 'INFORMAL_BORROW' | 'FORMAL_LOAN',
   counterparty: '',
   contact: '',
-  promptpay: localStorage.getItem('finance_promptpay_default') || '',
-  amount: 5000,
+  promptpay: '',
+  amount: null as number | null,
   currency: 'THB',
-  due_date: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+  due_date: '',
   is_flexible: false,
   interest_rate_pa: 0,
   contract_no: '',
@@ -255,8 +255,13 @@ const form = reactive({
 })
 
 async function handleSubmit() {
-  if (!form.counterparty.trim() || !form.amount) {
+  if (!form.counterparty.trim() || form.amount === null || form.amount <= 0) {
     toast.error('Please specify counterparty name and principal amount')
+    return
+  }
+
+  if (!form.is_flexible && !form.due_date) {
+    toast.error('Please specify repayment due date or select flexible')
     return
   }
 

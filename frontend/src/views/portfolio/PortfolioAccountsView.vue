@@ -17,7 +17,7 @@
       <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 lg:max-w-md w-full">
         <UniversalAssetSearch
           @record-trade="openAddModalForTicker"
-          placeholder="Lookup asset or inspect ticker..."
+          placeholder="Search any ticker (e.g. NVDA, PTT.BK, BTC-USD)..."
         />
         <div class="flex items-center gap-2 shrink-0">
           <button

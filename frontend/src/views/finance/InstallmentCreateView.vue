@@ -102,7 +102,7 @@
             type="number"
             min="0"
             step="0.01"
-            placeholder="0.00 (0% for interest-free)"
+            placeholder="0.00"
             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
           />
         </div>
@@ -115,18 +115,6 @@
             <label class="text-xs font-mono text-zinc-400">
               Total Terms (Months) <span class="text-rose-400">*</span>
             </label>
-            <div class="flex items-center gap-1">
-              <button
-                v-for="t in [6, 10, 12, 24, 48]"
-                :key="t"
-                type="button"
-                @click="form.total_terms = t"
-                class="px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors"
-                :class="form.total_terms === t ? 'bg-zinc-800 text-zinc-100 border-zinc-600' : 'text-zinc-500 border-zinc-800 hover:text-zinc-300'"
-              >
-                {{ t }}m
-              </button>
-            </div>
           </div>
           <input
             v-model.number="form.total_terms"
@@ -134,6 +122,7 @@
             min="1"
             max="120"
             required
+            placeholder="Total terms"
             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
           />
         </div>
@@ -204,7 +193,7 @@
                 type="number"
                 min="1"
                 max="31"
-                placeholder="5"
+                placeholder="1-31"
                 class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
               />
             </div>
@@ -215,7 +204,7 @@
                 v-model.number="form.current_term"
                 type="number"
                 min="0"
-                :max="form.total_terms"
+                :max="form.total_terms ?? undefined"
                 placeholder="0"
                 class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
               />
@@ -225,7 +214,7 @@
           <div v-if="form.subtype === 'HIRE_PURCHASE'" class="space-y-3 pt-2 border-t border-zinc-800/40">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs font-mono text-zinc-400 mb-1">Down Payment ()</label>
+                <label class="block text-xs font-mono text-zinc-400 mb-1">Down Payment (฿)</label>
                 <input
                   v-model.number="form.down_payment"
                   type="number"
@@ -328,12 +317,12 @@ const form = reactive({
   subtype: 'STANDARD' as 'HIRE_PURCHASE' | 'STANDARD',
   lender: '',
   contract_number: '',
-  due_date: new Date().toISOString().split('T')[0],
-  billing_day: new Date().getDate(),
-  financed_amount: 30000,
+  due_date: '',
+  billing_day: null as number | null,
+  financed_amount: null as number | null,
   down_payment: 0,
-  flat_rate_pa: 0,
-  total_terms: 10,
+  flat_rate_pa: null as number | null,
+  total_terms: null as number | null,
   current_term: 0,
   vehicle_model: '',
   license_plate: '',
@@ -347,25 +336,29 @@ const isFormValid = computed(() => {
   return (
     form.title.trim().length > 0 &&
     form.lender.trim().length > 0 &&
-    form.financed_amount > 0 &&
-    form.total_terms > 0 &&
+    Number(form.financed_amount || 0) > 0 &&
+    Number(form.total_terms || 0) > 0 &&
     form.due_date.length > 0
   )
 })
 
 const calculatedTotalInterest = computed(() => {
-  if (form.total_terms <= 0 || form.financed_amount <= 0 || form.flat_rate_pa <= 0) return 0
-  const years = form.total_terms / 12
-  return form.financed_amount * (form.flat_rate_pa / 100) * years
+  const terms = Number(form.total_terms || 0)
+  const principal = Number(form.financed_amount || 0)
+  const rate = Number(form.flat_rate_pa || 0)
+  if (terms <= 0 || principal <= 0 || rate <= 0) return 0
+  const years = terms / 12
+  return principal * (rate / 100) * years
 })
 
 const calculatedTotalRepayment = computed(() => {
-  return form.financed_amount + calculatedTotalInterest.value
+  return Number(form.financed_amount || 0) + calculatedTotalInterest.value
 })
 
 const calculatedMonthlyInstallment = computed(() => {
-  if (form.total_terms <= 0) return 0
-  return calculatedTotalRepayment.value / form.total_terms
+  const terms = Number(form.total_terms || 0)
+  if (terms <= 0) return 0
+  return calculatedTotalRepayment.value / terms
 })
 
 async function handleSubmit() {
@@ -380,18 +373,18 @@ async function handleSubmit() {
       direction: 'OUTFLOW',
       amount: Number(calculatedMonthlyInstallment.value.toFixed(2)),
       currency: 'THB',
-      status: form.current_term >= form.total_terms ? 'COMPLETED' : 'ACTIVE',
+      status: (form.total_terms && form.current_term >= form.total_terms) ? 'COMPLETED' : 'ACTIVE',
       due_date: form.due_date,
       billing_day: form.billing_day || undefined,
       metadata: {
         subtype: form.subtype,
-        total_terms: form.total_terms,
+        total_terms: form.total_terms ?? 0,
         current_term: form.current_term,
         lender: form.lender.trim(),
-        total_principal: form.financed_amount.toString(),
-        financed_amount: form.financed_amount.toString(),
-        down_payment: form.down_payment.toString(),
-        flat_rate_pa: form.flat_rate_pa.toString(),
+        total_principal: (form.financed_amount ?? 0).toString(),
+        financed_amount: (form.financed_amount ?? 0).toString(),
+        down_payment: (form.down_payment ?? 0).toString(),
+        flat_rate_pa: (form.flat_rate_pa ?? 0).toString(),
         contract_number: form.contract_number.trim(),
         notes: form.notes.trim()
       }

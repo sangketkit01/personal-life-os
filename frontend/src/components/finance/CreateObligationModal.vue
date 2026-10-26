@@ -143,9 +143,11 @@
             <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Currency</label>
             <select
               v-model="form.currency"
+              required
               class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-mono focus:outline-none focus:border-zinc-600 transition-colors"
             >
-              <option value="THB">THB </option>
+              <option value="" disabled>Select currency</option>
+              <option value="THB">THB (฿)</option>
               <option value="USD">USD ($)</option>
             </select>
           </div>
@@ -156,7 +158,7 @@
               type="number"
               min="1"
               max="31"
-              placeholder="25"
+              placeholder="1-31"
               class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-600"
             />
           </div>
@@ -196,7 +198,7 @@
                 type="number"
                 min="1"
                 required
-                placeholder="36"
+                placeholder="Total terms"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -266,7 +268,7 @@
                 type="number"
                 min="1"
                 max="31"
-                placeholder="25"
+                placeholder="1-31"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -277,7 +279,7 @@
                 type="number"
                 min="1"
                 max="31"
-                placeholder="10"
+                placeholder="1-31"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -289,12 +291,13 @@
           <div class="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Installment Parameters</div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label class="block text-[10px] text-zinc-500 mb-1">Total Terms (e.g. 10)</label>
+              <label class="block text-[10px] text-zinc-500 mb-1">Total Terms</label>
               <input
                 v-model.number="form.metadata.total_terms"
                 type="number"
                 min="1"
                 required
+                placeholder="Total terms"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -304,6 +307,7 @@
                 v-model.number="form.metadata.current_term"
                 type="number"
                 min="0"
+                placeholder="0"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -348,7 +352,7 @@
               <input
                 v-model="form.metadata.contact"
                 type="text"
-                placeholder="081-xxx-xxxx"
+                placeholder="e.g. 081-xxx-xxxx, LINE"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -357,7 +361,7 @@
               <input
                 v-model="form.metadata.promptpay"
                 type="text"
-                placeholder="PromptPay number"
+                placeholder="e.g. PromptPay number"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               />
             </div>
@@ -408,6 +412,7 @@
                 v-model="form.metadata.billing_cycle"
                 class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100"
               >
+                <option value="" disabled>Select billing cycle</option>
                 <option value="MONTHLY">Monthly</option>
                 <option value="YEARLY">Yearly</option>
               </select>
@@ -495,26 +500,26 @@ const errorMessage = ref('')
 const form = ref({
   title: '',
   amount: '',
-  currency: 'THB',
+  currency: '',
   direction: 'OUTFLOW' as 'OUTFLOW' | 'INFLOW',
   due_date: '',
   billing_day: '' as string | number,
   metadata: {} as Record<string, any>,
   project: null as string | null,
-  })
+})
 
 const titlePlaceholder = computed(() => {
   if (selectedType.value === 'INSTALLMENT') {
-    if (selectedSubtype.value === 'HIRE_PURCHASE') return 'e.g. Vehicle Hire Purchase'
+    if (selectedSubtype.value === 'HIRE_PURCHASE') return 'e.g. Honda Civic'
     if (selectedSubtype.value === 'BNPL_ACCOUNT') return 'e.g. Shopee SPayLater'
-    return 'e.g. iPhone 16'
+    return 'e.g. MacBook Pro M3'
   }
-  if (selectedType.value === 'FREE_TRIAL') return 'e.g. Canva Pro Trial'
-  if (selectedType.value === 'SUBSCRIPTION') return 'e.g. Netflix, Spotify'
+  if (selectedType.value === 'FREE_TRIAL') return 'e.g. Netflix, Spotify'
+  if (selectedType.value === 'SUBSCRIPTION') return 'e.g. ChatGPT Plus'
   if (selectedType.value === 'DEBT') {
-    return form.value.direction === 'INFLOW' ? 'e.g. Friend loan receivable' : 'e.g. Personal bank loan'
+    return form.value.direction === 'INFLOW' ? 'e.g. Alex Wong' : 'e.g. KBank'
   }
-  return ''
+  return 'Title'
 })
 
 onMounted(async () => {
@@ -523,47 +528,69 @@ onMounted(async () => {
   }
 })
 
+watch(() => props.isOpen, (open) => {
+  if (open) {
+    errorMessage.value = ''
+    form.value.title = ''
+    form.value.amount = ''
+    form.value.currency = ''
+    form.value.due_date = ''
+    form.value.billing_day = ''
+    form.value.project = null
+    resetMetadata()
+  }
+})
+
+function resetMetadata() {
+  if (selectedType.value === 'INSTALLMENT') {
+    if (selectedSubtype.value === 'HIRE_PURCHASE') {
+      form.value.metadata = {
+        total_terms: null,
+        current_term: 0,
+        financed_amount: null,
+        flat_rate_pa: null,
+        vat_pct: 0,
+        vehicle_model: '',
+        lender: ''
+      }
+    } else if (selectedSubtype.value === 'BNPL_ACCOUNT') {
+      form.value.metadata = {
+        credit_limit: null,
+        cutoff_day: null,
+        due_day: null,
+        provider: ''
+      }
+    } else {
+      form.value.metadata = { total_terms: null, current_term: 0, lender: '' }
+    }
+  } else if (selectedType.value === 'FREE_TRIAL') {
+    form.value.metadata = { account_email: '', linked_card: '', cancel_url: '' }
+  } else if (selectedType.value === 'SUBSCRIPTION') {
+    form.value.metadata = { billing_cycle: '', account_email: '', payment_method: '' }
+  } else if (selectedType.value === 'DEBT') {
+    form.value.metadata = { counterparty: '', contact: '', promptpay: '' }
+  }
+}
+
 watch(selectedType, (newType) => {
   errorMessage.value = ''
   if (newType === 'INSTALLMENT') {
     selectedSubtype.value = 'STANDARD'
     form.value.direction = 'OUTFLOW'
-    form.value.metadata = { total_terms: 10, current_term: 0, lender: '' }
   } else if (newType === 'FREE_TRIAL') {
     selectedSubtype.value = 'STANDARD'
     form.value.direction = 'OUTFLOW'
-    form.value.metadata = { account_email: '', linked_card: '', cancel_url: '' }
   } else if (newType === 'SUBSCRIPTION') {
     selectedSubtype.value = 'STANDARD'
     form.value.direction = 'OUTFLOW'
-    form.value.metadata = { billing_cycle: 'MONTHLY', account_email: '', payment_method: '' }
   } else if (newType === 'DEBT') {
     selectedSubtype.value = 'INFORMAL_BORROW'
-    form.value.metadata = { counterparty: '', contact: '', promptpay: '' }
   }
+  resetMetadata()
 }, { immediate: true })
 
-watch(selectedSubtype, (newSubtype) => {
-  if (selectedType.value === 'INSTALLMENT') {
-    if (newSubtype === 'HIRE_PURCHASE') {
-      form.value.metadata = {
-        total_terms: 36,
-        current_term: 0,
-        financed_amount: 150000,
-        flat_rate_pa: 4.5,
-        vat_pct: 7.0,
-        vehicle_model: '',
-        lender: ''
-      }
-    } else if (newSubtype === 'BNPL_ACCOUNT') {
-      form.value.metadata = {
-        credit_limit: 25000,
-        cutoff_day: 25,
-        due_day: 10,
-        provider: 'Shopee SPayLater'
-      }
-    }
-  }
+watch(selectedSubtype, () => {
+  resetMetadata()
 })
 
 // Auto-calculate Hire Purchase monthly installment (including VAT 7%)
@@ -584,7 +611,8 @@ watch(
         const totalInterest = p * (r / 100) * (t / 12)
         const monthlyPrincipal = p / t
         const monthlyInterest = totalInterest / t
-        const monthlyWithVat = (monthlyPrincipal + monthlyInterest) * 1.07
+        const vat = Number(form.value.metadata?.vat_pct || 0)
+        const monthlyWithVat = (monthlyPrincipal + monthlyInterest) * (1 + vat / 100)
         form.value.amount = String(parseFloat(monthlyWithVat.toFixed(2)))
       }
     }
@@ -593,6 +621,14 @@ watch(
 )
 
 async function handleSubmit() {
+  if (!form.value.title.trim()) {
+    errorMessage.value = 'Title is required'
+    return
+  }
+  if (!form.value.currency) {
+    errorMessage.value = 'Please select a currency'
+    return
+  }
   errorMessage.value = ''
   isSubmitting.value = true
   try {

@@ -267,6 +267,13 @@
                         Trade
                       </button>
                       <button
+                        @click="openEditHoldingModal(h)"
+                        class="p-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors"
+                        title="Edit asset settings"
+                      >
+                        <Edit2 class="w-3.5 h-3.5" />
+                      </button>
+                      <button
                         @click="openMoveModal(h)"
                         class="p-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors"
                         title="Move to another brokerage"
@@ -359,6 +366,13 @@
                   </td>
                   <td class="py-2.5 text-right pr-4">
                     <button
+                      @click="openEditTradeModal(tx)"
+                      class="p-1 rounded text-zinc-500 hover:text-indigo-400 transition-colors mr-1"
+                      title="Edit Trade"
+                    >
+                      <Edit2 class="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       @click="handleDeleteTransaction(tx.id)"
                       class="p-1 rounded text-zinc-500 hover:text-rose-400 transition-colors"
                       title="Delete Trade"
@@ -414,6 +428,7 @@
       :prefill-portfolio-id="accountId"
       :prefill-ticker="selectedHoldingForTrade?.ticker"
       :prefill-holding-id="selectedHoldingForTrade?.id"
+      :editing-transaction="selectedTradeForEdit"
       @close="closeAddModal"
       @saved="refreshAll"
     />
@@ -423,6 +438,15 @@
       :edit-portfolio="currentPortfolio"
       @close="showEditPortfolioModal = false"
       @saved="refreshAll"
+    />
+
+    <EditHoldingModal
+      v-if="selectedHoldingForEdit"
+      :is-open="showEditHoldingModal"
+      :holding="selectedHoldingForEdit"
+      @close="showEditHoldingModal = false; selectedHoldingForEdit = null"
+      @saved="refreshAll"
+      @updated="refreshAll"
     />
 
     <MoveHoldingModal
@@ -452,10 +476,11 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePortfolioStore } from '../../stores/portfolio'
 import { useToastStore } from '../../stores/toast'
-import { getPortfolioColor, type StockHolding, type PortfolioOverview } from '../../types/portfolio'
+import { getPortfolioColor, type StockHolding, type PortfolioOverview, type StockTransaction } from '../../types/portfolio'
 import apiClient from '../../api/client'
 import MarketStatusBar from '../../components/portfolio/MarketStatusBar.vue'
 import AddTransactionModal from '../../components/portfolio/AddTransactionModal.vue'
+import EditHoldingModal from '../../components/portfolio/EditHoldingModal.vue'
 import CreatePortfolioModal from '../../components/portfolio/CreatePortfolioModal.vue'
 import MoveHoldingModal from '../../components/portfolio/MoveHoldingModal.vue'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
@@ -485,8 +510,11 @@ const accountOverview = ref<PortfolioOverview | null>(null)
 const showAddModal = ref(false)
 const showEditPortfolioModal = ref(false)
 const showMoveModal = ref(false)
+const showEditHoldingModal = ref(false)
 const selectedHoldingForTrade = ref<StockHolding | null>(null)
 const selectedHoldingForMove = ref<StockHolding | null>(null)
+const selectedHoldingForEdit = ref<StockHolding | null>(null)
+const selectedTradeForEdit = ref<StockTransaction | null>(null)
 
 const currentPortfolio = computed(() => {
   return portfolioStore.portfolios.find(p => p.id === accountId.value) || null
@@ -497,7 +525,7 @@ const curSymbol = computed(() => {
 })
 
 const portfolioTransactions = computed(() => {
-  return portfolioStore.transactions.filter(t => t.portfolio === accountId.value)
+  return portfolioStore.transactions.filter(t => (t.portfolio_id || t.portfolio) === accountId.value)
 })
 
 const filteredHoldings = computed(() => {
@@ -519,7 +547,11 @@ onMounted(async () => {
 async function refreshAll() {
   isLoading.value = true
   try {
-    await portfolioStore.fetchPortfolios()
+    await Promise.all([
+      portfolioStore.fetchPortfolios(),
+      portfolioStore.fetchHoldings(),
+      portfolioStore.fetchTransactions({ portfolioId: accountId.value })
+    ])
     if (!currentPortfolio.value) {
       toast.error('Brokerage account not found')
       router.push('/portfolio/accounts')
@@ -535,9 +567,6 @@ async function refreshAll() {
       }
     })
     accountOverview.value = res.data
-
-    // Fetch executions
-    await portfolioStore.fetchTransactions({ portfolioId: accountId.value })
   } catch (err: any) {
     toast.error('Failed to load portfolio account dossier')
   } finally {
@@ -547,17 +576,32 @@ async function refreshAll() {
 
 function openAddTradeModal() {
   selectedHoldingForTrade.value = null
+  selectedTradeForEdit.value = null
   showAddModal.value = true
 }
 
 function openAddTradeModalForHolding(h: StockHolding) {
   selectedHoldingForTrade.value = h
+  selectedTradeForEdit.value = null
+  showAddModal.value = true
+}
+
+function openEditTradeModal(tx: StockTransaction) {
+  selectedHoldingForTrade.value = null
+  selectedTradeForEdit.value = tx
   showAddModal.value = true
 }
 
 function closeAddModal() {
   showAddModal.value = false
   selectedHoldingForTrade.value = null
+  selectedTradeForEdit.value = null
+}
+
+function openEditHoldingModal(h: StockHolding) {
+  const fullHolding = portfolioStore.holdings.find(item => item.id === h.id)
+  selectedHoldingForEdit.value = fullHolding || h
+  showEditHoldingModal.value = true
 }
 
 function openEditModal() {

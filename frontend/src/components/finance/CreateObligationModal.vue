@@ -356,7 +356,7 @@
               />
             </div>
             <div>
-              <label class="block text-[10px] text-zinc-500 mb-1">PromptPay (for Recall)</label>
+              <label class="block text-[10px] text-zinc-500 mb-1">PromptPay / Settlement Account</label>
               <input
                 v-model="form.metadata.promptpay"
                 type="text"

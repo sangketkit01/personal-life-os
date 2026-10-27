@@ -21,8 +21,13 @@ class DebtStrategy(BaseObligationStrategy):
 
         # Initial remaining balance defaults to principal amount if not set
         remaining_balance = metadata.get('remaining_balance')
-        if remaining_balance is not None:
-            remaining_balance = str(Decimal(str(remaining_balance)))
+        if remaining_balance is not None and str(remaining_balance).strip() not in ('', 'None', 'null'):
+            try:
+                remaining_balance = str(Decimal(str(remaining_balance)))
+            except Exception:
+                remaining_balance = None
+        else:
+            remaining_balance = None
 
         # Preserve all incoming and existing metadata keys (e.g. split bill origin details)
         validated = dict(metadata)
@@ -55,10 +60,13 @@ class DebtStrategy(BaseObligationStrategy):
         promptpay = metadata.get('promptpay', '')
 
         remaining_balance_raw = metadata.get('remaining_balance')
-        if remaining_balance_raw is None:
+        if remaining_balance_raw is None or str(remaining_balance_raw).strip() in ('', 'None', 'null'):
             remaining_balance = obligation.amount
         else:
-            remaining_balance = Decimal(str(remaining_balance_raw))
+            try:
+                remaining_balance = Decimal(str(remaining_balance_raw))
+            except Exception:
+                remaining_balance = obligation.amount
 
         initial_amount = obligation.amount
         total_paid = max(Decimal('0'), initial_amount - remaining_balance)
@@ -66,18 +74,6 @@ class DebtStrategy(BaseObligationStrategy):
         progress_pct = round((total_paid / initial_amount) * 100, 1) if initial_amount > 0 else 0.0
 
         due_date_str = obligation.due_date.strftime('%d/%m/%Y') if obligation.due_date else 'soon'
-
-        # Generate recall reminder message for debtor receivables (INFLOW)
-        recall_template = ""
-        if obligation.direction == 'INFLOW':
-            pp_text = f"PromptPay {promptpay}" if promptpay else "the designated account"
-            cur = obligation.currency or 'THB'
-            cur_symbol = '\u0e3f' if cur == 'THB' else cur
-            recall_template = (
-                f"Hi {counterparty}, friendly reminder regarding the outstanding balance of "
-                f"{cur_symbol}{remaining_balance:,.2f} (due: {due_date_str}). "
-                f"When convenient, please transfer to {pp_text}. Thank you!"
-            )
 
         summary = {
             'subtype': subtype,
@@ -90,7 +86,6 @@ class DebtStrategy(BaseObligationStrategy):
             'progress_pct': progress_pct,
             'progress_percentage': progress_pct,
             'is_settled': remaining_balance <= Decimal('0'),
-            'recall_template': recall_template,
             'promptpay': promptpay
         }
 

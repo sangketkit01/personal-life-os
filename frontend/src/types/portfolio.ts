@@ -40,6 +40,7 @@ export interface StockTransaction {
   holding_ticker?: string
   holding_currency?: string
   portfolio?: string
+  portfolio_id?: string
   portfolio_name?: string
   ticker?: string
   transaction_type: TransactionType

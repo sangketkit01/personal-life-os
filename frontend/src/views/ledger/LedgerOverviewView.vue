@@ -27,7 +27,7 @@
         </button>
 
         <button
-          @click="showTransactionModal = true"
+          @click="editingTransaction = null; showTransactionModal = true"
           class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-all active:scale-[0.98] flex items-center gap-1.5 shadow-sm hover:shadow-white/10"
         >
           <Plus class="w-3.5 h-3.5 text-zinc-950" />
@@ -232,7 +232,7 @@
       >
         <p>No transactions recorded for {{ activeMonth }}.</p>
         <button
-          @click="showTransactionModal = true"
+          @click="editingTransaction = null; showTransactionModal = true"
           class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 font-sans font-medium text-xs transition-colors inline-block shadow-sm"
         >
           + Record First Transaction
@@ -309,6 +309,13 @@
               <!-- Actions -->
               <td class="py-3 px-4 text-right pr-4">
                 <button
+                  @click="handleEditTransaction(tx)"
+                  class="p-1.5 rounded-lg text-zinc-500 hover:text-indigo-400 hover:bg-indigo-500/10 active:scale-[0.95] transition-all mr-1"
+                  title="Edit Transaction"
+                >
+                  <Edit2 class="w-3.5 h-3.5" />
+                </button>
+                <button
                   @click="handleDeleteTransaction(tx.id)"
                   class="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 active:scale-[0.95] transition-all"
                   title="Delete Transaction"
@@ -325,8 +332,10 @@
     <!-- Modals -->
     <TransactionModal
       :is-open="showTransactionModal"
-      @close="showTransactionModal = false"
+      :transaction-to-edit="editingTransaction"
+      @close="showTransactionModal = false; editingTransaction = null"
       @created="handleRefresh"
+      @updated="handleRefresh"
     />
 
     <CreateAccountModal
@@ -369,7 +378,8 @@ import {
   Users,
   Plus,
   ArrowRightLeft,
-  Trash2
+  Trash2,
+  Edit2
 } from 'lucide-vue-next'
 
 const ledgerStore = useLedgerStore()
@@ -380,8 +390,14 @@ const activeMonth = ref<string>(
 )
 
 const showTransactionModal = ref(false)
+const editingTransaction = ref<any>(null)
 const showCreateAccountModal = ref(false)
 const showTransferModal = ref(false)
+
+function handleEditTransaction(tx: any) {
+  editingTransaction.value = tx
+  showTransactionModal.value = true
+}
 
 const confirmModal = reactive({
   isOpen: false,

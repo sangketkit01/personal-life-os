@@ -28,7 +28,7 @@
         />
 
         <button
-          @click="showCreateBudgetModal = true"
+          @click="openCreateBudgetModal"
           class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-all active:scale-[0.98] flex items-center gap-1.5 shadow-sm hover:shadow-white/10"
         >
           <Plus class="w-3.5 h-3.5 text-zinc-950" />
@@ -74,7 +74,7 @@
     <div v-if="ledgerStore.budgets.length === 0" class="p-16 rounded-xl bg-zinc-900/20 border border-zinc-800/80 text-center space-y-3 font-mono text-xs text-zinc-500">
       <p>No category budgets allocated for {{ activeMonth }}.</p>
       <button
-        @click="showCreateBudgetModal = true"
+        @click="openCreateBudgetModal"
         class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 font-sans font-medium text-xs transition-colors inline-block shadow-sm"
       >
         + Allocate Category Budget
@@ -93,13 +93,20 @@
             <span class="text-[10px] text-zinc-400">{{ b.period_month }}</span>
           </div>
 
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5">
             <span
-              class="text-xs font-bold"
+              class="text-xs font-bold mr-1"
               :class="b.usage_pct >= 90 ? 'text-rose-400' : (b.usage_pct >= 75 ? 'text-amber-400' : 'text-emerald-400')"
             >
               {{ b.usage_pct }}%
             </span>
+            <button
+              @click="openEditBudgetModal(b)"
+              class="p-1.5 rounded-lg text-zinc-500 hover:text-indigo-400 hover:bg-indigo-500/10 active:scale-[0.95] transition-all"
+              title="Edit budget limit"
+            >
+              <Edit2 class="w-3.5 h-3.5" />
+            </button>
             <button
               @click="confirmDeleteBudget(b.id, b.category_name)"
               class="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 active:scale-[0.95] transition-all"
@@ -152,7 +159,7 @@
       <div class="relative bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden font-mono text-xs">
         <div class="shrink-0 px-4 sm:px-6 py-3.5 border-b border-zinc-800 flex items-center justify-between font-sans">
           <h3 class="text-base font-semibold text-zinc-100">
-            Set Category Budget
+            {{ editingBudget ? 'Edit Budget Limit' : 'Set Category Budget' }}
           </h3>
           <button
             @click="showCreateBudgetModal = false"
@@ -166,7 +173,12 @@
           <div class="flex-1 overflow-y-auto overscroll-contain min-h-0 p-4 sm:p-6 space-y-4">
             <div>
               <label class="block text-[11px] text-zinc-300 mb-1 font-medium font-sans">Expense Category <span class="text-rose-400">*</span></label>
+              <div v-if="editingBudget" class="px-3 py-2 rounded-md bg-zinc-900/60 border border-zinc-800 text-zinc-200 font-mono text-xs flex items-center justify-between">
+                <span>{{ editingBudget.category_name }}</span>
+                <span class="text-[10px] text-zinc-500">{{ editingBudget.period_month }}</span>
+              </div>
               <select
+                v-else
                 v-model="newBudgetCategory"
                 required
                 class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
@@ -208,7 +220,7 @@
               :disabled="isSaving"
               class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 font-sans font-semibold transition-all active:scale-[0.98] disabled:opacity-50 shadow-sm cursor-pointer"
             >
-              {{ isSaving ? 'Saving...' : 'Save Budget' }}
+              {{ isSaving ? 'Saving...' : (editingBudget ? 'Save Changes' : 'Save Budget') }}
             </button>
           </div>
         </form>
@@ -238,9 +250,15 @@ import { useToastStore } from '../../stores/toast'
 import { ledgerApi } from '../../api/ledger'
 import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
+import type { CategoryBudgetItem } from '../../types/ledger'
 import {
   AlertTriangle,
- ArrowLeft, Plus, X, Trash2 } from 'lucide-vue-next'
+  ArrowLeft,
+  Plus,
+  X,
+  Trash2,
+  Edit2
+} from 'lucide-vue-next'
 
 const ledgerStore = useLedgerStore()
 const toast = useToastStore()
@@ -250,11 +268,26 @@ const activeMonth = ref<string>(
 )
 
 const showCreateBudgetModal = ref(false)
+const editingBudget = ref<CategoryBudgetItem | null>(null)
 const isSaving = ref(false)
 const newBudgetCategory = ref('')
 const newBudgetLimit = ref<number | null>(null)
 
 useBodyScrollLock(() => showCreateBudgetModal.value)
+
+function openCreateBudgetModal() {
+  editingBudget.value = null
+  newBudgetCategory.value = ''
+  newBudgetLimit.value = null
+  showCreateBudgetModal.value = true
+}
+
+function openEditBudgetModal(b: CategoryBudgetItem) {
+  editingBudget.value = b
+  newBudgetCategory.value = b.category
+  newBudgetLimit.value = Number(b.limit_amount)
+  showCreateBudgetModal.value = true
+}
 
 const totalBudgetCap = computed(() => {
   return ledgerStore.budgets.reduce((sum, b) => sum + Number(b.limit_amount || 0), 0)
@@ -310,10 +343,11 @@ const handleKeyDown = (e: KeyboardEvent) => {
 watch(showCreateBudgetModal, (open) => {
   if (open) {
     window.addEventListener('keydown', handleKeyDown)
-    newBudgetCategory.value = ''
-    newBudgetLimit.value = null
   } else {
     window.removeEventListener('keydown', handleKeyDown)
+    editingBudget.value = null
+    newBudgetCategory.value = ''
+    newBudgetLimit.value = null
   }
 })
 
@@ -333,22 +367,35 @@ async function loadBudgets() {
 }
 
 async function handleSaveBudget() {
-  if (!newBudgetCategory.value || newBudgetLimit.value === null || newBudgetLimit.value <= 0) {
-    toast.error('Please select category and enter a valid budget limit')
+  if (isSaving.value) return
+  if (newBudgetLimit.value === null || newBudgetLimit.value <= 0) {
+    toast.error('Please enter a valid budget limit')
+    return
+  }
+  if (!editingBudget.value && !newBudgetCategory.value) {
+    toast.error('Please select an expense category')
     return
   }
   isSaving.value = true
   try {
-    await ledgerApi.createBudget({
-      category: newBudgetCategory.value,
-      period_month: activeMonth.value,
-      limit_amount: newBudgetLimit.value
-    })
-    toast.success('Category budget allocated successfully')
+    if (editingBudget.value) {
+      await ledgerApi.updateBudget(editingBudget.value.id, {
+        limit_amount: newBudgetLimit.value
+      })
+      toast.success('Budget limit updated successfully')
+    } else {
+      await ledgerApi.createBudget({
+        category: newBudgetCategory.value,
+        period_month: activeMonth.value,
+        limit_amount: newBudgetLimit.value
+      })
+      toast.success('Category budget allocated successfully')
+    }
     showCreateBudgetModal.value = false
+    editingBudget.value = null
     await loadBudgets()
   } catch (err: any) {
-    toast.error('Failed to save budget limit')
+    toast.error(err?.response?.data?.limit_amount || err?.response?.data?.error || 'Failed to save budget limit')
   } finally {
     isSaving.value = false
   }

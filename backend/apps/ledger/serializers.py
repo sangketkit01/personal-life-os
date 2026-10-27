@@ -170,6 +170,30 @@ class TransactionSerializer(serializers.ModelSerializer):
     category_icon = serializers.CharField(source='category.icon', read_only=True)
     splits = TransactionSplitSerializer(many=True, read_only=True)
     attachments = TransactionAttachmentSerializer(many=True, read_only=True)
+    is_amount_locked = serializers.SerializerMethodField()
+    amount_lock_reason = serializers.SerializerMethodField()
+
+    def get_is_amount_locked(self, obj):
+        if obj.transfer_peer_id or obj.transfer_destination_id:
+            return True
+        if obj.payment_history_id or obj.obligation_id:
+            return True
+        if obj.settled_splits.exists():
+            return True
+        if obj.is_split or obj.splits.exists():
+            return True
+        return False
+
+    def get_amount_lock_reason(self, obj):
+        if obj.transfer_peer_id or obj.transfer_destination_id:
+            return "Transfer amounts cannot be edited directly. Delete transfer and record anew."
+        if obj.payment_history_id or obj.obligation_id:
+            return "Amount linked to an obligation payment is locked to maintain dossier balance."
+        if obj.settled_splits.exists():
+            return "Amount linked to a settled split repayment is locked."
+        if obj.is_split or obj.splits.exists():
+            return "Split bill amount is locked to maintain split allocation shares."
+        return ""
 
     # Write-only split creation payload
     splits_payload = serializers.ListField(
@@ -208,6 +232,8 @@ class TransactionSerializer(serializers.ModelSerializer):
             'workspace_project',
             'transfer_destination',
             'transfer_peer',
+            'is_amount_locked',
+            'amount_lock_reason',
             'created_at',
             'updated_at'
         ]
@@ -234,8 +260,23 @@ class TransactionSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         user = request.user if request and hasattr(request, 'user') else attrs.get('user')
 
+        is_split = attrs.get('is_split', getattr(self.instance, 'is_split', False))
         gross = attrs.get('gross_amount', getattr(self.instance, 'gross_amount', None))
-        net = attrs.get('net_amount', getattr(self.instance, 'net_amount', gross))
+
+        if not self.instance:
+            if not is_split and gross is not None and 'net_amount' not in attrs:
+                net = gross
+                attrs['net_amount'] = gross
+            else:
+                net = attrs.get('net_amount', gross)
+        else:
+            # On update: compute net for validation checks without injecting stale net_amount into attrs
+            if 'net_amount' in attrs:
+                net = attrs['net_amount']
+            elif not is_split:
+                net = gross
+            else:
+                net = getattr(self.instance, 'net_amount', gross)
 
         if gross is not None and gross <= Decimal('0.00'):
             raise serializers.ValidationError({'gross_amount': "Gross amount must be strictly greater than 0."})
@@ -253,10 +294,6 @@ class TransactionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'transaction_type': "Direct creation of 'TRANSFER' transactions is not permitted. Use /api/ledger/accounts/transfer/ instead."
             })
-
-        is_split = attrs.get('is_split', getattr(self.instance, 'is_split', False))
-        if not is_split and gross is not None:
-            attrs['net_amount'] = gross
 
         if transfer_dest:
             if tx_type != TransactionType.TRANSFER:
@@ -340,10 +377,12 @@ class TransactionSerializer(serializers.ModelSerializer):
         if new_type and new_type != instance.transaction_type:
             raise serializers.ValidationError({'transaction_type': "Changing transaction type is not permitted. Delete and recreate instead."})
 
-        # 2. For paired transfers, disallow directly mutating amount via transaction PATCH
+        # 2. For paired transfers, disallow directly mutating amount or date via transaction PATCH
         if instance.transfer_peer or instance.transfer_destination:
             if 'gross_amount' in validated_data and validated_data['gross_amount'] != instance.gross_amount:
                 raise serializers.ValidationError({'gross_amount': "Transfer amount cannot be modified directly. Delete transfer and create a new one."})
+            if 'transaction_date' in validated_data and validated_data['transaction_date'] != instance.transaction_date:
+                raise serializers.ValidationError({'transaction_date': "Transfer date cannot be modified directly on paired transfers. Delete transfer and create a new one."})
 
         # Disallow directly modifying gross_amount on payment records or split settlements
         if instance.payment_history_id or instance.obligation_id or instance.settled_splits.exists():
@@ -361,21 +400,23 @@ class TransactionSerializer(serializers.ModelSerializer):
                 expected_net = instance.gross_amount - split_sum
                 if validated_data['net_amount'] != expected_net:
                     raise serializers.ValidationError({'net_amount': f"Net personal share for a split bill is locked to gross amount minus friend splits (\u0e3f{expected_net:,.2f})."})
-            return super().update(instance, validated_data)
+            locked_tx = Transaction.objects.select_for_update().get(id=instance.id)
+            return super().update(locked_tx, validated_data)
 
-        # 4. For non-split transactions, handle amount delta
-        old_gross = instance.gross_amount
+        # 4. For non-split transactions, handle amount delta under row-level lock
+        locked_tx = Transaction.objects.select_for_update().get(id=instance.id)
+        old_gross = locked_tx.gross_amount
         new_gross = validated_data.get('gross_amount', old_gross)
         diff = new_gross - old_gross
 
         if diff != Decimal('0.00'):
-            locked_acc = Account.objects.select_for_update().get(id=instance.account_id)
-            if instance.transaction_type == TransactionType.INFLOW:
+            locked_acc = Account.objects.select_for_update().get(id=locked_tx.account_id)
+            if locked_tx.transaction_type == TransactionType.INFLOW:
                 Account.objects.filter(id=locked_acc.id).update(
                     current_balance=models.F('current_balance') + diff,
                     updated_at=timezone.now()
                 )
-            elif instance.transaction_type == TransactionType.OUTFLOW:
+            elif locked_tx.transaction_type == TransactionType.OUTFLOW:
                 from apps.ledger.models import AccountType
                 if diff > Decimal('0.00') and locked_acc.account_type != AccountType.CREDIT_CARD:
                     if locked_acc.current_balance < diff:
@@ -386,10 +427,14 @@ class TransactionSerializer(serializers.ModelSerializer):
                     current_balance=models.F('current_balance') - diff,
                     updated_at=timezone.now()
                 )
+
+        if not locked_tx.is_split and not locked_tx.splits.exists():
             if 'net_amount' not in validated_data:
                 validated_data['net_amount'] = new_gross
+            elif validated_data['net_amount'] > new_gross:
+                raise serializers.ValidationError({'net_amount': "Net personal amount cannot exceed gross transaction amount."})
 
-        return super().update(instance, validated_data)
+        return super().update(locked_tx, validated_data)
 
 
 class CategoryBudgetSerializer(serializers.ModelSerializer):

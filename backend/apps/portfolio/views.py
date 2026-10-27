@@ -391,24 +391,35 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
             })
 
     def perform_update(self, serializer):
+        from django.db import transaction as db_transaction
         target_portfolio = serializer.validated_data.get('portfolio')
         instance = serializer.instance
-        if target_portfolio and instance.portfolio_id != target_portfolio.id:
-            existing = StockHolding.objects.filter(
-                user=self.request.user,
-                portfolio=target_portfolio,
-                ticker=instance.ticker
-            ).exclude(id=instance.id).first()
-            if existing:
-                instance.transactions.all().update(holding=existing)
-                for field in ('name', 'asset_type', 'currency', 'notes'):
-                    if field in serializer.validated_data:
-                        setattr(existing, field, serializer.validated_data[field])
-                existing.save()
-                instance.delete()
-                serializer.instance = existing
-                return
-        serializer.save()
+        with db_transaction.atomic():
+            if target_portfolio and instance.portfolio_id != target_portfolio.id:
+                existing = StockHolding.objects.select_for_update().filter(
+                    user=self.request.user,
+                    portfolio=target_portfolio,
+                    ticker=instance.ticker
+                ).exclude(id=instance.id).first()
+                if existing:
+                    if existing.currency != instance.currency and (existing.transactions.exists() or instance.transactions.exists()):
+                        from rest_framework import serializers
+                        raise serializers.ValidationError({
+                            'currency': f"Cannot merge holding with currency {instance.currency} into existing holding with currency {existing.currency} when trade history exists."
+                        })
+                    instance.transactions.all().update(holding=existing)
+                    for field in ('name', 'asset_type', 'notes'):
+                        if field in serializer.validated_data:
+                            setattr(existing, field, serializer.validated_data[field])
+                    if 'currency' in serializer.validated_data:
+                        new_curr = serializer.validated_data['currency']
+                        if not existing.transactions.exists() or existing.currency == new_curr:
+                            existing.currency = new_curr
+                    existing.save()
+                    instance.delete()
+                    serializer.instance = existing
+                    return
+            serializer.save()
 
     @action(detail=True, methods=['post'], url_path='move')
     def move(self, request, pk=None):
@@ -451,40 +462,47 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
                 'merged': False
             })
 
-        # Check if destination portfolio already holds this ticker
-        existing_target_holding = StockHolding.objects.filter(
-            user=request.user,
-            portfolio=target_portfolio,
-            ticker=holding.ticker
-        ).first()
+        from django.db import transaction as db_transaction
+        with db_transaction.atomic():
+            # Check if destination portfolio already holds this ticker
+            existing_target_holding = StockHolding.objects.select_for_update().filter(
+                user=request.user,
+                portfolio=target_portfolio,
+                ticker=holding.ticker
+            ).first()
 
-        if existing_target_holding:
-            holding.transactions.all().update(holding=existing_target_holding)
-            if holding.notes and not existing_target_holding.notes:
-                existing_target_holding.notes = holding.notes
-                existing_target_holding.save(update_fields=['notes'])
-            holding.delete()
+            if existing_target_holding:
+                if existing_target_holding.currency != holding.currency and (existing_target_holding.transactions.exists() or holding.transactions.exists()):
+                    return response.Response(
+                        {'detail': f"Cannot merge holding with currency {holding.currency} into existing holding with currency {existing_target_holding.currency} when trade history exists."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                holding.transactions.all().update(holding=existing_target_holding)
+                if holding.notes and not existing_target_holding.notes:
+                    existing_target_holding.notes = holding.notes
+                    existing_target_holding.save(update_fields=['notes'])
+                holding.delete()
 
-            serializer = self.get_serializer(existing_target_holding, context=context)
-            return response.Response({
-                'detail': f'Merged {existing_target_holding.ticker} trades into {target_portfolio.name}.',
-                'holding': serializer.data,
-                'merged': True,
-                'target_portfolio_id': str(target_portfolio.id),
-                'target_portfolio_name': target_portfolio.name
-            })
-        else:
-            holding.portfolio = target_portfolio
-            holding.save(update_fields=['portfolio'])
+                serializer = self.get_serializer(existing_target_holding, context=context)
+                return response.Response({
+                    'detail': f'Merged {existing_target_holding.ticker} trades into {target_portfolio.name}.',
+                    'holding': serializer.data,
+                    'merged': True,
+                    'target_portfolio_id': str(target_portfolio.id),
+                    'target_portfolio_name': target_portfolio.name
+                })
+            else:
+                holding.portfolio = target_portfolio
+                holding.save(update_fields=['portfolio'])
 
-            serializer = self.get_serializer(holding, context=context)
-            return response.Response({
-                'detail': f'Moved {holding.ticker} to {target_portfolio.name}.',
-                'holding': serializer.data,
-                'merged': False,
-                'target_portfolio_id': str(target_portfolio.id),
-                'target_portfolio_name': target_portfolio.name
-            })
+                serializer = self.get_serializer(holding, context=context)
+                return response.Response({
+                    'detail': f'Moved {holding.ticker} to {target_portfolio.name}.',
+                    'holding': serializer.data,
+                    'merged': False,
+                    'target_portfolio_id': str(target_portfolio.id),
+                    'target_portfolio_name': target_portfolio.name
+                })
 
 
 class StockTransactionViewSet(viewsets.ModelViewSet):
@@ -526,6 +544,12 @@ class StockTransactionViewSet(viewsets.ModelViewSet):
             f'Updated transaction {tx.transaction_type} {tx.shares} shares of {tx.holding.ticker} at {tx.price_per_share} ({tx.currency})',
             request=self.request
         )
+
+    def perform_destroy(self, instance):
+        if instance.holding:
+            from .services import validate_holding_transaction_timeline
+            validate_holding_transaction_timeline(instance.holding, pending_tx=instance, is_delete=True)
+        instance.delete()
 
     @action(detail=False, methods=['post'], url_path='bulk-import')
     def bulk_import(self, request):

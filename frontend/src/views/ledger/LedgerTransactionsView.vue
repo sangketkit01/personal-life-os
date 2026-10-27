@@ -21,7 +21,7 @@
 
       <div class="flex items-center gap-2.5 self-start sm:self-auto">
         <button
-          @click="showTransactionModal = true"
+          @click="handleCreate"
           class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-all active:scale-[0.98] flex items-center gap-1.5 shadow-sm hover:shadow-white/10"
         >
           <Plus class="w-3.5 h-3.5 text-zinc-950" />
@@ -192,6 +192,13 @@
               </td>
               <td class="py-3 px-4 text-right pr-4">
                 <button
+                  @click="handleEdit(tx)"
+                  class="p-1.5 rounded-lg text-zinc-500 hover:text-indigo-400 hover:bg-indigo-500/10 active:scale-[0.95] transition-all mr-1"
+                  title="Edit Transaction"
+                >
+                  <Edit2 class="w-3.5 h-3.5" />
+                </button>
+                <button
                   @click="handleDelete(tx.id)"
                   class="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 active:scale-[0.95] transition-all"
                   title="Delete Transaction"
@@ -231,11 +238,13 @@
       </div>
     </div>
 
-    <!-- Record Modal -->
+    <!-- Record / Edit Modal -->
     <TransactionModal
       :is-open="showTransactionModal"
-      @close="showTransactionModal = false"
+      :transaction-to-edit="editingTransaction"
+      @close="showTransactionModal = false; editingTransaction = null"
       @created="fetchFiltered"
+      @updated="fetchFiltered"
     />
 
     <!-- Confirm Modal -->
@@ -267,13 +276,25 @@ import {
   Trash2,
   X,
   FileText,
-  ExternalLink
+  ExternalLink,
+  Edit2
 } from 'lucide-vue-next'
 
 const ledgerStore = useLedgerStore()
 const showTransactionModal = ref(false)
+const editingTransaction = ref<any>(null)
 const currentPage = ref(1)
 const pageSize = 20
+
+function handleCreate() {
+  editingTransaction.value = null
+  showTransactionModal.value = true
+}
+
+function handleEdit(tx: any) {
+  editingTransaction.value = tx
+  showTransactionModal.value = true
+}
 
 const filters = reactive({
   search: '',

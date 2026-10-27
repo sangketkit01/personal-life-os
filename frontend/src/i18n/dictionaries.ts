@@ -344,6 +344,11 @@ export const EXACT_PHRASE_MAP: Record<string, string> = {
   'delete this link?': 'ลบลิงก์นี้หรือไม่?',
   'delete this folder?': 'ลบโฟลเดอร์นี้หรือไม่?',
   'empty the trash?': 'ล้างถังขยะทั้งหมด?',
+  'delete note permanently?': 'ลบโน้ตนี้ถาวรหรือไม่?',
+  'delete permanently': 'ลบถาวร',
+  'delete permanently?': 'ลบถาวรหรือไม่?',
+  'all notes in the trash will be permanently deleted. this cannot be undone.':
+    'โน้ตในถังขยะทั้งหมดจะถูกลบถาวร ย้อนกลับไม่ได้',
   'cancel text': 'ยกเลิก',
 
   // ===== Auth =====
@@ -1058,6 +1063,7 @@ export const EXACT_PHRASE_MAP: Record<string, string> = {
   'note / remarks': 'โน้ต / หมายเหตุ',
   'note / transaction ref': 'โน้ต / อ้างอิงรายการ',
   'note card accent color': 'สีเน้นการ์ดโน้ต',
+  'note permanently deleted': 'ลบโน้ตถาวรแล้ว',
   'note title...': 'ชื่อโน้ต...',
   'notes (optional)': 'โน้ต (ไม่บังคับ)',
   'notes / invoice ref': 'โน้ต / อ้างอิงใบแจ้งยอด',
@@ -1343,6 +1349,7 @@ export const EXACT_PHRASE_MAP: Record<string, string> = {
   'total remaining principal across contracts': 'เงินต้นคงค้างรวมทุกสัญญา',
   'track hardware fingerprints and revoke unauthorized sessions': 'ติดตามลายนิ้วมืออุปกรณ์และยกเลิกเซสชันที่ไม่ได้รับอนุญาต',
   'track liabilities payable, peer debts receivable, and payment reminders': 'ติดตามหนี้สิน ลูกหนี้ และการแจ้งเตือนชำระเงิน',
+  'track liabilities payable, peer debts receivable, and settlements': 'ติดตามหนี้สิน ลูกหนี้ และการชำระหนี้',
   'track monthly/yearly saas commitments and pre-billing free trial expiration alarms': 'ติดตามภาระ SaaS และแจ้งเตือนก่อนทดลองใช้หมดอายุ',
   'track subscription renewals and free trial expiration alerts': 'ติดตามการต่อบริการและแจ้งเตือนทดลองใช้หมดอายุ',
   'tracked tickers': 'ชื่อหุ้นที่ติดตาม',
@@ -1498,6 +1505,7 @@ export const EXACT_PHRASE_MAP: Record<string, string> = {
   'debtors directory': 'ทำเนียบลูกหนี้',
   'debtors receivables': 'ลูกหนี้ที่ต้องเก็บ',
   'debtors receivable, liabilities payable, and reminder tools': 'ลูกหนี้ หนี้สิน และเครื่องมือทวงหนี้',
+  'debtors receivable, liabilities payable, and settlements': 'ลูกหนี้ หนี้สิน และการชำระหนี้',
   'deduct down payment from account': 'หักเงินดาวน์จากบัญชี',
   'deduct from account': 'หักจากบัญชี',
   'deduct from account / card': 'หักจากบัญชี / บัตร',
@@ -1644,6 +1652,8 @@ export const PATTERN_RULES: PatternRule[] = [
   { pattern: /^value-added tax \(vat 7(?:\.0)?%\):\s*(.+)$/i, translate: m => `ภาษีมูลค่าเพิ่ม (VAT 7%): ${m[1]}` },
   { pattern: /^simulate early payoff at term:\s*(.+)$/i, translate: m => `จำลองปิดก่อนกำหนดที่งวด: ${m[1]}` },
   { pattern: /^schedule scope:\s*(.+)$/i, translate: m => `ขอบเขตกำหนดการ: ${m[1]}` },
+  { pattern: /^'(.+)' will be permanently deleted\. This cannot be undone\.$/i, translate: m => `'${m[1]}' จะถูกลบถาวร ไม่สามารถย้อนกลับได้` },
+  { pattern: /^(.+) will be permanently deleted\. This cannot be undone\.$/i, translate: m => `${m[1]} จะถูกลบถาวร ไม่สามารถย้อนกลับได้` },
 ]
 
 export const MONTH_SHORT_TH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']

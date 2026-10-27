@@ -662,8 +662,8 @@ class FinancialAPITestCase(TestCase):
         self.assertEqual(history.attachments.count(), 1)
         self.assertEqual(history.attachments.first().file_type, 'SLIP')
 
-    def test_debtor_recall_message_template(self):
-        """Pillar 2: Debtor recall message template with PromptPay for receivables (INFLOW)"""
+    def test_debtor_summary_without_recall_template(self):
+        """Pillar 2: Debtor summary provides balance tracking without recall message generator"""
         debtor_ob = FinancialObligation.objects.create(
             user=self.user,
             title='Debtor: Somchai Loan',
@@ -679,10 +679,10 @@ class FinancialAPITestCase(TestCase):
         )
         strategy = ObligationStrategyFactory.get_strategy(debtor_ob.type)
         summary = strategy.get_summary(debtor_ob)
-        template = summary.get('recall_template', '')
-        self.assertIn('Somchai', template)
-        self.assertIn('6,000.00', template)
-        self.assertIn('0812345678', template)
+        self.assertNotIn('recall_template', summary)
+        self.assertEqual(summary['remaining_balance'], Decimal('6000.00'))
+        self.assertEqual(summary['counterparty'], 'Somchai')
+        self.assertEqual(summary['promptpay'], '0812345678')
 
     def test_bnpl_monthly_bill_payment_advances_sub_orders_and_keeps_parent_active(self):
         """Verify that BNPL bill payment advances sub-orders and keeps parent line ACTIVE"""
@@ -735,6 +735,105 @@ class FinancialAPITestCase(TestCase):
         # 3. Sub-order 2 advances to term 1 and remains ACTIVE
         self.assertEqual(sub2.status, ObligationStatus.ACTIVE)
         self.assertEqual(sub2.metadata['current_term'], 1)
+
+    def test_bnpl_suborder_edit_locking_and_validation(self):
+        """P1: BNPL Sub-order field locking and payment history order_date immutability"""
+        spaylater = FinancialObligation.objects.create(
+            user=self.user,
+            title='SPayLater Account',
+            type=ObligationType.INSTALLMENT,
+            subtype=ObligationSubtype.BNPL_ACCOUNT,
+            amount=Decimal('0.00'),
+            metadata={'subtype': 'BNPL_ACCOUNT', 'credit_limit': '20000.00', 'due_day': 10}
+        )
+
+        sub_order = FinancialObligation.objects.create(
+            user=self.user,
+            parent=spaylater,
+            title='Wireless Headphones',
+            type=ObligationType.INSTALLMENT,
+            subtype=ObligationSubtype.BNPL_ORDER,
+            amount=Decimal('1000.00'),
+            metadata={
+                'subtype': 'BNPL_ORDER',
+                'order_date': '2026-05-15',
+                'total_terms': 3,
+                'current_term': 0,
+                'down_payment': '0.00',
+                'financed_amount': '3000.00',
+                'store': 'Shopee Mall'
+            }
+        )
+
+        # 1. Before payment: Can edit title, notes, and order_date
+        res_ok = self.client.patch(f'/api/finance/obligations/{sub_order.id}/', {
+            'title': 'Sony WH-1000XM5',
+            'metadata': {
+                'order_date': '2026-06-01',
+                'store': 'Sony Official Store',
+                'notes': 'Birthday gift'
+            }
+        }, format='json')
+        self.assertEqual(res_ok.status_code, 200)
+        sub_order.refresh_from_db()
+        self.assertEqual(sub_order.title, 'Sony WH-1000XM5')
+        self.assertEqual(sub_order.metadata['store'], 'Sony Official Store')
+        self.assertEqual(sub_order.metadata['order_date'], '2026-06-01')
+        # due_date automatically adjusted to July 10 (term 1 after June purchase)
+        self.assertEqual(str(sub_order.due_date), '2026-07-10')
+
+        # 2. Financial terms are locked even without payment history
+        res_term_err = self.client.patch(f'/api/finance/obligations/{sub_order.id}/', {
+            'metadata': {'total_terms': 6}
+        }, format='json')
+        self.assertEqual(res_term_err.status_code, 400)
+        self.assertIn('total_terms', res_term_err.data)
+
+        res_amt_err = self.client.patch(f'/api/finance/obligations/{sub_order.id}/', {
+            'amount': '1500.00'
+        }, format='json')
+        self.assertEqual(res_amt_err.status_code, 400)
+        self.assertIn('amount', res_amt_err.data)
+
+        # 3. Simulate 1 term payment
+        sub_order.metadata['current_term'] = 1
+        sub_order.save(update_fields=['metadata'])
+
+        # 4. After payment history exists: order_date and due_date CANNOT be modified or cleared
+        # 4a. Attempting to change order_date to a different date
+        res_date_err = self.client.patch(f'/api/finance/obligations/{sub_order.id}/', {
+            'metadata': {'order_date': '2026-08-01'}
+        }, format='json')
+        self.assertEqual(res_date_err.status_code, 400)
+        self.assertIn('order_date', res_date_err.data)
+
+        # 4b. Attempting to clear order_date with empty string ""
+        res_date_empty = self.client.patch(f'/api/finance/obligations/{sub_order.id}/', {
+            'metadata': {'order_date': ''}
+        }, format='json')
+        self.assertEqual(res_date_empty.status_code, 400)
+        self.assertIn('order_date', res_date_empty.data)
+
+        # 4c. Attempting to clear order_date with null
+        res_date_null = self.client.patch(f'/api/finance/obligations/{sub_order.id}/', {
+            'metadata': {'order_date': None}
+        }, format='json')
+        self.assertEqual(res_date_null.status_code, 400)
+        self.assertIn('order_date', res_date_null.data)
+
+        # Confirm order_date remained unchanged at 2026-06-01
+        sub_order.refresh_from_db()
+        self.assertEqual(sub_order.metadata['order_date'], '2026-06-01')
+
+        # 5. Non-sensitive fields (title, notes, store, order_number) can still be edited
+        res_safe_edit = self.client.patch(f'/api/finance/obligations/{sub_order.id}/', {
+            'title': 'Sony WH-1000XM5 (Black Edition)',
+            'metadata': {'order_number': 'ORD-SONY-2026', 'notes': 'Updated receipt notes'}
+        }, format='json')
+        self.assertEqual(res_safe_edit.status_code, 200)
+        sub_order.refresh_from_db()
+        self.assertEqual(sub_order.title, 'Sony WH-1000XM5 (Black Edition)')
+        self.assertEqual(sub_order.metadata['order_number'], 'ORD-SONY-2026')
 
     def test_file_upload_validation_and_cleanup(self):
         """Check blocked file extensions (.exe) and actual storage file cleanup"""
@@ -1716,3 +1815,288 @@ class FinancialAPITestCase(TestCase):
         inst_item = next(i for i in overview_inst['expected_inflow_breakdown']['items'] if i['id'] == str(inst_oct.id))
         self.assertEqual(inst_item['type'], ObligationType.INSTALLMENT)
         self.assertFalse(any(i['id'] == str(inst_nov.id) for i in overview_inst['expected_inflow_breakdown']['items']))
+
+    def test_debt_principal_locked_when_has_payments_or_split(self):
+        """Remediation Item 1: Debt principal can only be edited when unpaid and unlinked to split bill."""
+        from rest_framework.test import APIClient
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        # 1. Unpaid debt: principal can be edited
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Friend Loan',
+            type=ObligationType.DEBT,
+            direction=FlowDirection.OUTFLOW,
+            amount=Decimal('1000.00'),
+            metadata={'subtype': 'INFORMAL_BORROW', 'counterparty': 'Bob', 'remaining_balance': '1000.00'}
+        )
+        res = client.patch(f'/api/finance/obligations/{ob.id}/', {'amount': 1200.00}, format='json')
+        self.assertEqual(res.status_code, 200)
+        ob.refresh_from_db()
+        self.assertEqual(ob.amount, Decimal('1200.00'))
+        self.assertEqual(Decimal(str(ob.metadata['remaining_balance'])), Decimal('1200.00'))
+
+        # 2. Add payment history -> principal locked
+        from apps.finance.models import PaymentHistory
+        PaymentHistory.objects.create(
+            user=self.user,
+            obligation=ob,
+            paid_amount=Decimal('200.00'),
+            note='Part 1'
+        )
+        ob.metadata['remaining_balance'] = 1000.0
+        ob.save()
+
+        res_locked = client.patch(f'/api/finance/obligations/{ob.id}/', {'amount': 1500.00}, format='json')
+        self.assertEqual(res_locked.status_code, 400)
+        self.assertIn('amount', res_locked.data)
+        self.assertIn('Cannot change debt principal after payment history', str(res_locked.data['amount']))
+
+        # Client attempt to tamper with remaining_balance directly is rejected/overridden
+        res_tamper = client.patch(f'/api/finance/obligations/{ob.id}/', {
+            'metadata': {'remaining_balance': 9999.00, 'total_paid': 0}
+        }, format='json')
+        self.assertEqual(res_tamper.status_code, 200)
+        ob.refresh_from_db()
+        self.assertEqual(Decimal(str(ob.metadata['remaining_balance'])), Decimal('1000.00'))
+        self.assertNotIn('total_paid', ob.metadata)
+
+        # 3. Debt linked to Split Bill is locked
+        from apps.ledger.models import Account, AccountType, Transaction, TransactionType, TransactionSplit
+        bank_acc = Account.objects.create(
+            user=self.user,
+            name='Test Bank',
+            account_type=AccountType.BANK,
+            current_balance=Decimal('5000.00'),
+            initial_balance=Decimal('5000.00')
+        )
+        parent_tx = Transaction.objects.create(
+            user=self.user,
+            account=bank_acc,
+            transaction_type=TransactionType.OUTFLOW,
+            gross_amount=Decimal('600.00'),
+            net_amount=Decimal('300.00'),
+            title='Dinner with Alice',
+            transaction_date=date(2026, 10, 20),
+            is_split=True
+        )
+        debt_split = FinancialObligation.objects.create(
+            user=self.user,
+            title='Split Debt Alice',
+            type=ObligationType.DEBT,
+            direction=FlowDirection.INFLOW,
+            amount=Decimal('300.00'),
+            metadata={'subtype': 'INFORMAL_BORROW', 'counterparty': 'Alice', 'remaining_balance': '300.00'}
+        )
+        TransactionSplit.objects.create(
+            transaction=parent_tx,
+            debtor_obligation=debt_split,
+            counterparty_name='Alice',
+            amount=Decimal('300.00')
+        )
+        res_split_lock = client.patch(f'/api/finance/obligations/{debt_split.id}/', {'amount': 400.00}, format='json')
+        self.assertEqual(res_split_lock.status_code, 400)
+        self.assertIn('amount', res_split_lock.data)
+        self.assertIn('Split Bill', str(res_split_lock.data['amount']))
+
+    def test_workspace_mirrored_obligations_locked_in_finance(self):
+        """Remediation Item 6: Workspace SSOT enforces that MA and Infra obligations cannot be altered via generic Finance edit."""
+        from rest_framework.test import APIClient
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        ma_ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='MA: Acme Portal',
+            type=ObligationType.SUBSCRIPTION,
+            direction=FlowDirection.INFLOW,
+            amount=Decimal('5000.00'),
+            currency='THB',
+            due_date=date(2026, 11, 1),
+            metadata={'source_type': 'MA_CONTRACT', 'billing_cycle': 'MONTHLY', 'project_id': '123'}
+        )
+        res_ma = client.patch(f'/api/finance/obligations/{ma_ob.id}/', {'amount': 6000.00}, format='json')
+        self.assertEqual(res_ma.status_code, 400)
+        self.assertIn('Workspace', str(res_ma.data))
+        self.assertIn('Maintenance Agreement', str(res_ma.data))
+
+        infra_ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Infra: AWS RDS',
+            type=ObligationType.SUBSCRIPTION,
+            direction=FlowDirection.OUTFLOW,
+            amount=Decimal('1500.00'),
+            currency='THB',
+            due_date=date(2026, 11, 5),
+            metadata={'source_type': 'INFRA_ASSET', 'billing_cycle': 'MONTHLY', 'asset_id': '456'}
+        )
+        res_infra = client.patch(f'/api/finance/obligations/{infra_ob.id}/', {'title': 'Renamed Server'}, format='json')
+        self.assertEqual(res_infra.status_code, 400)
+        self.assertIn('Infrastructure Asset', str(res_infra.data))
+
+    def test_bnpl_canonical_date_validation(self):
+        """Remediation Item 9: Strict YYYY-MM-DD regex date validation for BNPL."""
+        from rest_framework.test import APIClient
+        from apps.finance.models import ObligationSubtype
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        bnpl_account = FinancialObligation.objects.create(
+            user=self.user,
+            title='SPayLater',
+            type=ObligationType.INSTALLMENT,
+            subtype=ObligationSubtype.BNPL_ACCOUNT,
+            amount=Decimal('20000.00'),
+            metadata={'due_day': 10}
+        )
+        suborder = FinancialObligation.objects.create(
+            user=self.user,
+            parent=bnpl_account,
+            title='Keyboard',
+            type=ObligationType.INSTALLMENT,
+            subtype=ObligationSubtype.BNPL_ORDER,
+            amount=Decimal('500.00'),
+            due_date=date(2026, 5, 10),
+            metadata={'total_terms': 3, 'current_term': 0, 'order_date': '2026-04-01'}
+        )
+
+        # Invalid formats rejected
+        for bad_date in ['2026-04-01T00:00:00', '2026-04-01junk', '01-04-2026', '2026/04/01']:
+            res_bad = client.patch(f'/api/finance/obligations/{suborder.id}/', {'metadata': {'order_date': bad_date}}, format='json')
+            self.assertEqual(res_bad.status_code, 400)
+            self.assertIn('order_date', res_bad.data)
+
+        # Invalid calendar date rejected
+        res_invalid_cal = client.patch(f'/api/finance/obligations/{suborder.id}/', {'metadata': {'order_date': '2026-02-31'}}, format='json')
+        self.assertEqual(res_invalid_cal.status_code, 400)
+        self.assertIn('order_date', res_invalid_cal.data)
+
+        # Valid format accepted and recalculated
+        res_ok = client.patch(f'/api/finance/obligations/{suborder.id}/', {'metadata': {'order_date': '2026-04-15'}}, format='json')
+        self.assertEqual(res_ok.status_code, 200)
+
+        # Add payment history -> cannot change or clear
+        suborder.metadata['current_term'] = 1
+        suborder.save()
+        res_locked = client.patch(f'/api/finance/obligations/{suborder.id}/', {'metadata': {'order_date': ''}}, format='json')
+        self.assertEqual(res_locked.status_code, 400)
+        self.assertIn('order_date', res_locked.data)
+
+    def test_free_trial_card_clearing(self):
+        """Remediation Item 10: Clearing payment_method clears linked_card without resurrecting old value."""
+        from rest_framework.test import APIClient
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        trial = FinancialObligation.objects.create(
+            user=self.user,
+            title='Adobe Trial',
+            type=ObligationType.FREE_TRIAL,
+            amount=Decimal('1000.00'),
+            due_date=date(2026, 11, 15),
+            metadata={'payment_method': 'Visa ••4242', 'linked_card': 'Visa ••4242'}
+        )
+        res = client.patch(f'/api/finance/obligations/{trial.id}/', {'metadata': {'payment_method': ''}}, format='json')
+        self.assertEqual(res.status_code, 200)
+        trial.refresh_from_db()
+        self.assertEqual(trial.metadata.get('payment_method'), '')
+        self.assertEqual(trial.metadata.get('linked_card'), '')
+
+    def test_free_trial_card_clearing_via_linked_card(self):
+        """Remediation Item 10: Clearing linked_card clears payment_method without resurrecting old value."""
+        from rest_framework.test import APIClient
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        trial = FinancialObligation.objects.create(
+            user=self.user,
+            title='Google One Trial',
+            type=ObligationType.FREE_TRIAL,
+            amount=Decimal('500.00'),
+            due_date=date(2026, 12, 1),
+            metadata={'payment_method': 'MasterCard ••9999', 'linked_card': 'MasterCard ••9999'}
+        )
+        res = client.patch(f'/api/finance/obligations/{trial.id}/', {'metadata': {'linked_card': ''}}, format='json')
+        self.assertEqual(res.status_code, 200)
+        trial.refresh_from_db()
+        self.assertEqual(trial.metadata.get('payment_method'), '')
+        self.assertEqual(trial.metadata.get('linked_card'), '')
+
+    def test_debt_update_with_null_remaining_balance(self):
+        """Remediation Item 1: Debt with null remaining_balance does not throw Decimal InvalidOperation."""
+        from rest_framework.test import APIClient
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        debt = FinancialObligation.objects.create(
+            user=self.user,
+            title='Old Loan',
+            type=ObligationType.DEBT,
+            amount=Decimal('5000.00'),
+            metadata={'remaining_balance': None, 'counterparty': 'Bob', 'subtype': 'INFORMAL_BORROW'}
+        )
+        res = client.patch(f'/api/finance/obligations/{debt.id}/', {'metadata': {'notes': 'Updated note'}}, format='json')
+        self.assertEqual(res.status_code, 200)
+        debt.refresh_from_db()
+        self.assertEqual(debt.metadata.get('notes'), 'Updated note')
+
+    def test_debt_concurrent_payment_balance_preserved(self):
+        """Remediation Item 1: Mid-request payment is not reverted by concurrent metadata edit."""
+        debt = FinancialObligation.objects.create(
+            user=self.user,
+            title='Car Loan to Friend',
+            type=ObligationType.DEBT,
+            amount=Decimal('1000.00'),
+            metadata={'remaining_balance': '1000.00', 'counterparty': 'Alice', 'subtype': 'INFORMAL_BORROW'}
+        )
+
+        from apps.finance.serializers import FinancialObligationSerializer
+        # Simulate serializer instantiated with stale instance
+        stale_instance = FinancialObligation.objects.get(id=debt.id)
+        serializer = FinancialObligationSerializer(stale_instance, data={'metadata': {'notes': 'Friendly reminder'}}, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+        # In between validation and save, a payment of 300 occurs in the database
+        debt.metadata['remaining_balance'] = '700.00'
+        debt.save(update_fields=['metadata'])
+
+        # Now serializer saves
+        updated_ob = serializer.save()
+        self.assertEqual(Decimal(str(updated_ob.metadata['remaining_balance'])), Decimal('700.00'))
+        debt.refresh_from_db()
+        self.assertEqual(Decimal(str(debt.metadata['remaining_balance'])), Decimal('700.00'))
+
+    def test_workspace_ssot_marker_protection_and_reverse_relations(self):
+        """Remediation Item 6: Client cannot bypass SSOT lock by clearing metadata['source_type']."""
+        from rest_framework.test import APIClient
+        from apps.workspace.models import WorkspaceProject
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Project MA Contract',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('15000.00'),
+            billing_day=15,
+            metadata={'source_type': 'MA_CONTRACT'}
+        )
+        wp = WorkspaceProject.objects.create(
+            user=self.user,
+            name='Enterprise Client System',
+            ma_obligation=ob
+        )
+
+        # 1. Attempt to clear source_type marker
+        res1 = client.patch(f'/api/finance/obligations/{ob.id}/', {'metadata': {'source_type': ''}}, format='json')
+        self.assertEqual(res1.status_code, 200)
+        ob.refresh_from_db()
+        # Marker is preserved or reverse relation forces SSOT
+        self.assertEqual(ob.metadata.get('source_type'), 'MA_CONTRACT')
+
+        # 2. Attempt to modify amount directly on obligation is blocked by SSOT
+        res2 = client.patch(f'/api/finance/obligations/{ob.id}/', {'amount': '20000.00'}, format='json')
+        self.assertEqual(res2.status_code, 400)
+        self.assertIn('amount', res2.data)
+        self.assertIn('managed by Workspace', str(res2.data['amount']))

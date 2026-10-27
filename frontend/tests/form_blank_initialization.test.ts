@@ -221,5 +221,88 @@ describe('Manual Entry Forms & Blank Initialization Verification', () => {
 
       assert.deepStrictEqual(duplicates, [], 'dictionaries.ts must have zero duplicate keys')
     })
+
+    test('translates delete note permanently and debt settlements phrases to Thai', async () => {
+      const { translatePhraseToThai } = await import('../src/i18n/dictionaries')
+
+      assert.strictEqual(
+        translatePhraseToThai('Delete note permanently?'),
+        'ลบโน้ตนี้ถาวรหรือไม่?'
+      )
+      assert.strictEqual(
+        translatePhraseToThai('Delete Permanently'),
+        'ลบถาวร'
+      )
+      assert.strictEqual(
+        translatePhraseToThai('Track liabilities payable, peer debts receivable, and settlements'),
+        'ติดตามหนี้สิน ลูกหนี้ และการชำระหนี้'
+      )
+      assert.strictEqual(
+        translatePhraseToThai('Debtors receivable, liabilities payable, and settlements'),
+        'ลูกหนี้ หนี้สิน และการชำระหนี้'
+      )
+      assert.strictEqual(
+        translatePhraseToThai("'Shopping List' will be permanently deleted. This cannot be undone."),
+        "'Shopping List' จะถูกลบถาวร ไม่สามารถย้อนกลับได้"
+      )
+    })
+  })
+
+  describe('4. Update & Edit Operations Integrity (P1 & P2 Fixes)', () => {
+    test('useBodyScrollLock is invoked strictly after confirmModal declaration', () => {
+      const subView = fs.readFileSync(path.resolve(process.cwd(), 'src/views/finance/SubscriptionsView.vue'), 'utf8')
+      const subDetail = fs.readFileSync(path.resolve(process.cwd(), 'src/views/finance/SubscriptionDetailView.vue'), 'utf8')
+      const instDetail = fs.readFileSync(path.resolve(process.cwd(), 'src/views/finance/InstallmentDetailView.vue'), 'utf8')
+
+      assert.strictEqual(
+        subView.indexOf('useBodyScrollLock(') > subView.indexOf('const confirmModal = reactive'),
+        true,
+        'SubscriptionsView must call useBodyScrollLock after confirmModal'
+      )
+      assert.strictEqual(
+        subDetail.indexOf('useBodyScrollLock(') > subDetail.indexOf('const confirmModal = reactive'),
+        true,
+        'SubscriptionDetailView must call useBodyScrollLock after confirmModal'
+      )
+      assert.strictEqual(
+        instDetail.indexOf('useBodyScrollLock(') > instDetail.indexOf('const confirmModal = reactive'),
+        true,
+        'InstallmentDetailView must call useBodyScrollLock after confirmModal'
+      )
+    })
+
+    test('EditObligationModal locks order_date on payment history and reloads on open', () => {
+      const content = fs.readFileSync(path.resolve(process.cwd(), 'src/components/finance/EditObligationModal.vue'), 'utf8')
+
+      assert.strictEqual(content.includes('isOrderDateLocked'), true, 'Must define isOrderDateLocked')
+      assert.strictEqual(content.includes(':disabled="isOrderDateLocked"'), true, 'Order date must be disabled when locked')
+      assert.strictEqual(content.includes('initForm(ob)'), true, 'Must initialize form on open')
+      assert.strictEqual(content.includes('if (isSubmitting.value || !props.obligation) return'), true, 'Must guard against concurrent submits')
+    })
+
+    test('PortfolioAccountDetailView listens to @saved on EditHoldingModal', () => {
+      const content = fs.readFileSync(path.resolve(process.cwd(), 'src/views/portfolio/PortfolioAccountDetailView.vue'), 'utf8')
+      assert.strictEqual(content.includes('@saved="refreshAll"'), true, 'Must listen to @saved event')
+    })
+
+    test('LedgerAccountDetailView loads categories directly', () => {
+      const content = fs.readFileSync(path.resolve(process.cwd(), 'src/views/ledger/LedgerAccountDetailView.vue'), 'utf8')
+      assert.strictEqual(content.includes('ledgerStore.fetchCategories()'), true, 'Must fetch categories on load')
+    })
+
+    test('TransactionModal and LedgerBudgetsView have double-submit guards and proper event emission', () => {
+      const txContent = fs.readFileSync(path.resolve(process.cwd(), 'src/components/ledger/TransactionModal.vue'), 'utf8')
+      const budgetContent = fs.readFileSync(path.resolve(process.cwd(), 'src/views/ledger/LedgerBudgetsView.vue'), 'utf8')
+
+      assert.strictEqual(txContent.includes('if (isSubmitting.value) return'), true, 'TransactionModal must guard against concurrent submit')
+      assert.strictEqual(budgetContent.includes('if (isSaving.value) return'), true, 'LedgerBudgetsView must guard against concurrent save')
+
+      // Ensure TransactionModal emits only updated on edit, not both updated and created
+      assert.strictEqual(
+        txContent.includes("await ledgerStore.updateTransaction(props.transactionToEdit.id, updatePayload)\n      emit('updated')\n      emit('close')"),
+        true,
+        'TransactionModal must emit only updated on edit'
+      )
+    })
   })
 })

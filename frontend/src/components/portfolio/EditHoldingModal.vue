@@ -35,22 +35,33 @@
             <div class="grid grid-cols-2 gap-2 p-1 bg-zinc-900 border border-zinc-800 rounded-lg">
               <button
                 type="button"
-                @click="form.currency = 'THB'"
-                class="py-1.5 rounded text-xs font-mono transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                :class="form.currency === 'THB' ? 'bg-zinc-800 text-zinc-100 font-bold border border-zinc-700/60 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'"
+                :disabled="isCurrencyLocked"
+                @click="!isCurrencyLocked && (form.currency = 'THB')"
+                class="py-1.5 rounded text-xs font-mono transition-colors flex items-center justify-center gap-1.5"
+                :class="[
+                  form.currency === 'THB' ? 'bg-zinc-800 text-zinc-100 font-bold border border-zinc-700/60 shadow-sm' : 'text-zinc-500 hover:text-zinc-300',
+                  isCurrencyLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'
+                ]"
               >
                 <span>฿ THB (Thai Baht)</span>
               </button>
               <button
                 type="button"
-                @click="form.currency = 'USD'"
-                class="py-1.5 rounded text-xs font-mono transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                :class="form.currency === 'USD' ? 'bg-zinc-800 text-zinc-100 font-bold border border-zinc-700/60 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'"
+                :disabled="isCurrencyLocked"
+                @click="!isCurrencyLocked && (form.currency = 'USD')"
+                class="py-1.5 rounded text-xs font-mono transition-colors flex items-center justify-center gap-1.5"
+                :class="[
+                  form.currency === 'USD' ? 'bg-zinc-800 text-zinc-100 font-bold border border-zinc-700/60 shadow-sm' : 'text-zinc-500 hover:text-zinc-300',
+                  isCurrencyLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'
+                ]"
               >
                 <span>$ USD (US Dollar)</span>
               </button>
             </div>
-            <p class="text-[10px] text-zinc-500 font-mono mt-1">
+            <p v-if="isCurrencyLocked" class="text-[10px] text-amber-500/80 font-mono mt-1">
+              Currency is locked because trade history already exists for this holding.
+            </p>
+            <p v-else class="text-[10px] text-zinc-500 font-mono mt-1">
               Trades and cost basis will be denominated in {{ form.currency }}
             </p>
           </div>
@@ -186,6 +197,15 @@ const selectedPortfolio = computed(() => {
   return portfolioStore.portfolios.find(p => p.id === form.value.portfolio) || null
 })
 
+const isCurrencyLocked = computed(() => {
+  if (!props.holding) return false
+  const h = props.holding as any
+  const txCount = h.transactions_count ?? h.recent_transactions?.length ?? 0
+  const shares = Number(h.position?.shares || 0)
+  const totalInvested = Number(h.position?.total_invested || 0)
+  return txCount > 0 || shares > 0 || totalInvested > 0
+})
+
 watch(
   () => props.holding,
   (h) => {
@@ -207,23 +227,23 @@ const handleSubmit = async () => {
   errorMessage.value = null
   isSubmitting.value = true
   try {
-    // 1. If portfolio changed, call moveHolding
-    if (form.value.portfolio && form.value.portfolio !== props.holding.portfolio) {
-      await portfolioStore.moveHolding(props.holding.id, form.value.portfolio)
-    }
-
-    // 2. Update remaining holding details
-    await portfolioStore.updateHolding(props.holding.id, {
+    const payload: Record<string, any> = {
       name: form.value.name,
-      currency: form.value.currency,
+      currency: isCurrencyLocked.value ? (props.holding.currency || 'THB').toUpperCase() : form.value.currency,
       asset_type: form.value.asset_type,
       notes: form.value.notes
-    })
+    }
+    if (form.value.portfolio) {
+      payload.portfolio = form.value.portfolio
+    }
+
+    // Atomic move + update holding in a single PATCH call
+    await portfolioStore.updateHolding(props.holding.id, payload)
     toast.success(`Updated settings for ${props.holding.ticker}`)
     emit('saved')
     emit('close')
   } catch (err: any) {
-    errorMessage.value = err?.response?.data?.detail || 'Failed to update asset settings'
+    errorMessage.value = err?.response?.data?.currency || err?.response?.data?.detail || 'Failed to update asset settings'
   } finally {
     isSubmitting.value = false
   }

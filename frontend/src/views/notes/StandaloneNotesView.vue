@@ -321,15 +321,24 @@
                 </div>
               </div>
             </div>
-            <button
-              v-if="smartView === 'trash'"
-              type="button"
-              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-emerald-400 self-center shrink-0"
-              title="Restore note"
-              @click.stop="restoreNote(note.id)"
-            >
-              <RotateCcw class="w-3.5 h-3.5" />
-            </button>
+            <div v-if="smartView === 'trash'" class="flex items-center gap-1 self-center shrink-0">
+              <button
+                type="button"
+                class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-emerald-400 transition-colors"
+                title="Restore note"
+                @click.stop="restoreNote(note.id)"
+              >
+                <RotateCcw class="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 transition-colors"
+                :title="t('nt.deletePermanent')"
+                @click.stop="confirmPermanentDelete(note)"
+              >
+                <Trash2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -432,6 +441,24 @@
                 <span class="text-xs font-semibold truncate flex-1" :class="note.is_trashed ? 'text-zinc-500 line-through' : 'text-zinc-100'">
                   {{ displayTitle(note) }}
                 </span>
+                <div v-if="smartView === 'trash'" class="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    class="p-1 rounded-md bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-emerald-400 transition-colors"
+                    title="Restore note"
+                    @click.stop="restoreNote(note.id)"
+                  >
+                    <RotateCcw class="w-3 h-3" />
+                  </button>
+                  <button
+                    type="button"
+                    class="p-1 rounded-md bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-rose-400 transition-colors"
+                    :title="t('nt.deletePermanent')"
+                    @click.stop="confirmPermanentDelete(note)"
+                  >
+                    <Trash2 class="w-3 h-3" />
+                  </button>
+                </div>
                 <Lock v-if="note.is_locked" class="w-3 h-3 text-amber-400/80 shrink-0" />
                 <Pin v-if="note.is_pinned" class="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
               </div>
@@ -470,6 +497,17 @@
       :error-message="emptyTrashError"
       @confirm="emptyTrash"
       @cancel="showEmptyTrashConfirm = false; emptyTrashError = ''"
+    />
+
+    <ConfirmModal
+      :is-open="!!noteToDeletePermanently"
+      :title="t('nt.deletePermanentTitle')"
+      :message="t('nt.deletePermanentMsg', { title: noteToDeletePermanently ? displayTitle(noteToDeletePermanently) : '' })"
+      :confirm-text="t('nt.deletePermanentBtn')"
+      :is-loading="isDeletingNotePermanently"
+      :error-message="deleteNotePermanentlyError"
+      @confirm="executePermanentDelete"
+      @cancel="noteToDeletePermanently = null; deleteNotePermanentlyError = ''"
     />
 
     <!-- Floating Empty Trash button (trash view only) -->
@@ -570,6 +608,9 @@ const deleteFolderError = ref('')
 const showEmptyTrashConfirm = ref(false)
 const isEmptyingTrash = ref(false)
 const emptyTrashError = ref('')
+const noteToDeletePermanently = ref<Note | null>(null)
+const isDeletingNotePermanently = ref(false)
+const deleteNotePermanentlyError = ref('')
 const editingFolderId = ref<string | null>(null)
 const folderEditName = ref('')
 const isCreatingFolder = ref(false)
@@ -868,9 +909,38 @@ async function createNote(targetFolderId?: string | null) {
 async function restoreNote(noteId: string) {
   try {
     await workspaceStore.restoreNote(noteId)
+    if (activeNoteId.value === noteId) {
+      activeNoteId.value = null
+      showGridEditor.value = false
+    }
     toast.success('Note restored')
   } catch {
     toast.error('Failed to restore note')
+  }
+}
+
+function confirmPermanentDelete(note: Note) {
+  noteToDeletePermanently.value = note
+  deleteNotePermanentlyError.value = ''
+}
+
+async function executePermanentDelete() {
+  const note = noteToDeletePermanently.value
+  if (!note || isDeletingNotePermanently.value) return
+  isDeletingNotePermanently.value = true
+  deleteNotePermanentlyError.value = ''
+  try {
+    await workspaceStore.permanentDeleteNote(note.id)
+    if (activeNoteId.value === note.id) {
+      activeNoteId.value = null
+      showGridEditor.value = false
+    }
+    toast.info(t('nt.notePermanentlyDeleted'))
+    noteToDeletePermanently.value = null
+  } catch (err: any) {
+    deleteNotePermanentlyError.value = err?.response?.data?.error || err?.message || 'Failed to delete note'
+  } finally {
+    isDeletingNotePermanently.value = false
   }
 }
 

@@ -8,6 +8,7 @@ import type {
   CashFlowSummary,
   CreateAccountPayload,
   CreateTransactionPayload,
+  UpdateTransactionPayload,
   TransferPayload,
   SettleSplitPayload
 } from '../types/ledger'
@@ -95,6 +96,11 @@ export const ledgerApi = {
     return res.data
   },
 
+  async updateTransaction(id: string, payload: Partial<UpdateTransactionPayload>): Promise<LedgerTransaction> {
+    const res = await apiClient.patch<LedgerTransaction>(`/ledger/transactions/${id}/`, payload)
+    return res.data
+  },
+
   async deleteTransaction(id: string): Promise<void> {
     await apiClient.delete(`/ledger/transactions/${id}/`)
   },
@@ -143,6 +149,11 @@ export const ledgerApi = {
     limit_amount: number
   }): Promise<CategoryBudgetItem> {
     const res = await apiClient.post<CategoryBudgetItem>('/ledger/budgets/', payload)
+    return res.data
+  },
+
+  async updateBudget(id: string, payload: { limit_amount: number }): Promise<CategoryBudgetItem> {
+    const res = await apiClient.patch<CategoryBudgetItem>(`/ledger/budgets/${id}/`, payload)
     return res.data
   },
 

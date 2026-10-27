@@ -1,23 +1,7 @@
 <template>
   <div class="space-y-6 max-w-7xl mx-auto font-sans pb-16">
-    <!-- Breadcrumb & Top Navigation -->
+    <!-- Top Navigation -->
     <div class="pb-4 border-b border-zinc-800/80">
-      <nav aria-label="Breadcrumb" class="mb-2">
-        <ol class="flex items-center gap-2 text-xs font-mono text-zinc-500 flex-wrap">
-          <li class="flex items-center gap-2">
-            <RouterLink to="/finance/overview" class="hover:text-zinc-300 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 rounded px-1 -mx-1">{{ t('crumb.finance') }}</RouterLink>
-            <span aria-hidden="true" class="text-zinc-700 select-none">/</span>
-          </li>
-          <li class="flex items-center gap-2">
-            <RouterLink to="/finance/installments" class="hover:text-zinc-300 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 rounded px-1 -mx-1">{{ t('crumb.installments') }}</RouterLink>
-            <span aria-hidden="true" class="text-zinc-700 select-none">/</span>
-          </li>
-          <li>
-            <span aria-current="page" class="text-zinc-300 font-medium">{{ contract?.title || t('crumb.contractDossier') }}</span>
-          </li>
-        </ol>
-      </nav>
-
       <!-- Header Row -->
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
@@ -60,6 +44,15 @@
           >
             <CreditCard class="w-3.5 h-3.5 text-zinc-950" />
             <span>Record Payment</span>
+          </button>
+
+          <button
+            @click="showEditModal = true"
+            type="button"
+            class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-mono transition-colors flex items-center gap-1.5"
+          >
+            <Edit2 class="w-3.5 h-3.5 text-zinc-400" />
+            <span>Edit Contract</span>
           </button>
 
           <button
@@ -784,6 +777,14 @@
       </div>
     </div>
 
+    <!-- Edit Contract Modal -->
+    <EditObligationModal
+      :is-open="showEditModal"
+      :obligation="contract"
+      @close="showEditModal = false"
+      @updated="handleContractUpdated"
+    />
+
     <ConfirmModal
       :is-open="confirmModal.isOpen"
       :title="confirmModal.title"
@@ -799,7 +800,6 @@
 </template>
 
 <script setup lang="ts">
-import { t } from '../../i18n'
 import { currencySymbol } from '../../utils/currency'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -810,6 +810,7 @@ import { useToastStore } from '../../stores/toast'
 import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { FinancialObligation } from '../../types/finance'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
+import EditObligationModal from '../../components/finance/EditObligationModal.vue'
 import {
   CreditCard,
   Table,
@@ -822,7 +823,8 @@ import {
   Trash2,
   Scale,
   X,
-  HardDrive
+  HardDrive,
+  Edit2
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -854,6 +856,7 @@ const simTerm = ref<number>(0)
 
 // Modal states
 const showPayModalState = ref(false)
+const showEditModal = ref(false)
 const payForm = ref({
   term_number: 1,
   paid_amount: 0,
@@ -865,8 +868,12 @@ const payForm = ref({
 const showUploadModal = ref(false)
 const uploadCategory = ref('CONTRACT')
 
-useBodyScrollLock(() => showPayModalState.value || showUploadModal.value)
 const selectedDocumentFile = ref<File | null>(null)
+
+async function handleContractUpdated() {
+  await loadContractDetails()
+  toast.success('Contract updated')
+}
 
 onMounted(async () => {
   await loadContractDetails()
@@ -1087,6 +1094,8 @@ const confirmModal = reactive({
   errorMessage: '',
   action: async () => {}
 })
+
+useBodyScrollLock(() => showPayModalState.value || showUploadModal.value || showEditModal.value || confirmModal.isOpen)
 
 async function executeConfirmModal() {
   confirmModal.isLoading = true

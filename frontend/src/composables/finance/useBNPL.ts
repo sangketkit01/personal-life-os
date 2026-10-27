@@ -231,6 +231,57 @@ export function useBNPL() {
     }
   }
 
+  async function updateSubOrder(orderId: string, accountId: string, payload: {
+    title?: string
+    store?: string
+    order_number?: string
+    order_date?: string
+    notes?: string
+    metadata?: Record<string, any>
+  }) {
+    isActionLoading.value = true
+    error.value = null
+    try {
+      const existing = subOrders.value.find(o => o.id === orderId)
+      const existingMeta = existing?.metadata || {}
+      const metaToUpdate: Record<string, any> = {
+        ...existingMeta,
+        ...(payload.store !== undefined ? { store: payload.store } : {}),
+        ...(payload.order_number !== undefined ? { order_number: payload.order_number } : {}),
+        ...(payload.order_date !== undefined ? { order_date: payload.order_date } : {}),
+        ...(payload.notes !== undefined ? { notes: payload.notes } : {}),
+        ...(payload.metadata || {})
+      }
+
+      const updateData: Record<string, any> = {
+        metadata: metaToUpdate
+      }
+      if (payload.title !== undefined) {
+        updateData.title = payload.title.trim()
+      }
+
+      const res = await apiClient.patch<FinancialObligation>(`/finance/obligations/${orderId}/`, updateData)
+      const idx = subOrders.value.findIndex(o => o.id === orderId)
+      if (idx !== -1) {
+        subOrders.value[idx] = res.data
+      }
+
+      if (accountId) {
+        try {
+          await Promise.all([fetchAccountById(accountId), fetchAccounts()])
+        } catch (refreshErr) {
+          console.warn('Account refresh failed after order update:', refreshErr)
+        }
+      }
+      return res.data
+    } catch (err: any) {
+      error.value = err?.response?.data?.detail || err?.response?.data?.metadata || 'Failed to update sub-order'
+      throw err
+    } finally {
+      isActionLoading.value = false
+    }
+  }
+
   async function payAccountBill(accountId: string, payload: {
     paid_amount?: number
     statement_month?: string
@@ -338,6 +389,7 @@ export function useBNPL() {
     updateAccount,
     deleteAccount,
     createSubOrder,
+    updateSubOrder,
     payAccountBill,
     deleteOrder,
     uploadAttachment,

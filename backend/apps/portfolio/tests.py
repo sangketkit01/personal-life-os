@@ -821,3 +821,258 @@ class PortfolioEngineTestCase(TestCase):
         )
         self.assertNotEqual(art_aapl.id, art_msft.id)
         self.assertEqual(art_aapl.url, art_msft.url)
+
+    def test_chronological_trade_timeline_validation(self):
+        """Remediation Item 2: Replay entire timeline to ensure cumulative shares never drop below 0."""
+        from datetime import datetime
+        dt_buy1 = timezone.make_aware(datetime(2026, 1, 1, 10, 0))
+        dt_sell1 = timezone.make_aware(datetime(2026, 1, 2, 10, 0))
+        dt_after = timezone.make_aware(datetime(2026, 1, 3, 10, 0))
+
+        holding = StockHolding.objects.create(
+            user=self.user,
+            ticker="PTT.BK",
+            currency="THB"
+        )
+        tx_buy = StockTransaction.objects.create(
+            user=self.user,
+            holding=holding,
+            transaction_type=TransactionType.BUY,
+            shares=Decimal('100.00'),
+            price_per_share=Decimal('35.00'),
+            fee=Decimal('0.00'),
+            executed_at=dt_buy1
+        )
+        tx_sell = StockTransaction.objects.create(
+            user=self.user,
+            holding=holding,
+            transaction_type=TransactionType.SELL,
+            shares=Decimal('50.00'),
+            price_per_share=Decimal('40.00'),
+            fee=Decimal('0.00'),
+            executed_at=dt_sell1
+        )
+
+        # 1. Edit Buy to reduce shares to 40 (< 50 sold on dt_sell1) -> 400
+        res_reduce = self.client.patch(f'/api/portfolio/transactions/{tx_buy.id}/', {
+            'shares': 40
+        }, format='json')
+        self.assertEqual(res_reduce.status_code, 400)
+        self.assertIn('shares', res_reduce.data)
+        self.assertIn('timeline invalid', str(res_reduce.data['shares']))
+
+        # 2. Move Buy execution date to after Sell -> 400
+        res_date = self.client.patch(f'/api/portfolio/transactions/{tx_buy.id}/', {
+            'executed_at': dt_after.isoformat()
+        }, format='json')
+        self.assertEqual(res_date.status_code, 400)
+        self.assertIn('shares', res_date.data)
+
+        # 3. Delete Buy when Sell exists -> 400
+        res_del = self.client.delete(f'/api/portfolio/transactions/{tx_buy.id}/')
+        self.assertEqual(res_del.status_code, 400)
+
+        # 4. Valid edit: reduce Buy to 60 (>= 50 sold) -> 200
+        res_ok = self.client.patch(f'/api/portfolio/transactions/{tx_buy.id}/', {
+            'shares': 60
+        }, format='json')
+        self.assertEqual(res_ok.status_code, 200)
+
+    def test_lock_currency_on_holding_with_trades(self):
+        """Remediation Item 3: Lock currency changes on holdings with existing trade history."""
+        holding = StockHolding.objects.create(
+            user=self.user,
+            ticker="SCB.BK",
+            currency="THB"
+        )
+        # Empty holding -> currency can be changed
+        res_empty = self.client.patch(f'/api/portfolio/holdings/{holding.id}/', {'currency': 'USD'}, format='json')
+        self.assertEqual(res_empty.status_code, 200)
+        holding.refresh_from_db()
+        self.assertEqual(holding.currency, 'USD')
+
+        # Add transaction -> currency change locked
+        StockTransaction.objects.create(
+            user=self.user,
+            holding=holding,
+            transaction_type=TransactionType.BUY,
+            shares=Decimal('10.00'),
+            price_per_share=Decimal('100.00'),
+            fee=Decimal('0.00'),
+            executed_at=timezone.now()
+        )
+        res_locked = self.client.patch(f'/api/portfolio/holdings/{holding.id}/', {'currency': 'THB'}, format='json')
+        self.assertEqual(res_locked.status_code, 400)
+        self.assertIn('currency', res_locked.data)
+        self.assertIn('existing trade history', str(res_locked.data['currency']))
+
+    def test_holding_notes_and_portfolio_preserved_in_overview(self):
+        """Remediation Item 4: Ensure notes and portfolio are returned in portfolio overview."""
+        port = InvestmentPortfolio.objects.create(user=self.user, name="Growth", currency="THB")
+        holding = StockHolding.objects.create(
+            user=self.user,
+            portfolio=port,
+            ticker="ADVANC.BK",
+            name="Advanced Info Service",
+            notes="Long term dividend asset",
+            currency="THB"
+        )
+        overview = get_portfolio_overview(self.user, portfolio_id=str(port.id))
+        h_dict = next(h for h in overview['holdings'] if h['id'] == str(holding.id))
+        self.assertEqual(h_dict.get('notes'), "Long term dividend asset")
+        self.assertEqual(h_dict.get('portfolio'), str(port.id))
+        self.assertEqual(h_dict.get('portfolio_id'), str(port.id))
+
+    def test_transaction_serializer_portfolio_id_and_atomic_move_merge(self):
+        """Remediation Items 7 & 8: Read-only portfolio_id and atomic move+merge via PATCH."""
+        port_a = InvestmentPortfolio.objects.create(user=self.user, name="Port A", currency="THB")
+        port_b = InvestmentPortfolio.objects.create(user=self.user, name="Port B", currency="THB")
+
+        holding_a = StockHolding.objects.create(user=self.user, portfolio=port_a, ticker="CPALL.BK", currency="THB")
+        tx = StockTransaction.objects.create(
+            user=self.user,
+            holding=holding_a,
+            transaction_type=TransactionType.BUY,
+            shares=Decimal('100.00'),
+            price_per_share=Decimal('60.00'),
+            fee=Decimal('0.00'),
+            executed_at=timezone.now()
+        )
+        res_tx = self.client.get(f'/api/portfolio/transactions/{tx.id}/')
+        self.assertEqual(res_tx.status_code, 200)
+        self.assertEqual(res_tx.data.get('portfolio_id'), str(port_a.id))
+
+        # Create matching holding in Port B
+        holding_b = StockHolding.objects.create(user=self.user, portfolio=port_b, ticker="CPALL.BK", currency="THB")
+
+        # Atomic move holding_a to Port B -> merges into holding_b and updates notes in one call
+        res_move = self.client.patch(f'/api/portfolio/holdings/{holding_a.id}/', {
+            'portfolio': str(port_b.id),
+            'notes': 'Merged and moved successfully'
+        }, format='json')
+        self.assertEqual(res_move.status_code, 200)
+        holding_b.refresh_from_db()
+        self.assertEqual(holding_b.notes, 'Merged and moved successfully')
+        self.assertEqual(holding_b.transactions.count(), 1)
+        self.assertFalse(StockHolding.objects.filter(id=holding_a.id).exists())
+
+    def test_transaction_move_holding_source_timeline_validation(self):
+        """Remediation Item 2: Moving trade to another holding is rejected if source timeline becomes invalid."""
+        port = InvestmentPortfolio.objects.create(user=self.user, name="Main", currency="THB")
+        port_other = InvestmentPortfolio.objects.create(user=self.user, name="Other", currency="THB")
+
+        holding_a = StockHolding.objects.create(user=self.user, portfolio=port, ticker="PTT.BK", currency="THB")
+        holding_b = StockHolding.objects.create(user=self.user, portfolio=port_other, ticker="PTT.BK", currency="THB")
+
+        # In holding_a: BUY 10 shares, then SELL 10 shares
+        t_buy = StockTransaction.objects.create(
+            user=self.user,
+            holding=holding_a,
+            transaction_type=TransactionType.BUY,
+            shares=Decimal('10.00'),
+            price_per_share=Decimal('35.00'),
+            executed_at=timezone.now() - timezone.timedelta(days=2)
+        )
+        t_sell = StockTransaction.objects.create(
+            user=self.user,
+            holding=holding_a,
+            transaction_type=TransactionType.SELL,
+            shares=Decimal('10.00'),
+            price_per_share=Decimal('36.00'),
+            executed_at=timezone.now() - timezone.timedelta(days=1)
+        )
+
+        # Attempt to move the BUY transaction to holding_b
+        res = self.client.patch(f'/api/portfolio/transactions/{t_buy.id}/', {
+            'holding': str(holding_b.id)
+        }, format='json')
+
+        # Must be rejected because holding_a would be left with SELL 10 without BUY!
+        self.assertEqual(res.status_code, 400)
+        t_buy.refresh_from_db()
+        self.assertEqual(t_buy.holding_id, holding_a.id)
+
+    def test_holding_merge_differing_currency_rejected(self):
+        """Remediation Item 3: Merging holdings with differing currencies is rejected if trades exist."""
+        port_thb = InvestmentPortfolio.objects.create(user=self.user, name="THB Port", currency="THB")
+        port_usd = InvestmentPortfolio.objects.create(user=self.user, name="USD Port", currency="USD")
+
+        h_usd = StockHolding.objects.create(user=self.user, portfolio=port_usd, ticker="AAPL", currency="USD")
+        StockTransaction.objects.create(
+            user=self.user,
+            holding=h_usd,
+            transaction_type=TransactionType.BUY,
+            shares=Decimal('5.00'),
+            price_per_share=Decimal('200.00'),
+            executed_at=timezone.now()
+        )
+
+        h_thb = StockHolding.objects.create(user=self.user, portfolio=port_thb, ticker="AAPL", currency="THB")
+        StockTransaction.objects.create(
+            user=self.user,
+            holding=h_thb,
+            transaction_type=TransactionType.BUY,
+            shares=Decimal('10.00'),
+            price_per_share=Decimal('7000.00'),
+            executed_at=timezone.now()
+        )
+
+        # 1. Attempt merge via move action
+        res_move = self.client.post(f'/api/portfolio/holdings/{h_usd.id}/move/', {
+            'target_portfolio_id': str(port_thb.id)
+        })
+        self.assertEqual(res_move.status_code, 400)
+        self.assertIn('currency', str(res_move.data))
+
+        # 2. Attempt merge via PATCH portfolio
+        res_patch = self.client.patch(f'/api/portfolio/holdings/{h_usd.id}/', {
+            'portfolio': str(port_thb.id)
+        }, format='json')
+        self.assertEqual(res_patch.status_code, 400)
+        self.assertIn('currency', str(res_patch.data))
+
+    def test_transaction_move_destination_timeline_validation(self):
+        """Remediation: Moving SELL trade to destination holding is rejected if destination timeline becomes invalid (SELL before BUY)."""
+        port_a = InvestmentPortfolio.objects.create(user=self.user, name="Port A", currency="THB")
+        port_b = InvestmentPortfolio.objects.create(user=self.user, name="Port B", currency="THB")
+
+        # Holding A: BUY 10 on Day 1 -> SELL 10 on Day 5
+        holding_a = StockHolding.objects.create(user=self.user, portfolio=port_a, ticker="DELTA.BK", currency="THB")
+        StockTransaction.objects.create(
+            user=self.user,
+            holding=holding_a,
+            transaction_type=TransactionType.BUY,
+            shares=Decimal('10.00'),
+            price_per_share=Decimal('80.00'),
+            executed_at=timezone.now() - timezone.timedelta(days=10)
+        )
+        t_sell_a = StockTransaction.objects.create(
+            user=self.user,
+            holding=holding_a,
+            transaction_type=TransactionType.SELL,
+            shares=Decimal('10.00'),
+            price_per_share=Decimal('90.00'),
+            executed_at=timezone.now() - timezone.timedelta(days=5)
+        )
+
+        # Holding B: BUY 10 on Day 10 (now)
+        holding_b = StockHolding.objects.create(user=self.user, portfolio=port_b, ticker="DELTA.BK", currency="THB")
+        StockTransaction.objects.create(
+            user=self.user,
+            holding=holding_b,
+            transaction_type=TransactionType.BUY,
+            shares=Decimal('10.00'),
+            price_per_share=Decimal('85.00'),
+            executed_at=timezone.now()
+        )
+
+        # Move SELL on Day 5 to Holding B:
+        # Holding B has BUY only on Day 10 (now). Adding SELL on Day 5 causes SELL before BUY!
+        res = self.client.patch(f'/api/portfolio/transactions/{t_sell_a.id}/', {
+            'holding': str(holding_b.id)
+        }, format='json')
+
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('shares', res.data)
+        t_sell_a.refresh_from_db()
+        self.assertEqual(t_sell_a.holding_id, holding_a.id)

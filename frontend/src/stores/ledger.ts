@@ -155,6 +155,26 @@ export const useLedgerStore = defineStore('ledger', () => {
     return tx
   }
 
+  async function updateTransaction(id: string, payload: Partial<CreateTransactionPayload>) {
+    const tx = await ledgerApi.updateTransaction(id, payload as any)
+    const idx = transactions.value.findIndex(t => t.id === id)
+    if (idx !== -1) {
+      transactions.value[idx] = tx
+    }
+    try {
+      await Promise.all([fetchAccounts(), fetchSummary(), fetchPendingSplits()])
+    } catch (refreshErr) {
+      console.warn('Post-update refresh failed:', refreshErr)
+    }
+    try {
+      const { useFinanceStore } = await import('./finance')
+      await useFinanceStore().fetchOverview()
+    } catch (e) {
+      // Ignored if finance store not mounted
+    }
+    return tx
+  }
+
   async function deleteTransaction(id: string) {
     await ledgerApi.deleteTransaction(id)
     try {
@@ -270,6 +290,7 @@ export const useLedgerStore = defineStore('ledger', () => {
     fetchPendingSplits,
     fetchBudgets,
     createTransaction,
+    updateTransaction,
     deleteTransaction,
     createAccount,
     updateAccount,

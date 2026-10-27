@@ -9,7 +9,7 @@
             LIABILITIES & DEBTORS
           </span>
         </div>
-        <p class="text-xs text-zinc-500 mt-1">Track liabilities payable, peer debts receivable, and payment reminders</p>
+        <p class="text-xs text-zinc-500 mt-1">Track liabilities payable, peer debts receivable, and settlements</p>
       </div>
 
       <div class="flex items-center gap-2.5 self-start sm:self-auto">

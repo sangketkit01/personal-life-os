@@ -89,6 +89,8 @@ export interface LedgerTransaction {
   workspace_project?: string | null
   transfer_destination?: string | null
   transfer_peer?: string | null
+  is_amount_locked?: boolean
+  amount_lock_reason?: string
   created_at: string
   updated_at: string
 }
@@ -149,6 +151,15 @@ export interface CreateTransactionPayload {
   obligation?: string | null
   portfolio?: string | null
   workspace_project?: string | null
+}
+
+export interface UpdateTransactionPayload {
+  title?: string
+  notes?: string
+  category?: string | null
+  transaction_date?: string
+  gross_amount?: number
+  net_amount?: number
 }
 
 export interface TransferPayload {

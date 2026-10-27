@@ -214,7 +214,7 @@
         </div>
         <div>
           <h3 class="text-sm font-semibold text-zinc-200 group-hover:text-white transition-colors">Two-Way Debt Ledger</h3>
-          <p class="text-xs text-zinc-500 mt-0.5">Debtors receivable, liabilities payable, and reminder tools</p>
+          <p class="text-xs text-zinc-500 mt-0.5">Debtors receivable, liabilities payable, and settlements</p>
         </div>
       </div>
     </div>

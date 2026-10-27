@@ -849,3 +849,153 @@ class LedgerAPITests(APITestCase):
         # Must isolate to THB: 2000.00 (not 2100.00)
         self.assertEqual(Decimal(resp.data['total_inflow']), Decimal('2000.00'))
         self.assertEqual(resp.data['currency'], 'THB')
+
+    def test_transaction_is_amount_locked_serialization(self):
+        """Verify is_amount_locked and amount_lock_reason serialization for settlements and transfers."""
+        # 1. Normal standalone transaction -> amount is not locked
+        normal_tx = Transaction.objects.create(
+            user=self.user,
+            account=self.account,
+            transaction_type=TransactionType.OUTFLOW,
+            gross_amount=Decimal('150.00'),
+            net_amount=Decimal('150.00'),
+            title="Coffee",
+            transaction_date=timezone.now().date()
+        )
+        resp_normal = self.client.get(f'/api/ledger/transactions/{normal_tx.id}/')
+        self.assertFalse(resp_normal.data['is_amount_locked'])
+
+        # 2. Split repayment transaction (settlement without Radar debtor) -> amount is locked
+        split_tx = BillSplitService.create_split_transaction(
+            user=self.user,
+            account=self.account,
+            category=self.food_category,
+            gross_amount=Decimal('500.00'),
+            net_amount=Decimal('250.00'),
+            title="Lunch Split",
+            transaction_date=timezone.now().date(),
+            splits_data=[{'counterparty_name': 'Charlie', 'amount': '250.00'}],
+            auto_create_radar_debtors=False
+        )
+        split = split_tx.splits.first()
+        inflow_settle_tx = BillSplitService.settle_split(
+            split=split,
+            deposit_account=self.account,
+            settlement_date=timezone.now().date()
+        )
+
+        resp_settle = self.client.get(f'/api/ledger/transactions/{inflow_settle_tx.id}/')
+        self.assertTrue(resp_settle.data['is_amount_locked'])
+        self.assertIn('settled split repayment is locked', resp_settle.data['amount_lock_reason'])
+
+        # 3. Patching gross_amount on the settlement transaction is rejected with 400
+        patch_resp = self.client.patch(f'/api/ledger/transactions/{inflow_settle_tx.id}/', {
+            'gross_amount': '300.00'
+        }, format='json')
+        self.assertEqual(patch_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('gross_amount', patch_resp.data)
+
+    def test_ledger_amount_update_diff_recalculation(self):
+        """Remediation Item 5: Concurrency-safe amount delta computed from locked fresh DB row."""
+        # Initial account balance = 50,000
+        tx = Transaction.objects.create(
+            user=self.user,
+            account=self.account,
+            transaction_type=TransactionType.OUTFLOW,
+            gross_amount=Decimal('200.00'),
+            net_amount=Decimal('200.00'),
+            title="Book Purchase",
+            transaction_date=timezone.now().date()
+        )
+        self.account.current_balance -= Decimal('200.00')
+        self.account.save()
+        self.assertEqual(self.account.current_balance, Decimal('49800.00'))
+
+        # Update expense from 200 to 500 (+300 diff)
+        res1 = self.client.patch(f'/api/ledger/transactions/{tx.id}/', {
+            'gross_amount': '500.00'
+        }, format='json')
+        self.assertEqual(res1.status_code, status.HTTP_200_OK)
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.current_balance, Decimal('49500.00'))
+
+        # Update expense from 500 to 100 (-400 diff)
+        res2 = self.client.patch(f'/api/ledger/transactions/{tx.id}/', {
+            'gross_amount': '100.00'
+        }, format='json')
+        self.assertEqual(res2.status_code, status.HTTP_200_OK)
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.current_balance, Decimal('49900.00'))
+
+    def test_paired_transfer_date_lock(self):
+        """Remediation Item 11: Paired transfer date is locked against direct mutation."""
+        target = Account.objects.create(
+            user=self.user,
+            name="Savings Account",
+            current_balance=Decimal('1000.00'),
+            initial_balance=Decimal('1000.00')
+        )
+        today = timezone.now().date()
+        yesterday = today - timezone.timedelta(days=1)
+
+        transfer_resp = self.client.post('/api/ledger/accounts/transfer/', {
+            'source_account_id': str(self.account.id),
+            'target_account_id': str(target.id),
+            'amount': '1000.00',
+            'transaction_date': str(today),
+            'notes': 'Initial transfer'
+        }, format='json')
+        self.assertEqual(transfer_resp.status_code, status.HTTP_201_CREATED)
+
+        out_tx_id = transfer_resp.data['outflow_transaction']['id']
+
+        # 1. Mutating date on transfer transaction rejected
+        date_resp = self.client.patch(f'/api/ledger/transactions/{out_tx_id}/', {
+            'transaction_date': str(yesterday)
+        }, format='json')
+        self.assertEqual(date_resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('transaction_date', date_resp.data)
+        self.assertIn('paired transfer', str(date_resp.data['transaction_date']))
+
+        # 2. Mutating title / notes allowed
+        ok_resp = self.client.patch(f'/api/ledger/transactions/{out_tx_id}/', {
+            'title': 'Updated Transfer Note'
+        }, format='json')
+        self.assertEqual(ok_resp.status_code, status.HTTP_200_OK)
+
+    def test_ledger_stale_instance_amount_not_reverted(self):
+        """Remediation Item 5: Saving stale instance with non-amount fields does not revert concurrent gross_amount changes."""
+        tx = Transaction.objects.create(
+            user=self.user,
+            account=self.account,
+            transaction_type=TransactionType.OUTFLOW,
+            gross_amount=Decimal('100.00'),
+            net_amount=Decimal('100.00'),
+            title="Lunch",
+            transaction_date=timezone.now().date(),
+            notes="Initial note"
+        )
+        self.account.current_balance -= Decimal('100.00')
+        self.account.save()
+
+        from apps.ledger.serializers import TransactionSerializer
+        stale_instance = Transaction.objects.get(id=tx.id)
+        serializer = TransactionSerializer(stale_instance, data={'notes': 'Lunch with team'}, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+        # In DB, concurrent update changed amount from 100 to 130
+        tx.gross_amount = Decimal('130.00')
+        tx.net_amount = Decimal('130.00')
+        tx.save(update_fields=['gross_amount', 'net_amount'])
+        self.account.current_balance -= Decimal('30.00')
+        self.account.save()
+
+        # Serializer save occurs
+        updated_tx = serializer.save()
+        self.assertEqual(updated_tx.notes, 'Lunch with team')
+        self.assertEqual(updated_tx.gross_amount, Decimal('130.00'))
+        self.assertEqual(updated_tx.net_amount, Decimal('130.00'))
+
+        tx.refresh_from_db()
+        self.assertEqual(tx.gross_amount, Decimal('130.00'))
+        self.assertEqual(tx.net_amount, Decimal('130.00'))

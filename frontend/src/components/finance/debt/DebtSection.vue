@@ -167,45 +167,6 @@
               <span class="text-amber-400 font-semibold">{{ currencySymbol(debtor.currency) }}{{ Number(debtor.summary?.remaining_balance || debtor.amount).toLocaleString('th-TH') }}</span>
             </div>
           </div>
-
-          <!-- INLINE QUICK RECALL TOOL -->
-          <div class="p-3 rounded-lg bg-zinc-950 border border-emerald-500/20 space-y-2.5 font-mono text-xs">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-1.5 text-emerald-400 font-semibold text-[11px]">
-                <MessageSquare class="w-3.5 h-3.5" />
-                <span>One-Click LINE/SMS Recall Template</span>
-              </div>
-              <span class="text-[9px] text-zinc-500">
-                Due: {{ debtor.due_date ? new Date(debtor.due_date).toLocaleDateString('en-GB') : 'Flexible' }}
-              </span>
-            </div>
-
-            <!-- Message Preview -->
-            <div class="p-2.5 rounded bg-zinc-900/80 border border-zinc-800/80 text-zinc-300 font-sans text-xs select-all leading-relaxed">
-              {{ getRecallText(debtor) }}
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="flex items-center gap-2 pt-1 font-sans">
-              <button
-                @click="copyRecallMessage(debtor)"
-                class="flex-1 py-1 px-2.5 rounded bg-zinc-800 hover:bg-zinc-700 active:scale-95 text-zinc-200 text-xs font-medium transition-all flex items-center justify-center gap-1.5"
-              >
-                <Check v-if="copiedIds[debtor.id]" class="w-3.5 h-3.5 text-zinc-300" />
-                <Copy v-else class="w-3.5 h-3.5 text-zinc-400" />
-                <span>{{ copiedIds[debtor.id] ? 'Copied!' : 'Copy Text' }}</span>
-              </button>
-
-              <a
-                :href="getLineShareUrl(debtor)"
-                target="_blank"
-                class="py-1 px-3 rounded bg-[#06C755] hover:bg-[#05b34c] active:scale-95 text-white text-xs font-medium transition-all flex items-center justify-center gap-1.5 shadow-sm"
-              >
-                <Send class="w-3.5 h-3.5" />
-                <span>Share LINE</span>
-              </a>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -312,23 +273,16 @@
 
 <script setup lang="ts">
 import { currencySymbol } from '../../../utils/currency'
-import {
- ref, computed } from 'vue'
-import { useToastStore } from '../../../stores/toast'
+import { ref, computed } from 'vue'
 import type { FinancialObligation } from '../../../types/finance'
 import {
   Phone,
-
   UserCheck,
   HandCoins,
   Plus,
   History,
   Edit2,
   Trash2,
-  MessageSquare,
-  Copy,
-  Check,
-  Send,
   ArrowRight
 } from 'lucide-vue-next'
 
@@ -344,9 +298,7 @@ const emit = defineEmits<{
   (e: 'delete', id: string): void
 }>()
 
-const toast = useToastStore()
 const activeSubTab = ref<'DEBTORS' | 'LIABILITIES'>('DEBTORS')
-const copiedIds = ref<Record<string, boolean>>({})
 
 const debtorsList = computed(() => {
   return props.obligations.filter(o =>
@@ -377,31 +329,4 @@ const totalMyDebtsRemaining = computed(() => {
 const netDebtPosition = computed(() => {
   return totalDebtorsRemaining.value - totalMyDebtsRemaining.value
 })
-
-function getRecallText(debtor: FinancialObligation) {
-  const counterparty = debtor.metadata?.counterparty || debtor.title || 'Friend'
-  const remaining = Number(debtor.summary?.remaining_balance ?? debtor.amount ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })
-  const dueDateStr = debtor.due_date ? new Date(debtor.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'soon'
-  const pp = debtor.metadata?.promptpay || localStorage.getItem('finance_promptpay_default') || ''
-  const ppText = pp ? `PromptPay: ${pp}` : 'the designated account'
-  const curSymbol = debtor.currency === 'USD' ? '$' : '฿'
-  return `Hi ${counterparty}, friendly reminder regarding the outstanding balance of ${curSymbol}${remaining} (due: ${dueDateStr}). When convenient, please transfer to ${ppText}. Thank you!`
-}
-
-function getLineShareUrl(debtor: FinancialObligation) {
-  return `https://line.me/R/msg/text/?${encodeURIComponent(getRecallText(debtor))}`
-}
-
-async function copyRecallMessage(debtor: FinancialObligation) {
-  try {
-    await navigator.clipboard.writeText(getRecallText(debtor))
-    copiedIds.value[debtor.id] = true
-    toast.success('Recall message copied to clipboard!')
-    setTimeout(() => {
-      copiedIds.value[debtor.id] = false
-    }, 2500)
-  } catch (err) {
-    toast.error('Failed to copy to clipboard')
-  }
-}
 </script>

@@ -571,6 +571,10 @@ const currentHolding = computed(() => {
   if (props.prefillHoldingId) {
     return portfolioStore.holdings.find(h => h.id === props.prefillHoldingId)
   }
+  if (props.editingTransaction?.holding) {
+    const matched = portfolioStore.holdings.find(h => h.id === props.editingTransaction?.holding)
+    if (matched) return matched
+  }
   const t = form.value.ticker.trim().toUpperCase()
   if (!t) return null
   return portfolioStore.holdings.find(h =>

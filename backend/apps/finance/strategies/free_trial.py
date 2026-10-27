@@ -25,11 +25,30 @@ class FreeTrialStrategy(BaseObligationStrategy):
         except Exception:
             auto_renew_cost = Decimal('0.00')
 
+        # Synchronize payment_method and linked_card so clearing either clears both without resurrecting stale data
+        has_pm = 'payment_method' in metadata
+        has_lc = 'linked_card' in metadata
+
+        if has_pm and not has_lc:
+            card_val = str(metadata.get('payment_method') or '').strip()
+        elif has_lc and not has_pm:
+            card_val = str(metadata.get('linked_card') or '').strip()
+        elif has_pm and has_lc:
+            pm_val = str(metadata.get('payment_method') or '').strip()
+            lc_val = str(metadata.get('linked_card') or '').strip()
+            if not pm_val or not lc_val:
+                # If either compatibility field was cleared to empty string, clear both!
+                card_val = ''
+            else:
+                card_val = pm_val
+        else:
+            card_val = ''
+
         return {
             'plan_name': str(metadata.get('plan_name', '')).strip(),
             'account_email': str(metadata.get('account_email', '')).strip(),
-            'linked_card': str(metadata.get('linked_card', metadata.get('payment_method', ''))).strip(),
-            'payment_method': str(metadata.get('payment_method', metadata.get('linked_card', ''))).strip(),
+            'linked_card': card_val,
+            'payment_method': card_val,
             'category': str(metadata.get('category', 'GENERAL')).strip().upper(),
             'cancel_url': str(metadata.get('cancel_url', '')).strip(),
             'cancel_steps': str(metadata.get('cancel_steps', '')).strip(),
@@ -64,8 +83,8 @@ class FreeTrialStrategy(BaseObligationStrategy):
         return {
             'plan_name': metadata.get('plan_name', ''),
             'account_email': metadata.get('account_email', ''),
-            'linked_card': metadata.get('linked_card', metadata.get('payment_method', '')),
-            'payment_method': metadata.get('payment_method', metadata.get('linked_card', '')),
+            'linked_card': metadata.get('linked_card', '') if metadata.get('linked_card') is not None else metadata.get('payment_method', ''),
+            'payment_method': metadata.get('payment_method', '') if metadata.get('payment_method') is not None else metadata.get('linked_card', ''),
             'category': metadata.get('category', 'GENERAL'),
             'cancel_url': metadata.get('cancel_url', ''),
             'cancel_steps': metadata.get('cancel_steps', ''),

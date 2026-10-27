@@ -126,48 +126,6 @@
         </div>
       </div>
 
-      <!-- Quick Recall Template Generator (For Debtor Receivables) -->
-      <div
-        v-if="debt.direction === 'INFLOW' && debt.status === 'ACTIVE'"
-        class="p-5 rounded-xl bg-zinc-900/50 border border-emerald-500/30 space-y-3 font-mono text-xs"
-      >
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
-            <MessageSquare class="w-4 h-4" />
-            <span>One-Click Friendly Reminder Template</span>
-          </div>
-          <span class="text-[10px] text-zinc-500">
-            Due: {{ debt.due_date ? new Date(debt.due_date).toLocaleDateString('en-GB') : 'Flexible' }}
-          </span>
-        </div>
-
-        <!-- Editable Message Box -->
-        <div class="p-3 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-300 font-sans text-xs select-all leading-relaxed">
-          {{ recallMessageText }}
-        </div>
-
-        <!-- Action Buttons -->
-        <div class="flex flex-wrap items-center gap-2.5 font-sans pt-1">
-          <button
-            @click="copyRecallMessage"
-            class="py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-colors flex items-center gap-1.5"
-          >
-            <Check v-if="copiedRecall" class="w-3.5 h-3.5 text-zinc-300" />
-            <Copy v-else class="w-3.5 h-3.5 text-zinc-400" />
-            <span>{{ copiedRecall ? 'Copied to Clipboard!' : 'Copy Text' }}</span>
-          </button>
-
-          <a
-            :href="lineShareUrl"
-            target="_blank"
-            class="py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-colors flex items-center gap-1.5"
-          >
-            <Send class="w-3.5 h-3.5 text-zinc-400" />
-            <span>Share via LINE / Chat</span>
-          </a>
-        </div>
-      </div>
-
       <!-- Segmented Workspace Tabs -->
       <div class="border-b border-zinc-800/80">
         <div class="flex items-center gap-1">
@@ -459,9 +417,6 @@ import {
   Check,
   Edit2,
   Trash2,
-  MessageSquare,
-  Copy,
-  Send,
   History,
   FileText,
   Upload,
@@ -484,7 +439,6 @@ const {
 
 const debtId = computed(() => route.params.id as string)
 const activeTab = ref<'LEDGER' | 'DOSSIER' | 'DOCS'>('LEDGER')
-const copiedRecall = ref(false)
 
 const showPayModal = ref(false)
 const showEditModal = ref(false)
@@ -530,34 +484,6 @@ async function refreshDebt() {
     await fetchDebtById(debtId.value)
   } catch (err: any) {
     toast.error('Failed to load debt record')
-  }
-}
-
-const recallMessageText = computed(() => {
-  if (!debt.value) return ''
-  if (debt.value.summary?.recall_template) return debt.value.summary.recall_template
-
-  const party = debt.value.metadata?.counterparty || debt.value.title || 'Friend'
-  const rem = Number(debt.value.summary?.remaining_balance ?? debt.value.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })
-  const due = debt.value.due_date ? new Date(debt.value.due_date).toLocaleDateString('en-GB') : 'soon'
-  const pp = debt.value.metadata?.promptpay ? `PromptPay: ${debt.value.metadata.promptpay}` : 'the designated account'
-  return `Hi ${party}, friendly reminder regarding the outstanding balance of ฿${rem} (due: ${due}). When convenient, please transfer to ${pp}. Thank you!`
-})
-
-const lineShareUrl = computed(() => {
-  return `https://line.me/R/msg/text/?${encodeURIComponent(recallMessageText.value)}`
-})
-
-async function copyRecallMessage() {
-  try {
-    await navigator.clipboard.writeText(recallMessageText.value)
-    copiedRecall.value = true
-    toast.success('Recall message copied to clipboard!')
-    setTimeout(() => {
-      copiedRecall.value = false
-    }, 2500)
-  } catch {
-    toast.error('Failed to copy to clipboard')
   }
 }
 

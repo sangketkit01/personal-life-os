@@ -347,6 +347,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return res.data
   }
 
+  async function permanentDeleteNote(id: string) {
+    const res = await apiClient.delete<{ deleted: boolean; id: string }>(`/workspace/notes/${id}/permanent/`)
+    trashedNotes.value = trashedNotes.value.filter(n => n.id !== id)
+    return res.data
+  }
+
   async function setNoteLock(id: string, payload: { is_locked: boolean; pin?: string; old_pin?: string }) {
     const res = await apiClient.post<Note>(`/workspace/notes/${id}/set-lock/`, payload)
     const idx = standaloneNotes.value.findIndex(n => n.id === id)
@@ -625,6 +631,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     trashNote,
     restoreNote,
     emptyTrash,
+    permanentDeleteNote,
     setNoteLock,
     verifyNoteLock,
     copyNoteToProject,

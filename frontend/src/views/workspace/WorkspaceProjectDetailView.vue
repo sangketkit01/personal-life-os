@@ -2,22 +2,6 @@
   <div class="space-y-5 max-w-7xl mx-auto font-sans">
     <!-- ============ 1. Project Header & Properties Bar ============ -->
     <div class="pb-4 border-b border-zinc-800/80 space-y-3">
-      <nav aria-label="Breadcrumb" class="flex items-center gap-1.5 text-[11px] font-mono text-zinc-500 min-w-0">
-        <ol class="flex items-center gap-1.5 min-w-0">
-          <li class="flex items-center gap-1.5 shrink-0">
-            <RouterLink to="/" class="hover:text-zinc-300 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 rounded px-0.5">{{ t('crumb.home') }}</RouterLink>
-            <span aria-hidden="true" class="text-zinc-700 select-none">/</span>
-          </li>
-          <li class="flex items-center gap-1.5 shrink-0">
-            <RouterLink to="/workspace" class="hover:text-zinc-300 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 rounded px-0.5">{{ t('crumb.workspace') }}</RouterLink>
-            <span aria-hidden="true" class="text-zinc-700 select-none">/</span>
-          </li>
-          <li class="min-w-0 truncate">
-            <span aria-current="page" class="text-zinc-300 truncate">{{ project?.name || t('crumb.projectDossier') }}</span>
-          </li>
-        </ol>
-      </nav>
-
       <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
         <div class="flex items-start gap-3 min-w-0">
           <div

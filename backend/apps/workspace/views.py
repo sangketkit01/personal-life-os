@@ -304,6 +304,18 @@ class NoteViewSet(viewsets.ModelViewSet):
         deleted, _ = Note.objects.filter(user=request.user, is_trashed=True).delete()
         return response.Response({'deleted': deleted})
 
+    @action(detail=True, methods=['post', 'delete'], url_path='permanent')
+    def permanent(self, request, pk=None):
+        """Permanently delete a single trashed note of the current user."""
+        note_id = _clean_uuid(pk)
+        note = Note.objects.filter(id=note_id, user=request.user, is_trashed=True).first() if note_id else None
+        if not note:
+            return response.Response({'error': 'Note not found in trash.'}, status=status.HTTP_404_NOT_FOUND)
+        title = note.title
+        note.delete()
+        log_activity(request.user, 'WORKSPACE', 'PERMANENT_DELETE_NOTE', f'Permanently deleted note "{title}"', request=request)
+        return response.Response({'deleted': True, 'id': str(note_id)})
+
     @action(detail=True, methods=['post'], url_path='set-lock')
     def set_lock(self, request, pk=None):
         """Lock or unlock a note with an optional 4-6 digit PIN."""

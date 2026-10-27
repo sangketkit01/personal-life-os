@@ -546,6 +546,46 @@ class WorkspaceTestCase(TestCase):
         self.assertGreaterEqual(res_empty.data['deleted'], 1)
         self.assertFalse(Note.objects.filter(id=note_id).exists())
 
+    def test_note_permanent_delete_individual(self):
+        """Test permanently deleting an individual trashed note with security and status boundaries."""
+        # 1. Create a note for worker
+        res = self.client.post('/api/workspace/notes/', {'title': 'Trash Target Note'}, format='json')
+        note_id = res.data['id']
+
+        # 2. Cannot permanently delete a live note (returns 404)
+        res_live_del = self.client.delete(f'/api/workspace/notes/{note_id}/permanent/')
+        self.assertEqual(res_live_del.status_code, status.HTTP_404_NOT_FOUND)
+
+        # 3. Move note to trash
+        self.client.post(f'/api/workspace/notes/{note_id}/trash/')
+        self.assertTrue(Note.objects.filter(id=note_id, is_trashed=True).exists())
+
+        # 4. User B (coworker) cannot permanently delete User A's trashed note (BOLA isolation)
+        friend_client = APIClient()
+        friend_client.cookies['access_token'] = generate_access_token(self.friend)
+        res_coworker = friend_client.delete(f'/api/workspace/notes/{note_id}/permanent/')
+        self.assertEqual(res_coworker.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(Note.objects.filter(id=note_id).exists())
+
+        # 5. User A can permanently delete via DELETE or POST
+        res_del = self.client.delete(f'/api/workspace/notes/{note_id}/permanent/')
+        self.assertEqual(res_del.status_code, status.HTTP_200_OK)
+        self.assertTrue(res_del.data.get('deleted'))
+        self.assertFalse(Note.objects.filter(id=note_id).exists())
+
+        # 6. Deleting again returns 404
+        res_del_again = self.client.delete(f'/api/workspace/notes/{note_id}/permanent/')
+        self.assertEqual(res_del_again.status_code, status.HTTP_404_NOT_FOUND)
+
+        # 7. Verify POST also works for permanent delete
+        res_post_note = self.client.post('/api/workspace/notes/', {'title': 'Trash Target Note 2'}, format='json')
+        note_id_2 = res_post_note.data['id']
+        self.client.post(f'/api/workspace/notes/{note_id_2}/trash/')
+        res_post_del = self.client.post(f'/api/workspace/notes/{note_id_2}/permanent/')
+        self.assertEqual(res_post_del.status_code, status.HTTP_200_OK)
+        self.assertTrue(res_post_del.data.get('deleted'))
+        self.assertFalse(Note.objects.filter(id=note_id_2).exists())
+
     def test_note_lock_set_verify_unlock(self):
         """Test PIN locking: set-lock, verify-lock, wrong PIN, unlock."""
         res = self.client.post('/api/workspace/notes/', {'title': 'Secret Note'}, format='json')

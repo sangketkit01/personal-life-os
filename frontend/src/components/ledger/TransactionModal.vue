@@ -8,7 +8,10 @@
       <!-- Fixed Header -->
       <div class="shrink-0 px-4 sm:px-6 py-3.5 border-b border-zinc-800 flex items-center justify-between">
         <h3 class="text-base font-semibold text-zinc-100 tracking-tight flex items-center gap-2">
-          <span>New Transaction</span>
+          <span>{{ isEdit ? 'Edit Transaction' : 'New Transaction' }}</span>
+          <span v-if="isEdit && transactionToEdit" class="text-xs font-mono text-zinc-500 font-normal">
+            #{{ transactionToEdit.id.slice(0, 8) }}
+          </span>
         </h3>
         <button
           @click="emit('close')"
@@ -27,7 +30,11 @@
           </div>
 
           <!-- 1. Type Switcher: Expense vs Income -->
-          <div class="flex items-center p-1 rounded-lg bg-zinc-900 border border-zinc-800">
+          <div v-if="isTypeLocked" class="flex items-center justify-between p-2.5 rounded-lg bg-zinc-900/80 border border-zinc-800 text-xs font-mono">
+            <span class="text-zinc-400">Transaction Type: <strong :class="form.transaction_type === 'INFLOW' ? 'text-emerald-400' : 'text-zinc-200'">{{ form.transaction_type === 'INFLOW' ? 'Income' : 'Expense' }}</strong></span>
+            <span class="text-[10px] text-zinc-500">Locked after creation</span>
+          </div>
+          <div v-else class="flex items-center p-1 rounded-lg bg-zinc-900 border border-zinc-800">
             <button
               type="button"
               @click="form.transaction_type = 'OUTFLOW'"
@@ -56,7 +63,8 @@
               <select
                 v-model="form.account"
                 required
-                class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono text-xs transition-colors"
+                :disabled="isAccountLocked"
+                class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono text-xs transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="" disabled>Select account / wallet</option>
               <option
@@ -67,6 +75,9 @@
                 {{ acc.name }} (฿{{ Number(acc.current_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }})
               </option>
             </select>
+            <span v-if="isAccountLocked" class="text-[10px] text-zinc-500 font-mono block mt-0.5">
+              Account locked after creation
+            </span>
           </div>
 
           <div>
@@ -84,11 +95,14 @@
                 step="0.01"
                 min="0.01"
                 required
-                :disabled="isSplit && splitMode === 'ITEMIZED'"
+                :disabled="(isSplit && splitMode === 'ITEMIZED') || isAmountLocked"
                 placeholder="0.00"
-                class="w-full pl-7 pr-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono font-semibold transition-colors disabled:opacity-75"
+                class="w-full pl-7 pr-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono font-semibold transition-colors disabled:opacity-75 disabled:cursor-not-allowed"
               />
             </div>
+            <span v-if="isAmountLocked" class="text-[9px] text-amber-500/90 font-mono block mt-1 leading-tight">
+              {{ amountLockReason }}
+            </span>
           </div>
         </div>
 
@@ -111,8 +125,17 @@
               v-model="form.transaction_date"
               type="date"
               required
-              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
+              :disabled="isDateLocked"
+              :class="[
+                'w-full px-3 py-2 rounded-md border font-mono transition-colors text-xs',
+                isDateLocked
+                  ? 'bg-zinc-950/60 border-zinc-800 text-zinc-500 cursor-not-allowed'
+                  : 'bg-zinc-900 border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500'
+              ]"
             />
+            <span v-if="isDateLocked" class="text-[9px] text-amber-500/90 font-mono block mt-1">
+              Transfer date is locked to keep both accounts in sync
+            </span>
           </div>
         </div>
 
@@ -141,8 +164,8 @@
           </select>
         </div>
 
-        <!-- 5. SMART BILL-SPLITTING PANEL (Expense Only) -->
-        <div v-if="form.transaction_type === 'OUTFLOW'" class="pt-1">
+        <!-- 5. SMART BILL-SPLITTING PANEL (Expense Only, Create Mode Only) -->
+        <div v-if="!isEdit && form.transaction_type === 'OUTFLOW'" class="pt-1">
           <div class="flex items-center justify-between pb-2 border-b border-zinc-800/80">
             <label class="flex items-center gap-2 cursor-pointer select-none">
               <input
@@ -523,8 +546,19 @@
           </div>
         </div>
 
-        <!-- Receipt / Slip Attachment (Zero-Disk Google Drive) -->
-        <div>
+        <!-- Split Bill Info Notice (In Edit Mode) -->
+        <div v-if="isEdit && transactionToEdit?.is_split" class="p-3 rounded-lg bg-zinc-900/60 border border-zinc-800 text-xs font-mono text-zinc-400 space-y-1">
+          <div class="flex items-center gap-1.5 text-zinc-300 font-semibold">
+            <Users class="w-3.5 h-3.5 text-zinc-400" />
+            <span>Split Bill Transaction</span>
+          </div>
+          <p class="text-[11px] text-zinc-500">
+            This transaction contains split allocations. Split participant shares and debtor records cannot be modified directly from this modal.
+          </p>
+        </div>
+
+        <!-- Receipt / Slip Attachment (Create Mode Only) -->
+        <div v-if="!isEdit">
           <div class="flex items-center justify-between mb-1">
             <label class="block text-[11px] text-zinc-300 font-medium">Receipt / Slip Attachment</label>
             <span v-if="storageStore.isConnected" class="text-[10px] text-zinc-500 font-mono">
@@ -607,7 +641,7 @@
             :disabled="isSubmitting || !form.gross_amount || !form.title || isOverAllocated"
             class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-sans font-semibold transition-all active:scale-[0.98] disabled:opacity-50 shadow-sm cursor-pointer"
           >
-            {{ isSubmitting ? 'Saving...' : 'Record Transaction' }}
+            {{ isSubmitting ? 'Saving...' : (isEdit ? 'Save Changes' : 'Record Transaction') }}
           </button>
         </div>
       </form>
@@ -620,7 +654,7 @@ import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import { useLedgerStore } from '../../stores/ledger'
 import { useStorageStore } from '../../stores/storage'
 import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
-import type { TransactionType } from '../../types/ledger'
+import type { TransactionType, LedgerTransaction } from '../../types/ledger'
 import {
   X,
   ArrowUpRight,
@@ -635,11 +669,13 @@ import {
 
 const props = defineProps<{
   isOpen: boolean
+  transactionToEdit?: LedgerTransaction | null
 }>()
 
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'created'): void
+  (e: 'updated'): void
 }>()
 
 useBodyScrollLock(() => props.isOpen)
@@ -650,6 +686,50 @@ const isSubmitting = ref(false)
 const errorMessage = ref('')
 const copySuccess = ref(false)
 const selectedFile = ref<File | null>(null)
+
+const isEdit = computed(() => !!props.transactionToEdit)
+const isAccountLocked = computed(() => isEdit.value)
+const isTypeLocked = computed(() => isEdit.value)
+
+const isTransfer = computed(() => {
+  if (!props.transactionToEdit) return false
+  const tx = props.transactionToEdit as any
+  return !!(tx.transfer_destination || tx.transfer_peer)
+})
+
+const isDateLocked = computed(() => {
+  return isTransfer.value
+})
+
+const isAmountLocked = computed(() => {
+  if (!props.transactionToEdit) return false
+  const tx = props.transactionToEdit as any
+  if (typeof tx.is_amount_locked === 'boolean') return tx.is_amount_locked
+  if (tx.transfer_destination || tx.transfer_peer) return true
+  if (tx.obligation || tx.payment_history) return true
+  if (tx.settled_splits?.length || tx.settlement_transaction) return true
+  if (tx.is_split || (tx.splits && tx.splits.length > 0)) return true
+  return false
+})
+
+const amountLockReason = computed(() => {
+  if (!props.transactionToEdit) return ''
+  const tx = props.transactionToEdit as any
+  if (tx.amount_lock_reason) return tx.amount_lock_reason
+  if (tx.transfer_destination || tx.transfer_peer) {
+    return 'Transfer amounts cannot be edited directly. Delete transfer and record anew.'
+  }
+  if (tx.obligation || tx.payment_history) {
+    return 'Amount linked to an obligation payment is locked to maintain dossier balance.'
+  }
+  if (tx.settled_splits?.length || tx.settlement_transaction) {
+    return 'Amount linked to a settled split payment is locked.'
+  }
+  if (tx.is_split || (tx.splits && tx.splits.length > 0)) {
+    return 'Split bill amount is locked to maintain split allocation shares.'
+  }
+  return ''
+})
 
 const isSplit = ref(false)
 const splitMode = ref<'ITEMIZED' | 'EQUAL' | 'CUSTOM'>('ITEMIZED')
@@ -790,33 +870,49 @@ const handleKeyDown = (e: KeyboardEvent) => {
 }
 
 watch(
-  () => props.isOpen,
-  (open) => {
+  () => [props.isOpen, props.transactionToEdit] as const,
+  ([open, txToEdit]) => {
     if (open) {
       window.addEventListener('keydown', handleKeyDown)
-      form.account = ''
-      form.title = ''
-      form.gross_amount = null as any
-      form.notes = ''
-      form.category = null
-      form.transaction_type = 'OUTFLOW'
-      form.transaction_date = ''
-      isSplit.value = false
-      splitMode.value = 'ITEMIZED'
-      equalSplitPeopleCount.value = null
-      harntungParticipants.value = []
-      harntungPayerName.value = ''
-      harntungItems.value = []
-      participants.value = []
-      serviceChargePct.value = 0
-      vatPct.value = 0
       errorMessage.value = ''
-      selectedFile.value = null
-      storageStore.fetchStatus().catch(() => {})
+      if (ledgerStore.categories.length === 0) {
+        ledgerStore.fetchCategories().catch(() => {})
+      }
+      if (txToEdit) {
+        form.account = txToEdit.account
+        form.title = txToEdit.title
+        form.gross_amount = Number(txToEdit.gross_amount)
+        form.notes = txToEdit.notes || ''
+        form.category = txToEdit.category || null
+        form.transaction_type = txToEdit.transaction_type
+        form.transaction_date = txToEdit.transaction_date
+        isSplit.value = false
+        selectedFile.value = null
+      } else {
+        form.account = ''
+        form.title = ''
+        form.gross_amount = null as any
+        form.notes = ''
+        form.category = null
+        form.transaction_type = 'OUTFLOW'
+        form.transaction_date = ''
+        isSplit.value = false
+        splitMode.value = 'ITEMIZED'
+        equalSplitPeopleCount.value = null
+        harntungParticipants.value = []
+        harntungPayerName.value = ''
+        harntungItems.value = []
+        participants.value = []
+        serviceChargePct.value = 0
+        vatPct.value = 0
+        selectedFile.value = null
+        storageStore.fetchStatus().catch(() => {})
+      }
     } else {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }
+  },
+  { immediate: true }
 )
 
 function handleFileChange(event: Event) {
@@ -967,6 +1063,7 @@ function copySettlementSummary() {
 }
 
 async function handleSubmit() {
+  if (isSubmitting.value) return
   if (isOverAllocated.value) return
   if (!form.account) {
     errorMessage.value = 'Please select an account'
@@ -983,6 +1080,23 @@ async function handleSubmit() {
   errorMessage.value = ''
   isSubmitting.value = true
   try {
+    if (isEdit.value && props.transactionToEdit) {
+      const updatePayload: any = {
+        title: form.title.trim(),
+        notes: form.notes,
+        category: form.category,
+        transaction_date: isDateLocked.value ? (props.transactionToEdit as any).transaction_date : form.transaction_date
+      }
+      if (!isAmountLocked.value) {
+        updatePayload.gross_amount = Number(form.gross_amount)
+        updatePayload.net_amount = Number(form.gross_amount)
+      }
+      await ledgerStore.updateTransaction(props.transactionToEdit.id, updatePayload)
+      emit('updated')
+      emit('close')
+      return
+    }
+
     const payload: any = {
       account: form.account,
       transaction_type: form.transaction_type,

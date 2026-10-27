@@ -352,6 +352,13 @@
                   </td>
                   <td class="py-3 text-right pr-4">
                     <button
+                      @click="handleEditOrder(order)"
+                      class="p-1 rounded text-zinc-500 hover:text-indigo-400 transition-colors mr-1"
+                      title="Edit Order"
+                    >
+                      <Edit2 class="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       @click="handleDeleteOrder(order.id)"
                       class="p-1 rounded text-zinc-500 hover:text-rose-400 transition-colors"
                       title="Delete Order"
@@ -548,6 +555,13 @@
       @updated="refreshAccount"
     />
 
+    <EditObligationModal
+      :is-open="showOrderEditModal"
+      :obligation="editingOrder"
+      @close="showOrderEditModal = false; editingOrder = null"
+      @updated="handleOrderUpdated"
+    />
+
     <ConfirmModal
       :is-open="confirmModal.isOpen"
       :title="confirmModal.title"
@@ -598,6 +612,7 @@ const {
   isLoading,
   isActionLoading,
   fetchAccountById,
+  fetchSubOrders,
   deleteAccount,
   deleteOrder,
   deleteAttachment
@@ -609,6 +624,21 @@ const ordersFilter = ref<'ALL' | 'ACTIVE' | 'COMPLETED'>('ACTIVE')
 
 const showPayModal = ref(false)
 const showEditModal = ref(false)
+const showOrderEditModal = ref(false)
+const editingOrder = ref<FinancialObligation | null>(null)
+
+function handleEditOrder(order: FinancialObligation) {
+  editingOrder.value = order
+  showOrderEditModal.value = true
+}
+
+async function handleOrderUpdated() {
+  await Promise.all([
+    fetchAccountById(accountId.value),
+    fetchSubOrders(accountId.value)
+  ])
+  toast.success('Purchase order updated')
+}
 
 const confirmModal = reactive({
   isOpen: false,

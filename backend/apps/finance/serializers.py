@@ -112,6 +112,7 @@ class FinancialObligationSerializer(serializers.ModelSerializer):
     )
     project_name = serializers.CharField(source='project.name', read_only=True, default=None)
     project_color = serializers.CharField(source='project.color', read_only=True, default=None)
+    is_split_debt = serializers.SerializerMethodField()
 
     class Meta:
         model = FinancialObligation
@@ -136,10 +137,23 @@ class FinancialObligationSerializer(serializers.ModelSerializer):
             'payment_histories',
             'attachments',
             'down_payment_account_id',
+            'is_split_debt',
             'created_at',
             'updated_at'
         )
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'is_split_debt', 'created_at', 'updated_at')
+
+    def get_is_split_debt(self, obj):
+        if obj.type != ObligationType.DEBT:
+            return False
+        meta = obj.metadata or {}
+        return bool(
+            meta.get('origin_transaction_id') or
+            meta.get('origin_bill') or
+            meta.get('split_bill_id') or
+            meta.get('origin_split_id') or
+            (hasattr(obj, 'origin_split') and obj.origin_split.exists())
+        )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -193,6 +207,10 @@ class FinancialObligationSerializer(serializers.ModelSerializer):
             raw_metadata = attrs['metadata']
             if self.instance and self.instance.metadata:
                 merged_metadata = dict(self.instance.metadata)
+                if 'linked_card' in raw_metadata and 'payment_method' not in raw_metadata:
+                    raw_metadata['payment_method'] = raw_metadata['linked_card']
+                elif 'payment_method' in raw_metadata and 'linked_card' not in raw_metadata:
+                    raw_metadata['linked_card'] = raw_metadata['payment_method']
                 merged_metadata.update(raw_metadata)
                 metadata = merged_metadata
             else:
@@ -207,6 +225,136 @@ class FinancialObligationSerializer(serializers.ModelSerializer):
         if subtype:
             attrs['subtype'] = subtype
             metadata['subtype'] = subtype
+
+        if self.instance:
+            inst_meta = self.instance.metadata or {}
+            inst_current_term = int(inst_meta.get('current_term', 0))
+            metadata['current_term'] = inst_current_term
+
+            # Workspace SSOT validation for mirrored MA and Infrastructure obligations
+            orig_source_type = inst_meta.get('source_type')
+            if orig_source_type:
+                metadata['source_type'] = orig_source_type
+
+            is_ma = (orig_source_type == 'MA_CONTRACT') or (hasattr(self.instance, 'ma_projects') and self.instance.ma_projects.exists())
+            is_infra = (orig_source_type == 'INFRA_ASSET') or (hasattr(self.instance, 'linked_infra_assets') and self.instance.linked_infra_assets.exists())
+
+            if is_ma or is_infra:
+                if is_ma and metadata.get('source_type') != 'MA_CONTRACT':
+                    metadata['source_type'] = 'MA_CONTRACT'
+                elif is_infra and metadata.get('source_type') != 'INFRA_ASSET':
+                    metadata['source_type'] = 'INFRA_ASSET'
+
+                source_label = "Maintenance Agreement" if is_ma else "Infrastructure Asset"
+                if 'amount' in attrs and Decimal(str(attrs['amount'])) != Decimal(str(self.instance.amount)):
+                    raise serializers.ValidationError({'amount': f"This obligation is managed by Workspace ({source_label}). Edit amount from the corresponding Workspace project or asset."})
+                if 'title' in attrs and str(attrs['title']).strip() != str(self.instance.title).strip():
+                    raise serializers.ValidationError({'title': f"This obligation is managed by Workspace ({source_label}). Edit title from the corresponding Workspace project or asset."})
+                if 'currency' in attrs and attrs['currency'] != self.instance.currency:
+                    raise serializers.ValidationError({'currency': f"This obligation is managed by Workspace ({source_label}). Edit currency from the corresponding Workspace project or asset."})
+                if 'due_date' in attrs and attrs['due_date'] != self.instance.due_date:
+                    raise serializers.ValidationError({'due_date': f"This obligation is managed by Workspace ({source_label}). Edit billing schedule from the corresponding Workspace project or asset."})
+                if 'billing_day' in attrs and attrs['billing_day'] != self.instance.billing_day:
+                    raise serializers.ValidationError({'billing_day': f"This obligation is managed by Workspace ({source_label}). Edit billing day from the corresponding Workspace project or asset."})
+                if 'billing_cycle' in metadata and str(metadata.get('billing_cycle')).upper() != str(inst_meta.get('billing_cycle', '')).upper():
+                    raise serializers.ValidationError({'billing_cycle': f"This obligation is managed by Workspace ({source_label}). Edit billing cycle from the corresponding Workspace project or asset."})
+
+            has_payment_history = inst_current_term > 0 or self.instance.payment_histories.exists()
+
+            is_bnpl_suborder = (
+                self.instance.subtype == ObligationSubtype.BNPL_ORDER or
+                (self.instance.parent_id and self.instance.parent.subtype == ObligationSubtype.BNPL_ACCOUNT)
+            )
+
+            if is_bnpl_suborder:
+                # 1. Financial terms on BNPL sub-orders are locked
+                if 'amount' in attrs and Decimal(str(attrs['amount'])) != Decimal(str(self.instance.amount)):
+                    raise serializers.ValidationError({'amount': 'BNPL sub-order monthly amount is locked.'})
+
+                for field in ('total_terms', 'down_payment', 'financed_amount'):
+                    if field in inst_meta and field in metadata:
+                        if str(metadata[field]).strip() != str(inst_meta[field]).strip():
+                            raise serializers.ValidationError({field: f'BNPL sub-order {field} is locked to prevent schedule desynchronization.'})
+
+                # Validate order_date format strictly (YYYY-MM-DD)
+                new_order_date_raw = metadata.get('order_date')
+                new_order_date_str = None
+                if new_order_date_raw is not None and str(new_order_date_raw).strip() != '':
+                    candidate = str(new_order_date_raw).strip()
+                    import re
+                    if not re.match(r'^\d{4}-\d{2}-\d{2}$', candidate):
+                        raise serializers.ValidationError({'order_date': 'Order date must be in YYYY-MM-DD format.'})
+                    import datetime
+                    try:
+                        datetime.date.fromisoformat(candidate)
+                    except ValueError:
+                        raise serializers.ValidationError({'order_date': 'Invalid calendar date for order_date.'})
+                    new_order_date_str = candidate
+                    metadata['order_date'] = candidate
+                else:
+                    new_order_date_str = None
+                    if 'order_date' in metadata:
+                        metadata['order_date'] = None
+
+                # 2. Lock purchase / order date and due date if payment history already exists
+                if has_payment_history:
+                    old_order_date_str = (str(inst_meta.get('order_date') or '').strip()) or None
+                    if old_order_date_str != new_order_date_str:
+                        raise serializers.ValidationError({'order_date': 'Cannot change order date after payment history has been recorded.'})
+                    if 'due_date' in attrs and attrs['due_date'] != self.instance.due_date:
+                        raise serializers.ValidationError({'due_date': 'Cannot change due date after payment history has been recorded.'})
+                else:
+                    old_order_date_str = (str(inst_meta.get('order_date') or '').strip()) or None
+                    if new_order_date_str and new_order_date_str != old_order_date_str:
+                        import datetime
+                        from apps.finance.strategies.installment import InstallmentStrategy
+                        try:
+                            new_od = datetime.date.fromisoformat(new_order_date_str)
+                            parent = self.instance.parent
+                            due_day = int((parent.metadata or {}).get('due_day', parent.billing_day or 10)) if parent else 10
+                            attrs['due_date'] = InstallmentStrategy.calculate_term_due_date(new_od, term_num=1, due_day=due_day)
+                        except (ValueError, TypeError):
+                            pass
+
+            elif self.instance.type == ObligationType.INSTALLMENT and has_payment_history:
+                if 'total_terms' in inst_meta and 'total_terms' in metadata:
+                    if int(metadata['total_terms']) < inst_current_term:
+                        raise serializers.ValidationError({'total_terms': f'Total terms cannot be less than already paid terms ({inst_current_term}).'})
+
+            elif self.instance.type == ObligationType.DEBT:
+                raw_rem = inst_meta.get('remaining_balance')
+                if raw_rem is not None and str(raw_rem).strip() not in ('', 'None', 'null'):
+                    try:
+                        fresh_rem = Decimal(str(raw_rem))
+                    except Exception:
+                        fresh_rem = Decimal(str(self.instance.amount))
+                else:
+                    fresh_rem = Decimal(str(self.instance.amount))
+
+                has_payments = self.instance.payment_histories.exists() or fresh_rem < self.instance.amount
+                is_split = (
+                    (hasattr(self.instance, 'origin_split') and self.instance.origin_split.exists()) or
+                    bool(inst_meta.get('origin_split_id')) or
+                    bool(inst_meta.get('origin_transaction_id')) or
+                    bool(inst_meta.get('origin_bill')) or
+                    bool(inst_meta.get('split_bill_id'))
+                )
+
+                if 'amount' in attrs and Decimal(str(attrs['amount'])) != Decimal(str(self.instance.amount)):
+                    if has_payments:
+                        raise serializers.ValidationError({'amount': 'Cannot change debt principal after payment history has been recorded.'})
+                    if is_split:
+                        raise serializers.ValidationError({'amount': 'Cannot change debt principal for obligations generated from a Split Bill.'})
+                    metadata['remaining_balance'] = float(Decimal(str(attrs['amount'])))
+                else:
+                    metadata['remaining_balance'] = float(fresh_rem)
+
+                for calc_key in ('total_paid', 'paid_total', 'progress_pct', 'progress_percentage', 'is_settled'):
+                    metadata.pop(calc_key, None)
+
+        elif not self.instance and obligation_type == ObligationType.DEBT:
+            if 'amount' in attrs:
+                metadata['remaining_balance'] = float(Decimal(str(attrs['amount'])))
 
         if obligation_type:
             try:
@@ -295,6 +443,58 @@ class FinancialObligationSerializer(serializers.ModelSerializer):
                 except (ValueError, TypeError):
                     pass
 
+        return obligation
+
+    @db_transaction.atomic
+    def update(self, instance, validated_data):
+        from apps.finance.models import FinancialObligation
+        locked_ob = FinancialObligation.objects.select_for_update().get(id=instance.id)
+
+        if locked_ob.type == ObligationType.DEBT:
+            locked_meta = locked_ob.metadata or {}
+            raw_rem = locked_meta.get('remaining_balance')
+            if raw_rem is not None and str(raw_rem).strip() not in ('', 'None', 'null'):
+                try:
+                    fresh_rem = Decimal(str(raw_rem))
+                except Exception:
+                    fresh_rem = Decimal(str(locked_ob.amount))
+            else:
+                fresh_rem = Decimal(str(locked_ob.amount))
+
+            has_payments = locked_ob.payment_histories.exists() or fresh_rem < locked_ob.amount
+            is_split = (
+                (hasattr(locked_ob, 'origin_split') and locked_ob.origin_split.exists()) or
+                bool(locked_meta.get('origin_split_id')) or
+                bool(locked_meta.get('origin_transaction_id')) or
+                bool(locked_meta.get('origin_bill')) or
+                bool(locked_meta.get('split_bill_id'))
+            )
+
+            meta = validated_data.setdefault('metadata', dict(locked_meta))
+            if 'amount' in validated_data and Decimal(str(validated_data['amount'])) != Decimal(str(locked_ob.amount)):
+                if has_payments:
+                    raise serializers.ValidationError({'amount': 'Cannot change debt principal after payment history has been recorded.'})
+                if is_split:
+                    raise serializers.ValidationError({'amount': 'Cannot change debt principal for obligations generated from a Split Bill.'})
+                meta['remaining_balance'] = float(Decimal(str(validated_data['amount'])))
+            else:
+                meta['remaining_balance'] = float(fresh_rem)
+
+            for calc_key in ('total_paid', 'paid_total', 'progress_pct', 'progress_percentage', 'is_settled'):
+                meta.pop(calc_key, None)
+
+        obligation = super().update(locked_ob, validated_data)
+        parent = obligation.parent
+        if parent and parent.subtype == ObligationSubtype.BNPL_ACCOUNT:
+            import datetime
+            parent_strategy = ObligationStrategyFactory.get_strategy(parent.type)
+            p_summary = parent_strategy.get_summary(parent)
+            if p_summary.get('next_due_date'):
+                try:
+                    parent.due_date = datetime.date.fromisoformat(p_summary['next_due_date'])
+                    parent.save(update_fields=['due_date'])
+                except (ValueError, TypeError):
+                    pass
         return obligation
 
 

@@ -1,32 +1,14 @@
 <template>
   <div class="space-y-6 max-w-4xl mx-auto font-sans pb-16">
-    <!-- Top Navigation Breadcrumb & Quick Actions -->
-    <div class="flex items-center justify-between">
-      <nav aria-label="Breadcrumb" class="flex items-center gap-2 text-xs font-mono text-zinc-400 min-w-0">
-        <ol class="flex items-center gap-2 min-w-0">
-          <li class="flex items-center gap-2 shrink-0">
-            <RouterLink to="/portfolio/news" class="hover:text-zinc-200 transition-colors flex items-center gap-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 rounded px-1 -mx-1">
-              <ArrowLeft class="w-3.5 h-3.5" />
-              <span>{{ t('crumb.marketNews') }}</span>
-            </RouterLink>
-            <span aria-hidden="true" class="text-zinc-600 select-none">/</span>
-          </li>
-          <li class="min-w-0 truncate">
-            <span aria-current="page" class="text-zinc-300 truncate max-w-[240px] inline-block font-sans">{{ article?.ticker ? `$${article.ticker} ${t('crumb.newsBriefing')}` : t('crumb.newsBriefing') }}</span>
-          </li>
-        </ol>
-      </nav>
-
-      <div class="flex items-center gap-2">
-        <button
-          v-if="article"
-          @click="viewAsset(article.ticker)"
-          class="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-mono text-zinc-300 hover:text-white transition-colors flex items-center gap-1.5"
-        >
-          <BarChart3 class="w-3.5 h-3.5" />
-          <span>${{ article.ticker }} Asset Dossier</span>
-        </button>
-      </div>
+    <!-- Quick Actions -->
+    <div v-if="article" class="flex items-center justify-end">
+      <button
+        @click="viewAsset(article.ticker)"
+        class="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-mono text-zinc-300 hover:text-white transition-colors flex items-center gap-1.5"
+      >
+        <BarChart3 class="w-3.5 h-3.5" />
+        <span>${{ article.ticker }} Asset Dossier</span>
+      </button>
     </div>
 
     <!-- Loading State -->
@@ -300,10 +282,9 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePortfolioStore } from '../stores/portfolio'
-import { locale, t } from '../i18n'
+import { locale } from '../i18n'
 import type { StockNewsArticle } from '../types/portfolio'
 import {
-  ArrowLeft,
   Clock,
   BookOpen,
   Sparkles,

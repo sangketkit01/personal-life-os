@@ -91,6 +91,16 @@
           <span>Record Renewal</span>
         </button>
 
+        <!-- Edit Subscription / Free Trial -->
+        <button
+          @click="showEditModal = true"
+          type="button"
+          class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-medium transition-colors flex items-center gap-1.5"
+        >
+          <Edit2 class="w-3.5 h-3.5 text-zinc-400" />
+          <span>Edit</span>
+        </button>
+
         <!-- Delete / Retire -->
         <button
           @click="confirmDelete"
@@ -597,6 +607,14 @@
       </div>
     </div>
 
+    <!-- Edit Obligation Modal -->
+    <EditObligationModal
+      :is-open="showEditModal"
+      :obligation="subscription"
+      @close="showEditModal = false"
+      @updated="handleSubscriptionUpdated"
+    />
+
     <!-- Confirm Modal -->
     <ConfirmModal
       :is-open="confirmModal.isOpen"
@@ -621,6 +639,7 @@ import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
 import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
+import EditObligationModal from '../../components/finance/EditObligationModal.vue'
 import {
   ArrowLeft,
   ExternalLink,
@@ -635,7 +654,8 @@ import {
   FileText,
   History,
   FolderArchive,
-  Download
+  Download,
+  Edit2
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -670,7 +690,15 @@ const convertCycle = ref('MONTHLY')
 const convertAmount = ref(0)
 const isConverting = ref(false)
 
-useBodyScrollLock(() => showPayModal.value || showConvertModal.value)
+const showEditModal = ref(false)
+
+async function handleSubscriptionUpdated() {
+  const subId = route.params.id as string
+  if (subId) {
+    await fetchSubscription(subId)
+    toast.success('Subscription details updated')
+  }
+}
 
 const isUploading = ref(false)
 
@@ -684,6 +712,8 @@ const confirmModal = reactive({
   errorMessage: '',
   action: async () => {}
 })
+
+useBodyScrollLock(() => showPayModal.value || showConvertModal.value || showEditModal.value || confirmModal.isOpen)
 
 async function handleConfirmAction() {
   confirmModal.isLoading = true

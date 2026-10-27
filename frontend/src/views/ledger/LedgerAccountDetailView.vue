@@ -1,26 +1,7 @@
 <template>
   <div class="space-y-6 max-w-7xl mx-auto font-sans pb-16">
-    <!-- Breadcrumb & Top Bar -->
+    <!-- Top Bar -->
     <div class="pb-4 border-b border-zinc-800/80">
-      <nav aria-label="Breadcrumb" class="mb-2">
-        <ol class="flex items-center gap-2 text-xs font-mono text-zinc-400 flex-wrap">
-          <li class="flex items-center gap-2">
-            <RouterLink to="/ledger" class="hover:text-zinc-200 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 rounded px-1 -mx-1">{{ t('crumb.ledger') }}</RouterLink>
-            <span aria-hidden="true" class="text-zinc-600 select-none">/</span>
-          </li>
-          <li class="flex items-center gap-2">
-            <RouterLink to="/ledger/accounts" class="inline-flex items-center gap-1 hover:text-zinc-200 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400 rounded px-1 -mx-1">
-              <ArrowLeft class="w-3 h-3" />
-              <span>{{ t('crumb.accounts') }}</span>
-            </RouterLink>
-            <span aria-hidden="true" class="text-zinc-600 select-none">/</span>
-          </li>
-          <li>
-            <span aria-current="page" class="text-zinc-300 font-medium">{{ account?.name || t('crumb.accountStatement') }}</span>
-          </li>
-        </ol>
-      </nav>
-
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div class="flex items-center gap-2.5 flex-wrap">
@@ -123,7 +104,8 @@
               <th class="py-3 px-4">Description</th>
               <th class="py-3 px-4">Category</th>
               <th class="py-3 px-4 text-right">Charged (฿)</th>
-              <th class="py-3 px-4 text-right pr-4">Type</th>
+              <th class="py-3 px-4 text-right">Type</th>
+              <th class="py-3 px-4 text-right pr-4">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-zinc-800/50">
@@ -166,13 +148,22 @@
                   {{ tx.transaction_type === 'INFLOW' ? '+' : '-' }}฿{{ Number(tx.gross_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                 </span>
               </td>
-              <td class="py-3 px-4 text-right pr-4">
+              <td class="py-3 px-4 text-right">
                 <span
                   class="text-[9px] font-mono uppercase px-1.5 py-0.2 rounded border font-semibold"
                   :class="tx.transaction_type === 'INFLOW' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-zinc-900 text-zinc-400 border-zinc-800'"
                 >
                   {{ tx.transaction_type }}
                 </span>
+              </td>
+              <td class="py-3 px-4 text-right pr-4">
+                <button
+                  @click="handleEditTransaction(tx)"
+                  class="p-1.5 rounded-lg text-zinc-500 hover:text-indigo-400 hover:bg-indigo-500/10 active:scale-[0.95] transition-all"
+                  title="Edit Transaction"
+                >
+                  <Edit2 class="w-3.5 h-3.5" />
+                </button>
               </td>
             </tr>
           </tbody>
@@ -213,25 +204,34 @@
       @close="showTransferModal = false"
       @transferred="loadAccountData"
     />
+
+    <!-- Transaction Edit Modal -->
+    <TransactionModal
+      :is-open="showTransactionModal"
+      :transaction-to-edit="editingTransaction"
+      @close="showTransactionModal = false; editingTransaction = null"
+      @created="handleTransactionSaved"
+      @updated="handleTransactionSaved"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { t } from '../../i18n'
 import { useLedgerStore } from '../../stores/ledger'
 import { useToastStore } from '../../stores/toast'
 import type { LedgerTransaction } from '../../types/ledger'
 import TransferModal from '../../components/ledger/TransferModal.vue'
+import TransactionModal from '../../components/ledger/TransactionModal.vue'
 import {
-  ArrowLeft,
   ArrowRightLeft,
   RefreshCw,
   Receipt,
   Users,
   FileText,
-  ExternalLink
+  ExternalLink,
+  Edit2
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -245,10 +245,22 @@ const account = computed(() =>
 
 const accountTransactions = ref<LedgerTransaction[]>([])
 const showTransferModal = ref(false)
+const showTransactionModal = ref(false)
+const editingTransaction = ref<LedgerTransaction | null>(null)
 const isRecalculating = ref(false)
 const currentPage = ref(1)
 const totalRecords = ref(0)
 const pageSize = 20
+
+function handleEditTransaction(tx: LedgerTransaction) {
+  editingTransaction.value = tx
+  showTransactionModal.value = true
+}
+
+async function handleTransactionSaved() {
+  await loadAccountData()
+  await ledgerStore.fetchAccounts()
+}
 
 const totalPages = computed(() => Math.ceil(totalRecords.value / pageSize))
 
@@ -269,7 +281,10 @@ onMounted(async () => {
 })
 
 async function loadAccountData() {
-  await ledgerStore.fetchAccounts()
+  await Promise.all([
+    ledgerStore.fetchAccounts(),
+    ledgerStore.fetchCategories()
+  ])
   const res = await ledgerStore.fetchTransactions({
     account: accountId.value,
     page: currentPage.value

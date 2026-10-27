@@ -161,22 +161,33 @@
 
           <!-- Actions -->
           <div class="flex items-center justify-between pt-1">
-            <a
-              v-if="trial.metadata?.cancel_url"
-              :href="trial.metadata.cancel_url"
-              target="_blank"
-              class="text-[11px] text-zinc-400 hover:text-white transition-colors flex items-center gap-1 font-sans"
-            >
-              <span>Direct Link</span>
-              <ExternalLink class="w-3 h-3 text-zinc-400" />
-            </a>
-            <RouterLink
-              v-else
-              :to="`/finance/subscriptions/${trial.id}`"
-              class="text-[11px] text-zinc-400 hover:text-white transition-colors"
-            >
-              View Dossier →
-            </RouterLink>
+            <div class="flex items-center gap-2">
+              <a
+                v-if="trial.metadata?.cancel_url"
+                :href="trial.metadata.cancel_url"
+                target="_blank"
+                class="text-[11px] text-zinc-400 hover:text-white transition-colors flex items-center gap-1 font-sans"
+              >
+                <span>Direct Link</span>
+                <ExternalLink class="w-3 h-3 text-zinc-400" />
+              </a>
+              <RouterLink
+                v-else
+                :to="`/finance/subscriptions/${trial.id}`"
+                class="text-[11px] text-zinc-400 hover:text-white transition-colors"
+              >
+                View Dossier →
+              </RouterLink>
+
+              <button
+                @click="openEditModal(trial)"
+                type="button"
+                class="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
+                title="Edit Free Trial"
+              >
+                <Edit2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
 
             <button
               @click="handleCancelTrial(trial.id)"
@@ -337,6 +348,14 @@
               <!-- 8. Actions -->
               <td class="py-3 px-4 text-right">
                 <div class="flex items-center justify-end gap-1.5">
+                  <button
+                    @click="openEditModal(sub)"
+                    type="button"
+                    class="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-indigo-300 transition-colors"
+                    title="Edit Subscription"
+                  >
+                    <Edit2 class="w-3.5 h-3.5" />
+                  </button>
                   <RouterLink
                     :to="`/finance/subscriptions/${sub.id}`"
                     class="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
@@ -375,10 +394,17 @@
         </table>
       </div>
     </div>
+    </template>
 
-</template>
+    <!-- Edit Obligation Modal -->
+    <EditObligationModal
+      :is-open="showEditModal"
+      :obligation="selectedSubscriptionForEdit"
+      @close="showEditModal = false; selectedSubscriptionForEdit = null"
+      @updated="handleSubscriptionUpdated"
+    />
 
-        <!-- Confirm Modal -->
+    <!-- Confirm Modal -->
     <ConfirmModal
       :is-open="confirmModal.isOpen"
       :title="confirmModal.title"
@@ -400,6 +426,8 @@ import { useSubscriptions } from '../../composables/finance/useSubscriptions'
 import { useToastStore } from '../../stores/toast'
 import type { FinancialObligation } from '../../types/finance'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
+import EditObligationModal from '../../components/finance/EditObligationModal.vue'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import {
   Plus,
   Flame,
@@ -409,7 +437,8 @@ import {
   Search,
   ExternalLink,
   ArrowRight,
-  Trash2
+  Trash2,
+  Edit2
 } from 'lucide-vue-next'
 
 const { subscriptions, isLoading, fetchSubscriptions, cancelTrial, deleteSubscription } = useSubscriptions()
@@ -417,6 +446,18 @@ const toast = useToastStore()
 
 const searchQuery = ref('')
 const selectedTypeFilter = ref<'ALL' | 'ACTIVE' | 'TRIAL' | 'CANCELLED'>('ALL')
+const showEditModal = ref(false)
+const selectedSubscriptionForEdit = ref<FinancialObligation | null>(null)
+
+function openEditModal(sub: FinancialObligation) {
+  selectedSubscriptionForEdit.value = sub
+  showEditModal.value = true
+}
+
+async function handleSubscriptionUpdated() {
+  await fetchSubscriptions()
+  toast.success('Subscription dossier updated')
+}
 
 const typeFilters = [
   { value: 'ALL', label: 'All' },
@@ -435,6 +476,8 @@ const confirmModal = reactive({
   errorMessage: '',
   action: async () => {}
 })
+
+useBodyScrollLock(() => showEditModal.value || confirmModal.isOpen)
 
 async function handleConfirmAction() {
   confirmModal.isLoading = true

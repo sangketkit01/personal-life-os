@@ -10,7 +10,7 @@ from .models import (
     TransactionType,
     InvestmentPortfolio
 )
-from .services import calculate_detailed_position, normalize_ticker
+from .services import calculate_detailed_position, normalize_ticker, validate_holding_transaction_timeline
 from .asset_catalog import verify_ticker_exists
 
 
@@ -52,6 +52,7 @@ class StockPriceSnapshotSerializer(serializers.ModelSerializer):
 class StockTransactionSerializer(serializers.ModelSerializer):
     ticker = serializers.CharField(write_only=True, required=False)
     portfolio = serializers.UUIDField(write_only=True, required=False)
+    portfolio_id = serializers.UUIDField(source='holding.portfolio_id', read_only=True)
     holding_ticker = serializers.CharField(source='holding.ticker', read_only=True)
     holding_currency = serializers.CharField(source='holding.currency', read_only=True)
     portfolio_name = serializers.CharField(source='holding.portfolio.name', read_only=True)
@@ -62,6 +63,7 @@ class StockTransactionSerializer(serializers.ModelSerializer):
             'id',
             'holding',
             'portfolio',
+            'portfolio_id',
             'portfolio_name',
             'ticker',
             'holding_ticker',
@@ -75,7 +77,7 @@ class StockTransactionSerializer(serializers.ModelSerializer):
             'notes',
             'created_at'
         )
-        read_only_fields = ('id', 'holding_ticker', 'holding_currency', 'portfolio_name', 'created_at')
+        read_only_fields = ('id', 'portfolio_id', 'holding_ticker', 'holding_currency', 'portfolio_name', 'created_at')
         extra_kwargs = {
             'holding': {'required': False},
             'currency': {'required': False}
@@ -151,6 +153,25 @@ class StockTransactionSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'shares': f'Cannot sell {shares} shares; holding only has {available_shares} shares available.'
                 })
+
+        # Chronological timeline replay validation across all trades
+        target_holding = holding or (self.instance.holding if self.instance else None)
+        if self.instance and holding and self.instance.holding_id != holding.id:
+            # Moving between holdings: validate source holding removal first
+            validate_holding_transaction_timeline(self.instance.holding, pending_tx=self.instance, is_delete=True)
+
+        if target_holding:
+            from django.utils import timezone
+            sim_tx = StockTransaction(
+                id=self.instance.id if self.instance else None,
+                holding=target_holding,
+                transaction_type=tx_type,
+                shares=shares,
+                price_per_share=price,
+                fee=fee,
+                executed_at=attrs.get('executed_at', getattr(self.instance, 'executed_at', None)) or timezone.now()
+            )
+            validate_holding_transaction_timeline(target_holding, pending_tx=sim_tx, is_delete=False)
 
         return attrs
 
@@ -251,10 +272,41 @@ class StockTransactionSerializer(serializers.ModelSerializer):
         return tx
 
     def update(self, instance, validated_data):
+        from django.db import transaction as db_transaction
+        new_holding = validated_data.get('holding', instance.holding)
         # F03: Lock currency to prevent altering denomination of existing holding
-        if instance.holding:
-            validated_data['currency'] = instance.holding.currency or 'THB'
-        return super().update(instance, validated_data)
+        if new_holding:
+            validated_data['currency'] = new_holding.currency or 'THB'
+
+        with db_transaction.atomic():
+            if instance.holding_id and new_holding and instance.holding_id != new_holding.id:
+                locked_source = StockHolding.objects.select_for_update().get(id=instance.holding_id)
+                validate_holding_transaction_timeline(locked_source, pending_tx=instance, is_delete=True)
+
+                locked_dest = StockHolding.objects.select_for_update().get(id=new_holding.id)
+                sim_tx = StockTransaction(
+                    id=instance.id,
+                    holding=locked_dest,
+                    transaction_type=validated_data.get('transaction_type', instance.transaction_type),
+                    shares=validated_data.get('shares', instance.shares),
+                    price_per_share=validated_data.get('price_per_share', instance.price_per_share),
+                    fee=validated_data.get('fee', instance.fee),
+                    executed_at=validated_data.get('executed_at', instance.executed_at)
+                )
+                validate_holding_transaction_timeline(locked_dest, pending_tx=sim_tx, is_delete=False)
+            elif new_holding:
+                locked_holding = StockHolding.objects.select_for_update().get(id=new_holding.id)
+                sim_tx = StockTransaction(
+                    id=instance.id,
+                    holding=locked_holding,
+                    transaction_type=validated_data.get('transaction_type', instance.transaction_type),
+                    shares=validated_data.get('shares', instance.shares),
+                    price_per_share=validated_data.get('price_per_share', instance.price_per_share),
+                    fee=validated_data.get('fee', instance.fee),
+                    executed_at=validated_data.get('executed_at', instance.executed_at)
+                )
+                validate_holding_transaction_timeline(locked_holding, pending_tx=sim_tx, is_delete=False)
+            return super().update(instance, validated_data)
 
 
 class StockHoldingSerializer(serializers.ModelSerializer):
@@ -291,6 +343,27 @@ class StockHoldingSerializer(serializers.ModelSerializer):
         portfolio = attrs.get('portfolio') or (self.instance.portfolio if self.instance else None)
         if portfolio and portfolio.user != user:
             raise serializers.ValidationError({'portfolio': 'Selected portfolio does not belong to user.'})
+
+        # Lock currency changes if the holding has existing trades
+        if self.instance and 'currency' in attrs:
+            new_curr = attrs['currency']
+            if new_curr != self.instance.currency:
+                if self.instance.transactions.exists():
+                    raise serializers.ValidationError({'currency': 'Cannot change currency on a holding with existing trade history.'})
+
+        # Lock currency mismatch when moving holding to a portfolio where ticker already exists
+        if self.instance and portfolio and portfolio.id != self.instance.portfolio_id:
+            existing = StockHolding.objects.filter(
+                user=user,
+                portfolio=portfolio,
+                ticker=self.instance.ticker
+            ).exclude(id=self.instance.id).first()
+            if existing and existing.currency != self.instance.currency:
+                if existing.transactions.exists() or self.instance.transactions.exists():
+                    raise serializers.ValidationError({
+                        'currency': f"Cannot merge holding with currency {self.instance.currency} into existing holding with currency {existing.currency} when trade history exists."
+                    })
+
         return attrs
 
     def get_position(self, obj):

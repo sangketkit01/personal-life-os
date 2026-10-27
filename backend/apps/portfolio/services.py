@@ -245,6 +245,55 @@ def fetch_and_cache_market_prices(
     return prices
 
 
+def validate_holding_transaction_timeline(
+    holding: StockHolding,
+    pending_tx: Optional[StockTransaction] = None,
+    is_delete: bool = False
+) -> None:
+    """
+    Replay entire timeline of trades on a holding chronologically before saving or deleting.
+    Ensures that cumulative shares never drop below 0 at any timestamp.
+    Prevents SELL before BUY, selling more shares than held, or reducing a prior BUY below subsequent SELL requirements.
+    Raises serializers.ValidationError if the timeline would be violated.
+    """
+    from rest_framework import serializers
+
+    # Load all existing transactions from DB for this holding
+    txs = list(StockTransaction.objects.filter(holding_id=holding.id))
+
+    if is_delete and pending_tx:
+        txs = [t for t in txs if str(t.id) != str(pending_tx.id)]
+    elif pending_tx:
+        pending_id = getattr(pending_tx, 'id', None)
+        if pending_id and any(str(t.id) == str(pending_id) for t in txs):
+            txs = [pending_tx if str(t.id) == str(pending_id) else t for t in txs]
+        else:
+            txs.append(pending_tx)
+
+    type_priority = {
+        TransactionType.BUY: 0,
+        TransactionType.DIVIDEND: 1,
+        TransactionType.SELL: 2
+    }
+    txs.sort(key=lambda t: (t.executed_at or timezone.now(), type_priority.get(t.transaction_type, 1)))
+
+    cumulative_shares = Decimal('0')
+    for tx in txs:
+        shares = Decimal(str(tx.shares or 0))
+        if tx.transaction_type == TransactionType.BUY:
+            cumulative_shares += shares
+        elif tx.transaction_type == TransactionType.SELL:
+            if shares > cumulative_shares:
+                date_str = tx.executed_at.strftime('%Y-%m-%d %H:%M') if hasattr(tx.executed_at, 'strftime') else str(tx.executed_at)
+                raise serializers.ValidationError({
+                    'shares': (
+                        f"Transaction timeline invalid: Cannot sell {shares} shares on {date_str}. "
+                        f"Only {cumulative_shares} cumulative shares held at that time."
+                    )
+                })
+            cumulative_shares -= shares
+
+
 def calculate_detailed_position(
     holding: StockHolding,
     current_price: Decimal = None,
@@ -527,6 +576,9 @@ def get_portfolio_overview(
             'name': h.name or h.ticker,
             'asset_type': h.asset_type,
             'currency': pos.get('currency', 'THB'),
+            'notes': h.notes or '',
+            'portfolio': str(h.portfolio_id) if h.portfolio_id else None,
+            'portfolio_id': str(h.portfolio_id) if h.portfolio_id else None,
             'position': pos
         })
 

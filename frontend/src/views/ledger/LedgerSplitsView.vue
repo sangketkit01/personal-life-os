@@ -173,15 +173,6 @@
                 <div class="flex items-center justify-end gap-1.5">
                   <button
                     v-if="!s.is_settled"
-                    type="button"
-                    @click="copyReminder(s)"
-                    class="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-all active:scale-[0.95]"
-                    title="Copy reminder text"
-                  >
-                    <Copy class="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    v-if="!s.is_settled"
                     @click="openSettleModal(s)"
                     class="px-2.5 py-1 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-sans font-semibold transition-all active:scale-[0.98] flex items-center gap-1 shadow-sm"
                   >
@@ -210,17 +201,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ledgerApi } from '../../api/ledger'
-import { useToastStore } from '../../stores/toast'
 import type { TransactionSplitItem } from '../../types/ledger'
 import SettleSplitModal from '../../components/ledger/SettleSplitModal.vue'
 import {
   ArrowLeft,
   HandCoins,
-  Check,
-  Copy
+  Check
 } from 'lucide-vue-next'
 
-const toast = useToastStore()
 const splitsList = ref<TransactionSplitItem[]>([])
 const statusFilter = ref<'ALL' | 'PENDING' | 'SETTLED'>('PENDING')
 const showSettleModal = ref(false)
@@ -259,17 +247,5 @@ async function loadSplits() {
 function openSettleModal(split: TransactionSplitItem) {
   selectedSplit.value = split
   showSettleModal.value = true
-}
-
-function copyReminder(split: any) {
-  const contactText = split.counterparty_contact ? ` (${split.counterparty_contact})` : ''
-  const billTitle = split.transaction_title || 'shared expense'
-  let dishText = ''
-  if (split.items_detail && split.items_detail.length > 0) {
-    dishText = '\nItems: ' + split.items_detail.map((d: any) => `${d.name} (฿${Number(d.share).toFixed(2)})`).join(', ')
-  }
-  const text = `Hi ${split.counterparty_name}${contactText}, friendly reminder regarding your share of ฿${Number(split.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} for "${billTitle}".${dishText}\nWhen convenient, please transfer to PromptPay. Thank you!`
-  navigator.clipboard.writeText(text)
-  toast.success(`Copied reminder for ${split.counterparty_name}`)
 }
 </script>

@@ -586,9 +586,10 @@
     <!-- Telegram Link Modal -->
     <div
       v-if="showTelegramModal"
-      class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 font-sans"
+      class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 font-sans overscroll-contain"
+      @click.self="showTelegramModal = false"
     >
-      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md p-6 shadow-2xl relative">
+      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col p-5 sm:p-6 shadow-2xl relative overflow-y-auto overscroll-contain">
         <button
           @click="showTelegramModal = false"
           class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -653,6 +654,7 @@ import { useLedgerStore } from '../stores/ledger'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useToastStore } from '../stores/toast'
 import { useBreadcrumbs } from '../composables/useBreadcrumbs'
+import { useBodyScrollLock } from '../composables/useBodyScrollLock'
 import CommandPalette from '../components/common/CommandPalette.vue'
 import ToastContainer from '../components/common/ToastContainer.vue'
 import {
@@ -696,6 +698,7 @@ const workspaceStore = useWorkspaceStore()
 const toast = useToastStore()
 
 const showTelegramModal = ref(false)
+useBodyScrollLock(() => showTelegramModal.value)
 const isGeneratingToken = ref(false)
 const isMobileMenuOpen = ref(false)
 const isCommandPaletteOpen = ref(false)

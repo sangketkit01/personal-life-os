@@ -1,22 +1,22 @@
 <template>
   <Teleport to="body">
-    <div v-if="isOpen" class="fixed inset-0 z-[65] flex items-center justify-center p-4 font-sans">
+    <div v-if="isOpen" class="fixed inset-0 z-[65] flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans">
       <div class="absolute inset-0 bg-black/75 backdrop-blur-sm" @click="emit('close')" />
 
-      <div class="relative w-full max-w-2xl max-h-[85vh] flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden">
+      <div class="relative w-full max-w-2xl max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden">
         <!-- Header -->
         <div class="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800 shrink-0">
-          <div class="flex items-center gap-2">
-            <Zap class="w-4 h-4 text-amber-400" />
-            <h3 class="text-sm font-semibold text-zinc-100">{{ t('rb.title') }}</h3>
+          <div class="flex items-center gap-2 min-w-0">
+            <Zap class="w-4 h-4 text-amber-400 shrink-0" />
+            <h3 class="text-sm font-semibold text-zinc-100 shrink-0">{{ t('rb.title') }}</h3>
             <span class="text-[10px] font-mono text-zinc-500 truncate max-w-[220px]">{{ asset.name }}</span>
           </div>
-          <button type="button" @click="emit('close')" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-100 transition-colors">
+          <button type="button" @click="emit('close')" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-100 transition-colors cursor-pointer shrink-0">
             <X class="w-4 h-4" />
           </button>
         </div>
 
-        <div class="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
+        <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-4">
           <!-- Create / Edit form -->
           <form
             v-if="formOpen"
@@ -188,6 +188,7 @@ import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
 import { parseSshHostKeyError, type SshHostKeyErrorInfo } from '../../utils/sshSafety'
 import ConfirmModal from '../common/ConfirmModal.vue'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { InfrastructureAsset, ServerRunbook, RemoteCommandResult } from '../../types/workspace'
 
 const props = defineProps<{
@@ -197,6 +198,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ (e: 'close'): void }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const workspaceStore = useWorkspaceStore()
 const toast = useToastStore()

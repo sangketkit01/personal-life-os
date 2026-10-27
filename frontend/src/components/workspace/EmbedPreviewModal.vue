@@ -1,10 +1,10 @@
 <template>
   <div
     v-if="isOpen && link"
-    class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-6 font-sans"
+    class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans"
     @click.self="emit('close')"
   >
-    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-5xl h-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-5xl h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden">
       <!-- Header Bar -->
       <div class="h-12 px-4 flex items-center justify-between border-b border-zinc-800/80 shrink-0">
         <div class="flex items-center gap-2.5 min-w-0">
@@ -82,6 +82,7 @@ import {
   MonitorX
 } from 'lucide-vue-next'
 import type { ProjectLink, ProjectLinkType } from '../../types/workspace'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 
 const props = defineProps<{
   isOpen: boolean
@@ -91,6 +92,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const TYPE_META: Record<ProjectLinkType, { label: string; icon: Component }> = {
   WEBSITE: { label: 'Website / App', icon: Globe },

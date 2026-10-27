@@ -2,10 +2,10 @@
   <Teleport to="body">
     <div
       v-if="isOpen && driveFileId"
-      class="fixed inset-0 z-[70] bg-black/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-6 font-sans"
+      class="fixed inset-0 z-[70] bg-black/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans"
       @click.self="emit('close')"
     >
-      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-5xl h-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-5xl h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden">
         <!-- Top bar -->
         <div class="h-12 px-4 flex items-center justify-between border-b border-zinc-800/80 shrink-0">
           <div class="flex items-center gap-2.5 min-w-0">
@@ -59,7 +59,7 @@
         </div>
 
         <!-- Preview body -->
-        <div class="flex-1 min-h-0 bg-zinc-900/40 overflow-auto flex items-center justify-center p-3">
+        <div class="flex-1 min-h-0 bg-zinc-900/40 overflow-auto overscroll-contain flex items-center justify-center p-2 sm:p-3">
           <div v-if="loading" class="flex flex-col items-center gap-3 text-zinc-500">
             <Loader2 class="w-6 h-6 animate-spin" />
             <span class="text-xs font-mono">Loading from Google Drive...</span>
@@ -175,6 +175,7 @@ import {
 } from 'lucide-vue-next'
 import apiClient from '../../api/client'
 import { useToastStore } from '../../stores/toast'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 
 const props = defineProps<{
   isOpen: boolean
@@ -191,6 +192,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const toast = useToastStore()
 

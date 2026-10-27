@@ -1,72 +1,74 @@
 <template>
-  <div v-if="isOpen && obligation" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto font-sans">
-    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-xl p-6 shadow-2xl relative my-8">
-      <!-- Close button -->
-      <button
-        @click="emit('close')"
-        class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
-      >
-        <X class="w-4 h-4" />
-      </button>
-
-      <!-- Modal Header -->
-      <div class="mb-4">
-        <div class="flex items-center gap-2 mb-1">
-          <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border bg-zinc-900 text-zinc-400 border-zinc-800">
-            {{ obligation.type }}
-          </span>
-          <span v-if="obligation.subtype" class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border bg-zinc-900 text-zinc-300 border-zinc-800">
-            {{ obligation.subtype }}
-          </span>
-          <span class="text-xs text-zinc-400 font-mono">
-            {{ currencySymbol(obligation.currency) }}{{ Number(obligation.amount).toLocaleString('th-TH') }} {{ obligation.currency }}
-          </span>
+  <div v-if="isOpen && obligation" @click.self="emit('close')" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 font-sans overflow-hidden">
+    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-xl shadow-2xl relative flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-hidden">
+      <!-- Fixed Header & Summary -->
+      <div class="p-4 sm:p-5 pb-0 border-b border-zinc-800/80 shrink-0">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border bg-zinc-900 text-zinc-400 border-zinc-800">
+                {{ obligation.type }}
+              </span>
+              <span v-if="obligation.subtype" class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border bg-zinc-900 text-zinc-300 border-zinc-800">
+                {{ obligation.subtype }}
+              </span>
+              <span class="text-xs text-zinc-400 font-mono">
+                {{ currencySymbol(obligation.currency) }}{{ Number(obligation.amount).toLocaleString('th-TH') }} {{ obligation.currency }}
+              </span>
+            </div>
+            <h2 class="text-base font-semibold text-zinc-100 tracking-tight">{{ obligation.title }}</h2>
+            <p class="text-xs text-zinc-500 mt-0.5">Payment settlement logs, verified slips, and contract attachments</p>
+          </div>
+          <button
+            @click="emit('close')"
+            type="button"
+            class="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
+          >
+            <X class="w-4 h-4" />
+          </button>
         </div>
-        <h2 class="text-base font-semibold text-zinc-100 tracking-tight">{{ obligation.title }}</h2>
-        <p class="text-xs text-zinc-500 mt-0.5">Payment settlement logs, verified slips, and contract attachments</p>
+
+        <!-- Quick Summary Row -->
+        <div class="grid grid-cols-2 gap-3 mb-3 p-2.5 sm:p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/80 font-mono text-xs">
+          <div>
+            <span class="text-[10px] text-zinc-500 block uppercase">Recorded Payments</span>
+            <span class="text-sm font-semibold text-zinc-200">
+              {{ (obligation.payment_histories || []).length }} transactions
+            </span>
+          </div>
+          <div class="text-right">
+            <span class="text-[10px] text-zinc-500 block uppercase">Total Settled</span>
+            <span class="text-sm font-semibold text-emerald-400 tabular-nums">
+              {{ currencySymbol(obligation.currency) }}{{ totalPaidAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Tab Switcher (Transactions vs Documents) -->
+        <div class="flex items-center gap-2 text-xs">
+          <button
+            type="button"
+            @click="activeTab = 'TRANSACTIONS'"
+            class="pb-2.5 px-1 border-b-2 font-medium transition-colors cursor-pointer"
+            :class="activeTab === 'TRANSACTIONS' ? 'border-zinc-100 text-zinc-100' : 'border-transparent text-zinc-400 hover:text-zinc-200'"
+          >
+            Payment History ({{ (obligation.payment_histories || []).length }})
+          </button>
+          <button
+            type="button"
+            @click="activeTab = 'DOCUMENTS'"
+            class="pb-2.5 px-1 border-b-2 font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
+            :class="activeTab === 'DOCUMENTS' ? 'border-zinc-100 text-zinc-100' : 'border-transparent text-zinc-400 hover:text-zinc-200'"
+          >
+            Attached Documents ({{ (obligation.attachments || []).length }})
+          </button>
+        </div>
       </div>
 
-      <!-- Quick Summary Row -->
-      <div class="grid grid-cols-2 gap-3 mb-4 p-3 rounded-lg bg-zinc-900/50 border border-zinc-800/80 font-mono text-xs">
-        <div>
-          <span class="text-[10px] text-zinc-500 block uppercase">Recorded Payments</span>
-          <span class="text-sm font-semibold text-zinc-200">
-            {{ (obligation.payment_histories || []).length }} transactions
-          </span>
-        </div>
-        <div class="text-right">
-          <span class="text-[10px] text-zinc-500 block uppercase">Total Settled</span>
-          <span class="text-sm font-semibold text-emerald-400 tabular-nums">
-            {{ currencySymbol(obligation.currency) }}{{ totalPaidAmount.toLocaleString('th-TH', { minimumFractionDigits: 2 }) }}
-          </span>
-        </div>
-      </div>
-
-      <!-- Tab Switcher (Transactions vs Documents) -->
-      <div class="flex items-center gap-2 border-b border-zinc-800/80 mb-3 text-xs">
-        <button
-          type="button"
-          @click="activeTab = 'TRANSACTIONS'"
-          class="pb-2 px-1 border-b-2 font-medium transition-colors"
-          :class="activeTab === 'TRANSACTIONS' ? 'border-zinc-100 text-zinc-100' : 'border-transparent text-zinc-400 hover:text-zinc-200'"
-        >
-          Payment History ({{ (obligation.payment_histories || []).length }})
-        </button>
-        <button
-          type="button"
-          @click="activeTab = 'DOCUMENTS'"
-          class="pb-2 px-1 border-b-2 font-medium transition-colors flex items-center gap-1.5"
-          :class="activeTab === 'DOCUMENTS' ? 'border-zinc-100 text-zinc-100' : 'border-transparent text-zinc-400 hover:text-zinc-200'"
-        >
-          <span>Documents & Slips</span>
-          <span class="text-[10px] font-mono px-1 py-0.2 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
-            {{ (obligation.attachments || []).length }}
-          </span>
-        </button>
-      </div>
-
-      <!-- TAB 1: TRANSACTIONS LIST -->
-      <div v-if="activeTab === 'TRANSACTIONS'" class="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+      <!-- Scrollable Tab Content -->
+      <div class="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5 min-h-0 space-y-3">
+        <!-- TAB 1: TRANSACTIONS LIST -->
+        <div v-if="activeTab === 'TRANSACTIONS'" class="space-y-2.5">
         <div
           v-if="!obligation.payment_histories || obligation.payment_histories.length === 0"
           class="p-8 text-center border border-dashed border-zinc-800/80 rounded-lg text-xs font-mono text-zinc-500"
@@ -116,8 +118,8 @@
         </div>
       </div>
 
-      <!-- TAB 2: ATTACHMENTS & CONTRACTS -->
-      <div v-else class="space-y-3.5 max-h-80 overflow-y-auto pr-1">
+        <!-- TAB 2: ATTACHMENTS & CONTRACTS -->
+        <div v-else class="space-y-3.5">
         <!-- Google Drive Connection Guard -->
         <div
           v-if="!storageStore.isConnected"
@@ -230,16 +232,17 @@
           </div>
         </div>
       </div>
+      </div>
 
-      <!-- Footer -->
-      <div class="pt-4 mt-4 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono">
+      <!-- Sticky Footer -->
+      <div class="p-4 border-t border-zinc-800/80 bg-zinc-950/90 shrink-0 flex items-center justify-between text-xs font-mono">
         <span class="text-[11px] text-zinc-500">
           Status: <strong class="text-zinc-300 uppercase">{{ obligation.status }}</strong>
         </span>
         <button
           type="button"
           @click="emit('close')"
-          class="px-4 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors"
+          class="px-4 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors cursor-pointer"
         >
           Close
         </button>
@@ -254,6 +257,7 @@ import { ref, computed } from 'vue'
 import { useFinanceStore } from '../../stores/finance'
 import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { FinancialObligation, AttachmentType } from '../../types/finance'
 import { X, FileText, ExternalLink, Upload, Trash2, HardDrive } from 'lucide-vue-next'
 
@@ -265,6 +269,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const financeStore = useFinanceStore()
 const storageStore = useStorageStore()

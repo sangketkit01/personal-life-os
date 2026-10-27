@@ -235,11 +235,11 @@
     <!-- ===== Lock / Unlock PIN Modal ===== -->
     <div
       v-if="showLockModal"
-      class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 font-sans"
+      class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 font-sans overflow-hidden"
       @click.self="showLockModal = false"
     >
-      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-sm p-5 shadow-2xl relative">
-        <button @click="showLockModal = false" class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors">
+      <div class="relative bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-sm max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col p-5 shadow-2xl overflow-y-auto overscroll-contain">
+        <button @click="showLockModal = false" class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors p-1 cursor-pointer">
           <X class="w-4 h-4" />
         </button>
 
@@ -308,6 +308,7 @@ import { NOTE_ICON_PRESETS, iconComponentFor } from '../../utils/iconPresets'
 import { t } from '../../i18n'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import { stripHtml } from '../../utils/richText'
 import type { Note, NoteBlock, NoteColor } from '../../types/workspace'
 
@@ -350,6 +351,8 @@ const showCopyPopover = ref(false)
 const lockModalMode = ref<'set' | 'unlock'>('set')
 const showLockModal = ref(false)
 const pinForm = reactive({ pin: '', confirm: '' })
+
+useBodyScrollLock(() => showLockModal.value)
 const pinModalInput = ref<HTMLInputElement | null>(null)
 const inlinePin = ref('')
 const inlinePinInput = ref<HTMLInputElement | null>(null)

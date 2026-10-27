@@ -1,77 +1,78 @@
 <template>
-  <div v-if="isOpen" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto font-sans">
-    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-lg p-6 shadow-2xl relative my-8">
-      <!-- Close button -->
-      <button
-        @click="emit('close')"
-        class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
-      >
-        <X class="w-4 h-4" />
-      </button>
-
-      <!-- Modal Title -->
-      <div class="mb-5">
-        <h2 class="text-base font-semibold text-zinc-100 tracking-tight">
-          {{ editingTransaction ? 'Edit Trade' : 'Record Trade' }}
-        </h2>
-        <p class="text-xs text-zinc-500 mt-0.5">
-          {{ editingTransaction ? 'Update trade execution details' : 'Log trade execution into your portfolio' }}
-        </p>
-      </div>
-
-      <!-- Transaction Type Switcher Tabs -->
-      <div class="grid grid-cols-3 gap-1.5 p-1 bg-zinc-900 border border-zinc-800 rounded-lg mb-4">
+  <div v-if="isOpen" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans">
+    <div class="relative bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-lg max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Fixed Header -->
+      <div class="shrink-0 px-4 sm:px-6 py-3.5 border-b border-zinc-800 flex items-center justify-between">
+        <div>
+          <h2 class="text-base font-semibold text-zinc-100 tracking-tight">
+            {{ editingTransaction ? 'Edit Trade' : 'Record Trade' }}
+          </h2>
+          <p class="text-xs text-zinc-500 mt-0.5">
+            {{ editingTransaction ? 'Update trade execution details' : 'Log trade execution into your portfolio' }}
+          </p>
+        </div>
         <button
-          type="button"
-          @click="form.transaction_type = 'BUY'"
-          class="py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
-          :class="[
-            form.transaction_type === 'BUY'
-              ? 'bg-zinc-800 text-zinc-100 shadow-sm'
-              : 'text-zinc-400 hover:text-zinc-200'
-          ]"
+          @click="emit('close')"
+          class="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
         >
-          <ArrowDownLeft class="w-3.5 h-3.5 text-zinc-400" />
-          <span>Buy</span>
-        </button>
-
-        <button
-          type="button"
-          @click="form.transaction_type = 'SELL'"
-          class="py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
-          :class="[
-            form.transaction_type === 'SELL'
-              ? 'bg-zinc-800 text-zinc-100 shadow-sm'
-              : 'text-zinc-400 hover:text-zinc-200'
-          ]"
-        >
-          <ArrowUpRight class="w-3.5 h-3.5 text-zinc-400" />
-          <span>Sell</span>
-        </button>
-
-        <button
-          type="button"
-          @click="form.transaction_type = 'DIVIDEND'"
-          class="py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
-          :class="[
-            form.transaction_type === 'DIVIDEND'
-              ? 'bg-zinc-800 text-zinc-100 shadow-sm'
-              : 'text-zinc-400 hover:text-zinc-200'
-          ]"
-        >
-          <Coins class="w-3.5 h-3.5 text-zinc-400" />
-          <span>Dividend</span>
+          <X class="w-4 h-4" />
         </button>
       </div>
 
-      <!-- Error message -->
-      <div v-if="errorMessage" class="mb-4 p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
-        {{ errorMessage }}
-      </div>
+      <form @submit.prevent="handleSubmit" class="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div class="flex-1 overflow-y-auto overscroll-contain min-h-0 p-4 sm:p-6 space-y-3.5">
+          <!-- Transaction Type Switcher Tabs -->
+          <div class="grid grid-cols-3 gap-1.5 p-1 bg-zinc-900 border border-zinc-800 rounded-lg">
+            <button
+              type="button"
+              @click="form.transaction_type = 'BUY'"
+              class="py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              :class="[
+                form.transaction_type === 'BUY'
+                  ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              ]"
+            >
+              <ArrowDownLeft class="w-3.5 h-3.5 text-zinc-400" />
+              <span>Buy</span>
+            </button>
 
-      <form @submit.prevent="handleSubmit" class="space-y-3.5">
-        <!-- Target Portfolio Selector (Dime-style) (F05) -->
-        <div v-if="!editingTransaction && portfolioStore.portfolios.length > 0">
+            <button
+              type="button"
+              @click="form.transaction_type = 'SELL'"
+              class="py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              :class="[
+                form.transaction_type === 'SELL'
+                  ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              ]"
+            >
+              <ArrowUpRight class="w-3.5 h-3.5 text-zinc-400" />
+              <span>Sell</span>
+            </button>
+
+            <button
+              type="button"
+              @click="form.transaction_type = 'DIVIDEND'"
+              class="py-1.5 rounded text-xs font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              :class="[
+                form.transaction_type === 'DIVIDEND'
+                  ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              ]"
+            >
+              <Coins class="w-3.5 h-3.5 text-zinc-400" />
+              <span>Dividend</span>
+            </button>
+          </div>
+
+          <!-- Error message -->
+          <div v-if="errorMessage" class="p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
+            {{ errorMessage }}
+          </div>
+
+          <!-- Target Portfolio Selector (Dime-style) (F05) -->
+          <div v-if="!editingTransaction && portfolioStore.portfolios.length > 0">
           <div class="flex items-center justify-between mb-1">
             <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400">
               Target Portfolio
@@ -384,20 +385,21 @@
             class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
           />
         </div>
+        </div>
 
-        <!-- Submit Buttons -->
-        <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-zinc-800/80">
+        <!-- Submit Buttons (Sticky Footer) -->
+        <div class="shrink-0 p-4 border-t border-zinc-800/80 bg-zinc-950/90 flex items-center justify-end gap-2.5">
           <button
             type="button"
             @click="emit('close')"
-            class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors"
+            class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="submit"
             :disabled="portfolioStore.isSubmitting || isSubmitDisabled"
-            class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors disabled:opacity-50"
+            class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
           >
             {{ portfolioStore.isSubmitting ? 'Posting...' : (editingTransaction ? 'Save Changes' : 'Save Trade') }}
           </button>
@@ -410,6 +412,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { usePortfolioStore } from '../../stores/portfolio'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import {
   getPortfolioColor,
   type AssetType,
@@ -440,6 +443,8 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'saved'): void
 }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const portfolioStore = usePortfolioStore()
 const errorMessage = ref<string | null>(null)

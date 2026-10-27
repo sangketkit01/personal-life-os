@@ -25,7 +25,7 @@
         </div>
 
         <!-- Scrollable body -->
-        <div class="flex-1 overflow-y-auto px-5 py-4 space-y-6">
+        <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 space-y-6">
           <!-- 1. Title -->
           <input
             v-model="draft.title"
@@ -408,6 +408,7 @@ import DriveFilePreviewModal from '../common/DriveFilePreviewModal.vue'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { ProjectAttachment, TaskDocument, TaskStatus } from '../../types/workspace'
 
 const props = defineProps<{
@@ -425,6 +426,8 @@ const emit = defineEmits<{
 const workspaceStore = useWorkspaceStore()
 const storageStore = useStorageStore()
 const toast = useToastStore()
+
+useBodyScrollLock(() => props.isOpen)
 
 const draft = reactive({
   title: '',
@@ -573,6 +576,7 @@ function handleClose() {
 // Escape closes the inspector (non-blocking panel has no backdrop click)
 function handleEscape(event: KeyboardEvent) {
   if (!props.isOpen) return
+  if (showDeleteConfirm.value || attachmentToDelete.value || attachmentPreview.open) return
   if (event.key === 'Escape') {
     event.preventDefault()
     handleClose()

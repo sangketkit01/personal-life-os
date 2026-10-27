@@ -1,12 +1,12 @@
 <template>
   <div
     v-if="isOpen"
-    class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-start justify-center pt-4 sm:pt-[15vh] p-4 font-sans"
+    class="fixed inset-0 z-[75] bg-black/75 backdrop-blur-sm flex items-start justify-center pt-2 sm:pt-[10vh] p-2 sm:p-4 font-sans overflow-hidden"
     @click.self="close"
   >
-    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col">
+    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-xl max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-5rem)] shadow-2xl overflow-hidden flex flex-col">
       <!-- Search Input Header -->
-      <div class="p-3 border-b border-zinc-800/80 flex items-center gap-2.5 bg-zinc-900/50">
+      <div class="p-3 border-b border-zinc-800/80 flex items-center gap-2.5 bg-zinc-900/50 shrink-0">
         <Search class="w-4 h-4 text-zinc-400 shrink-0" />
         <input
           ref="inputRef"
@@ -25,7 +25,7 @@
       </div>
 
       <!-- Results List -->
-      <div class="max-h-80 overflow-y-auto p-2 divide-y divide-zinc-900 text-xs">
+      <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2 divide-y divide-zinc-900 text-xs">
         <!-- Empty State -->
         <div v-if="filteredResults.length === 0" class="py-8 text-center text-zinc-500 font-mono text-xs">
           {{ t('pal.noResults') }}
@@ -80,6 +80,7 @@ import { usePortfolioStore } from '../../stores/portfolio'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { t } from '../../i18n'
 import { useLedgerStore } from '../../stores/ledger'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import {
   Search,
   LayoutDashboard,
@@ -103,6 +104,8 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'closeDirect'): void
 }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const router = useRouter()
 const financeStore = useFinanceStore()

@@ -605,82 +605,84 @@
     <!-- Pay Modal -->
     <div
       v-if="showPayModalState"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-sm overflow-hidden"
     >
-      <div class="bg-zinc-950 border border-zinc-800 rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-        <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
+      <div class="bg-zinc-950 border border-zinc-800 rounded-xl max-w-md w-full max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden font-sans">
+        <div class="shrink-0 flex items-center justify-between p-4 sm:p-5 border-b border-zinc-800">
           <h3 class="text-sm font-semibold text-zinc-100 font-mono">Record Installment Payment</h3>
           <button @click="showPayModalState = false" class="text-zinc-500 hover:text-zinc-300">
             <X class="w-4 h-4" />
           </button>
         </div>
 
-        <form @submit.prevent="handleProcessPayment" class="space-y-4 text-xs font-mono">
-          <div class="space-y-1">
-            <label class="text-zinc-400 block">Term Number</label>
-            <input
-              v-model.number="payForm.term_number"
-              type="number"
-              min="1"
-              :max="totalTermsCount"
-              required
-              class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 outline-none focus:border-zinc-500"
-            />
-          </div>
-
-          <div class="space-y-1">
-            <label class="text-zinc-400 block">Payment Amount</label>
-            <input
-              v-model.number="payForm.paid_amount"
-              type="number"
-              min="0.01"
-              step="0.01"
-              required
-              class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 outline-none focus:border-zinc-500"
-            />
-          </div>
-
-          <div class="space-y-1">
-            <div class="flex items-center justify-between">
-              <label class="text-zinc-400 block">Deduct from Account</label>
-              <span class="text-[10px] text-zinc-500">Ledger 2-Way Sync</span>
+        <form @submit.prevent="handleProcessPayment" class="flex flex-col flex-1 min-h-0 overflow-hidden text-xs font-mono">
+          <div class="flex-1 overflow-y-auto overscroll-contain min-h-0 p-4 sm:p-5 space-y-4">
+            <div class="space-y-1">
+              <label class="text-zinc-400 block">Term Number</label>
+              <input
+                v-model.number="payForm.term_number"
+                type="number"
+                min="1"
+                :max="totalTermsCount"
+                required
+                class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 outline-none focus:border-zinc-500"
+              />
             </div>
-            <select
-              v-model="payForm.account_id"
-              class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 outline-none focus:border-zinc-500"
-            >
-              <option value="">-- No Account Link --</option>
-              <option
-                v-for="acc in ledgerStore.activeAccounts"
-                :key="acc.id"
-                :value="acc.id"
+
+            <div class="space-y-1">
+              <label class="text-zinc-400 block">Payment Amount</label>
+              <input
+                v-model.number="payForm.paid_amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                required
+                class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 outline-none focus:border-zinc-500"
+              />
+            </div>
+
+            <div class="space-y-1">
+              <div class="flex items-center justify-between">
+                <label class="text-zinc-400 block">Deduct from Account</label>
+                <span class="text-[10px] text-zinc-500">Ledger 2-Way Sync</span>
+              </div>
+              <select
+                v-model="payForm.account_id"
+                class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 outline-none focus:border-zinc-500"
               >
-                {{ acc.name }} ({{ acc.currency }} {{ Number(acc.current_balance).toLocaleString('en-US', { minimumFractionDigits: 2 }) }})
-              </option>
-            </select>
+                <option value="">-- No Account Link --</option>
+                <option
+                  v-for="acc in ledgerStore.activeAccounts"
+                  :key="acc.id"
+                  :value="acc.id"
+                >
+                  {{ acc.name }} ({{ acc.currency }} {{ Number(acc.current_balance).toLocaleString('en-US', { minimumFractionDigits: 2 }) }})
+                </option>
+              </select>
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-zinc-400 block">Note / Transaction Ref</label>
+              <input
+                v-model="payForm.note"
+                type="text"
+                placeholder="e.g. Bank transfer, Ref #992211"
+                class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 outline-none focus:border-zinc-500"
+              />
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-zinc-400 block">Upload Transfer Slip (Optional)</label>
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                @change="handleSlipFileSelected"
+                class="w-full text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-zinc-800 file:text-zinc-200 hover:file:bg-zinc-700"
+              />
+            </div>
           </div>
 
-          <div class="space-y-1">
-            <label class="text-zinc-400 block">Note / Transaction Ref</label>
-            <input
-              v-model="payForm.note"
-              type="text"
-              placeholder="e.g. Bank transfer, Ref #992211"
-              class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 outline-none focus:border-zinc-500"
-            />
-          </div>
-
-          <div class="space-y-1">
-            <label class="text-zinc-400 block">Upload Transfer Slip (Optional)</label>
-            <input
-              type="file"
-              accept="image/*,application/pdf"
-              @change="handleSlipFileSelected"
-              class="w-full text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-zinc-800 file:text-zinc-200 hover:file:bg-zinc-700"
-            />
-          </div>
-
-          <div class="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
+          <div class="shrink-0 flex items-center justify-end gap-2 p-4 border-t border-zinc-800 bg-zinc-950/90">
             <button
               type="button"
               @click="showPayModalState = false"
@@ -703,17 +705,17 @@
     <!-- Upload Document Modal -->
     <div
       v-if="showUploadModal"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-sm overflow-hidden"
     >
-      <div class="bg-zinc-950 border border-zinc-800 rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-        <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
+      <div class="bg-zinc-950 border border-zinc-800 rounded-xl max-w-md w-full max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden font-sans">
+        <div class="shrink-0 flex items-center justify-between p-4 sm:p-5 border-b border-zinc-800">
           <h3 class="text-sm font-semibold text-zinc-100 font-mono">Upload Contract Document</h3>
           <button @click="showUploadModal = false" class="text-zinc-500 hover:text-zinc-300">
             <X class="w-4 h-4" />
           </button>
         </div>
 
-        <div v-if="!storageStore.isConnected" class="p-4 rounded-lg bg-zinc-900 border border-zinc-800 text-xs space-y-2 font-mono">
+        <div v-if="!storageStore.isConnected" class="p-4 sm:p-5 rounded-lg bg-zinc-900/50 text-xs space-y-2 font-mono">
           <div class="flex items-center gap-2 text-zinc-300">
             <HardDrive class="w-4 h-4 text-zinc-400 shrink-0" />
             <span class="font-semibold">Google Drive Required</span>
@@ -729,37 +731,39 @@
           </router-link>
         </div>
 
-        <div v-else class="space-y-4 text-xs font-mono">
-          <div class="space-y-1">
-            <label class="text-zinc-400 block">Document Category</label>
-            <select
-              v-model="uploadCategory"
-              class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 outline-none focus:border-zinc-500"
-            >
-              <option value="CONTRACT">Loan / Lease Contract</option>
-              <option value="STATEMENT">Billing Statement</option>
-              <option value="SLIP">Payment Receipt / Slip</option>
-              <option value="OTHER">Other Supporting Document</option>
-            </select>
+        <div v-else class="flex flex-col flex-1 min-h-0 overflow-hidden text-xs font-mono">
+          <div class="flex-1 overflow-y-auto overscroll-contain min-h-0 p-4 sm:p-5 space-y-4">
+            <div class="space-y-1">
+              <label class="text-zinc-400 block">Document Category</label>
+              <select
+                v-model="uploadCategory"
+                class="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 outline-none focus:border-zinc-500"
+              >
+                <option value="CONTRACT">Loan / Lease Contract</option>
+                <option value="STATEMENT">Billing Statement</option>
+                <option value="SLIP">Payment Receipt / Slip</option>
+                <option value="OTHER">Other Supporting Document</option>
+              </select>
+            </div>
+
+            <div class="space-y-1">
+              <label class="text-zinc-400 block">Select File (PDF or Image)</label>
+              <input
+                type="file"
+                @change="handleDocumentFileSelected"
+                class="w-full text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-zinc-800 file:text-zinc-200 hover:file:bg-zinc-700"
+              />
+            </div>
+
+            <div v-if="storageStore.uploadProgress !== null" class="w-full bg-zinc-800 rounded-full h-1 overflow-hidden">
+              <div
+                class="bg-zinc-200 h-1 transition-all duration-150"
+                :style="{ width: `${storageStore.uploadProgress}%` }"
+              ></div>
+            </div>
           </div>
 
-          <div class="space-y-1">
-            <label class="text-zinc-400 block">Select File (PDF or Image)</label>
-            <input
-              type="file"
-              @change="handleDocumentFileSelected"
-              class="w-full text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-zinc-800 file:text-zinc-200 hover:file:bg-zinc-700"
-            />
-          </div>
-
-          <div v-if="storageStore.uploadProgress !== null" class="w-full bg-zinc-800 rounded-full h-1 overflow-hidden">
-            <div
-              class="bg-zinc-200 h-1 transition-all duration-150"
-              :style="{ width: `${storageStore.uploadProgress}%` }"
-            ></div>
-          </div>
-
-          <div class="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
+          <div class="shrink-0 flex items-center justify-end gap-2 p-4 border-t border-zinc-800 bg-zinc-950/90">
             <button
               type="button"
               @click="showUploadModal = false"
@@ -803,6 +807,7 @@ import { useInstallments, type InstallmentScheduleItem } from '../../composables
 import { useLedgerStore } from '../../stores/ledger'
 import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { FinancialObligation } from '../../types/finance'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import {
@@ -859,6 +864,8 @@ const payForm = ref({
 
 const showUploadModal = ref(false)
 const uploadCategory = ref('CONTRACT')
+
+useBodyScrollLock(() => showPayModalState.value || showUploadModal.value)
 const selectedDocumentFile = ref<File | null>(null)
 
 onMounted(async () => {

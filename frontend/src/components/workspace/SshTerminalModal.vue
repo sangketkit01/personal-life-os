@@ -9,17 +9,17 @@
 
       <div
         class="relative flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden shadow-2xl"
-        :class="isMaximized ? 'w-full h-full rounded-none' : 'w-full max-w-5xl h-[85dvh] sm:h-[76vh]'"
+        :class="isMaximized ? 'w-full h-full rounded-none' : 'w-full max-w-5xl h-[calc(100dvh-1rem)] sm:h-[76vh]'"
       >
         <!-- Header -->
-        <div class="px-3 sm:px-4 py-2.5 border-b border-zinc-800 bg-zinc-900/80 flex flex-wrap items-center justify-between gap-2 shrink-0">
-          <div class="flex items-center gap-2.5 min-w-0">
+        <div class="px-3 sm:px-4 py-2 border-b border-zinc-800 bg-zinc-900/80 flex items-center justify-between gap-2 shrink-0">
+          <div class="flex items-center gap-2 min-w-0 flex-1">
             <TerminalSquare class="w-4 h-4 text-emerald-400 shrink-0" />
-            <span class="text-xs font-mono text-zinc-200 truncate">
+            <span class="text-xs font-mono text-zinc-200 truncate min-w-0">
               {{ asset.ssh_username }}@{{ asset.ip_address || asset.hostname }}:{{ asset.ssh_port }}
             </span>
             <span
-              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono uppercase border"
+              class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono uppercase border shrink-0"
               :class="statusClass"
             >
               <span class="w-1.5 h-1.5 rounded-full" :class="statusDotClass" />
@@ -27,11 +27,11 @@
             </span>
           </div>
 
-          <div class="flex items-center gap-1.5 shrink-0">
+          <div class="flex items-center gap-1 shrink-0">
             <button
               type="button"
               @click="reconnect"
-              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
+              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer"
               :title="t('term.reconnect')"
             >
               <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': wsStatus === 'connecting' }" />
@@ -39,7 +39,7 @@
             <button
               type="button"
               @click="clearScreen"
-              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
+              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer"
               :title="t('term.clear')"
             >
               <Eraser class="w-3.5 h-3.5" />
@@ -47,7 +47,7 @@
             <button
               type="button"
               @click="toggleRunbookBar"
-              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors flex items-center"
+              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors flex items-center cursor-pointer"
               :class="{ 'text-sky-400 border-sky-700/60': showRunbookBar }"
               :title="t('term.runbookBar')"
             >
@@ -56,7 +56,7 @@
             <button
               type="button"
               @click="isMaximized = !isMaximized"
-              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
+              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer"
               :title="t('term.maximize')"
             >
               <component :is="isMaximized ? Minimize2 : Maximize2" class="w-3.5 h-3.5" />
@@ -64,7 +64,7 @@
             <button
               type="button"
               @click="requestClose"
-              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 transition-colors"
+              class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer"
               :title="t('term.close')"
             >
               <X class="w-3.5 h-3.5" />
@@ -95,7 +95,7 @@
               type="button"
               @click="trustAndReconnect"
               :disabled="isTrustingHostKey"
-              class="px-3 py-1 rounded text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              class="px-3 py-1 rounded text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
               :class="hostKeyInfo.isMismatch ? 'bg-rose-600 hover:bg-rose-500 text-white' : 'bg-amber-600 hover:bg-amber-500 text-zinc-950'"
             >
               <ShieldCheck class="w-3.5 h-3.5" :class="{ 'animate-spin': isTrustingHostKey }" />
@@ -110,13 +110,23 @@
 
           <div
             v-if="showRunbookBar"
-            class="absolute inset-y-0 right-0 z-20 md:static flex w-64 sm:w-60 shrink-0 border-l border-zinc-800 bg-zinc-950/95 md:bg-zinc-900/40 backdrop-blur-md md:backdrop-blur-none flex-col"
+            class="absolute inset-y-0 right-0 z-20 md:static flex w-64 sm:w-60 max-w-[85vw] shrink-0 border-l border-zinc-800 bg-zinc-950/95 md:bg-zinc-900/40 backdrop-blur-md md:backdrop-blur-none flex-col"
           >
-            <div class="px-3 py-2 border-b border-zinc-800/80 flex items-center gap-1.5">
-              <Zap class="w-3.5 h-3.5 text-amber-400" />
-              <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-400">{{ t('term.quickRunbooks') }}</span>
+            <div class="px-3 py-2 border-b border-zinc-800/80 flex items-center justify-between gap-1.5 shrink-0">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <Zap class="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span class="text-[10px] font-mono uppercase tracking-wider text-zinc-400 truncate">{{ t('term.quickRunbooks') }}</span>
+              </div>
+              <button
+                type="button"
+                @click="showRunbookBar = false"
+                class="md:hidden p-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors cursor-pointer shrink-0"
+                title="Close runbooks"
+              >
+                <X class="w-3.5 h-3.5" />
+              </button>
             </div>
-            <div class="flex-1 overflow-y-auto p-2 space-y-1.5">
+            <div class="flex-1 overflow-y-auto overscroll-contain p-2 space-y-1.5">
               <p v-if="runbooks.length === 0" class="text-[11px] text-zinc-500 font-mono px-1 py-2">
                 {{ t('term.noRunbooks') }}
               </p>
@@ -125,7 +135,7 @@
                 :key="rb.id"
                 type="button"
                 @click="handleRunbookClick(rb)"
-                class="w-full text-left px-2.5 py-2 rounded-md bg-zinc-900/60 border border-zinc-800 hover:border-zinc-600 transition-colors group"
+                class="w-full text-left px-2.5 py-2 rounded-md bg-zinc-900/60 border border-zinc-800 hover:border-zinc-600 transition-colors group cursor-pointer"
               >
                 <div class="flex items-center gap-1.5">
                   <ChevronRight class="w-3 h-3 text-zinc-500 group-hover:text-emerald-400 transition-colors" />
@@ -165,6 +175,7 @@ import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
 import { parseSshHostKeyError } from '../../utils/sshSafety'
 import ConfirmModal from '../common/ConfirmModal.vue'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { InfrastructureAsset, ServerRunbook } from '../../types/workspace'
 
 const props = defineProps<{
@@ -175,6 +186,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
+useBodyScrollLock(() => props.isOpen)
+
 const workspaceStore = useWorkspaceStore()
 const toast = useToastStore()
 
@@ -182,10 +195,16 @@ type WsStatus = 'connecting' | 'connected' | 'disconnected'
 const wsStatus = ref<WsStatus>('disconnected')
 const lastErrorMessage = ref('')
 const isMaximized = ref(false)
-const showRunbookBar = ref(true)
+const showRunbookBar = ref(typeof window !== 'undefined' ? window.innerWidth >= 768 : true)
 const confirmRunbook = ref<ServerRunbook | null>(null)
 const hostKeyInfo = computed(() => parseSshHostKeyError(lastErrorMessage.value))
 const isTrustingHostKey = ref(false)
+
+watch(isMaximized, () => {
+  nextTick(() => {
+    try { fitAddon?.fit() } catch { /* noop */ }
+  })
+})
 
 async function trustAndReconnect() {
   if (hostKeyInfo.value.isMismatch) {
@@ -392,9 +411,17 @@ function teardown() {
   fitAddon = null
 }
 
+function handleWindowResize() {
+  try { fitAddon?.fit() } catch { /* noop */ }
+}
+
 async function start() {
   if (!props.isOpen || !isMounted) return
   const currentStartId = ++startId
+
+  if (typeof window !== 'undefined' && window.innerWidth < 768) {
+    showRunbookBar.value = false
+  }
 
   await nextTick()
   if (currentStartId !== startId || !props.isOpen || !isMounted) return
@@ -417,6 +444,10 @@ async function start() {
 
 onMounted(() => {
   isMounted = true
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', handleWindowResize)
+    window.addEventListener('orientationchange', handleWindowResize)
+  }
   if (props.isOpen) {
     start()
   }
@@ -443,6 +474,10 @@ watch(() => props.asset.id, () => {
 
 onBeforeUnmount(() => {
   isMounted = false
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', handleWindowResize)
+    window.removeEventListener('orientationchange', handleWindowResize)
+  }
   teardown()
 })
 </script>

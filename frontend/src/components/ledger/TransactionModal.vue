@@ -2,61 +2,63 @@
   <div
     v-if="isOpen"
     @click.self="emit('close')"
-    class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto font-sans"
+    class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans"
   >
-    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-xl p-6 shadow-2xl relative my-8 max-h-[90vh] overflow-y-auto">
-      <button
-        @click="emit('close')"
-        type="button"
-        class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
-      >
-        <X class="w-4 h-4" />
-      </button>
-
-      <div class="mb-4">
+    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-xl max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden relative">
+      <!-- Fixed Header -->
+      <div class="shrink-0 px-4 sm:px-6 py-3.5 border-b border-zinc-800 flex items-center justify-between">
         <h3 class="text-base font-semibold text-zinc-100 tracking-tight flex items-center gap-2">
           <span>New Transaction</span>
         </h3>
+        <button
+          @click="emit('close')"
+          type="button"
+          class="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
+        >
+          <X class="w-4 h-4" />
+        </button>
       </div>
 
-      <div v-if="errorMessage" class="mb-4 p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
-        {{ errorMessage }}
-      </div>
+      <!-- Form (Body & Sticky Footer) -->
+      <form @submit.prevent="handleSubmit" class="flex flex-col flex-1 min-h-0 overflow-hidden text-xs font-mono">
+        <div class="flex-1 overflow-y-auto overscroll-contain min-h-0 p-4 sm:p-6 space-y-4">
+          <div v-if="errorMessage" class="p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
+            {{ errorMessage }}
+          </div>
 
-      <form @submit.prevent="handleSubmit" class="space-y-4 text-xs font-mono">
-        <!-- 1. Type Switcher: Expense vs Income -->
-        <div class="flex items-center p-1 rounded-lg bg-zinc-900 border border-zinc-800">
-          <button
-            type="button"
-            @click="form.transaction_type = 'OUTFLOW'"
-            class="flex-1 py-1.5 rounded-md text-xs font-medium transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer"
-            :class="form.transaction_type === 'OUTFLOW' ? 'bg-zinc-800 text-zinc-100 shadow-sm font-semibold' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'"
-          >
-            <ArrowUpRight class="w-3.5 h-3.5 text-zinc-400" />
-            <span>Expense</span>
-          </button>
-
-          <button
-            type="button"
-            @click="form.transaction_type = 'INFLOW'"
-            class="flex-1 py-1.5 rounded-md text-xs font-medium transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer"
-            :class="form.transaction_type === 'INFLOW' ? 'bg-zinc-800 text-zinc-100 shadow-sm font-semibold' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'"
-          >
-            <ArrowDownLeft class="w-3.5 h-3.5 text-zinc-400" />
-            <span>Income</span>
-          </button>
-        </div>
-
-        <!-- 2. Account & Gross Amount -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-[11px] text-zinc-300 mb-1 font-medium">Account / Wallet <span class="text-rose-400">*</span></label>
-            <select
-              v-model="form.account"
-              required
-              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono text-xs transition-colors"
+          <!-- 1. Type Switcher: Expense vs Income -->
+          <div class="flex items-center p-1 rounded-lg bg-zinc-900 border border-zinc-800">
+            <button
+              type="button"
+              @click="form.transaction_type = 'OUTFLOW'"
+              class="flex-1 py-1.5 rounded-md text-xs font-medium transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer"
+              :class="form.transaction_type === 'OUTFLOW' ? 'bg-zinc-800 text-zinc-100 shadow-sm font-semibold' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'"
             >
-              <option value="" disabled>Select account / wallet</option>
+              <ArrowUpRight class="w-3.5 h-3.5 text-zinc-400" />
+              <span>Expense</span>
+            </button>
+
+            <button
+              type="button"
+              @click="form.transaction_type = 'INFLOW'"
+              class="flex-1 py-1.5 rounded-md text-xs font-medium transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer"
+              :class="form.transaction_type === 'INFLOW' ? 'bg-zinc-800 text-zinc-100 shadow-sm font-semibold' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'"
+            >
+              <ArrowDownLeft class="w-3.5 h-3.5 text-zinc-400" />
+              <span>Income</span>
+            </button>
+          </div>
+
+          <!-- 2. Account & Gross Amount -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] text-zinc-300 mb-1 font-medium">Account / Wallet <span class="text-rose-400">*</span></label>
+              <select
+                v-model="form.account"
+                required
+                class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono text-xs transition-colors"
+              >
+                <option value="" disabled>Select account / wallet</option>
               <option
                 v-for="acc in ledgerStore.accounts"
                 :key="acc.id"
@@ -246,38 +248,40 @@
                   <div
                     v-for="(p, pIdx) in harntungParticipants"
                     :key="pIdx"
-                    class="flex items-center gap-1.5 px-2 py-1 rounded bg-zinc-950 border text-xs transition-colors"
+                    class="flex items-center gap-1.5 px-2 py-1 rounded bg-zinc-950 border text-xs transition-colors max-w-full flex-wrap sm:flex-nowrap"
                     :class="harntungPayerName && harntungPayerName === p.name ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-zinc-800'"
                   >
                     <input
                       v-model="p.name"
                       type="text"
                       placeholder="Name"
-                      class="bg-transparent text-zinc-100 text-xs outline-none w-20"
+                      class="bg-transparent text-zinc-100 text-xs outline-none min-w-[60px] flex-1 sm:w-20 sm:flex-none"
                     />
                     <input
                       v-model="p.contact"
                       type="text"
                       placeholder="PromptPay"
-                      class="bg-transparent text-zinc-500 text-[10px] outline-none w-20 font-mono"
+                      class="bg-transparent text-zinc-500 text-[10px] outline-none min-w-[60px] flex-1 sm:w-20 sm:flex-none font-mono"
                     />
-                    <button
-                      type="button"
-                      @click="harntungPayerName = p.name"
-                      :disabled="!p.name"
-                      class="px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                      :class="harntungPayerName && harntungPayerName === p.name ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/40' : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'"
-                      :title="harntungPayerName && harntungPayerName === p.name ? 'Current payer' : 'Set as payer'"
-                    >
-                      {{ harntungPayerName && harntungPayerName === p.name ? 'Payer' : 'Set Payer' }}
-                    </button>
-                    <button
-                      type="button"
-                      @click="removeHarntungParticipant(pIdx)"
-                      class="text-zinc-500 hover:text-rose-400 transition-colors ml-0.5 cursor-pointer"
-                    >
-                      <Trash2 class="w-3 h-3" />
-                    </button>
+                    <div class="flex items-center gap-1 shrink-0 ml-auto">
+                      <button
+                        type="button"
+                        @click="harntungPayerName = p.name"
+                        :disabled="!p.name"
+                        class="px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                        :class="harntungPayerName && harntungPayerName === p.name ? 'bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/40' : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'"
+                        :title="harntungPayerName && harntungPayerName === p.name ? 'Current payer' : 'Set as payer'"
+                      >
+                        {{ harntungPayerName && harntungPayerName === p.name ? 'Payer' : 'Set Payer' }}
+                      </button>
+                      <button
+                        type="button"
+                        @click="removeHarntungParticipant(pIdx)"
+                        class="text-zinc-500 hover:text-rose-400 transition-colors ml-0.5 cursor-pointer shrink-0"
+                      >
+                        <Trash2 class="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -304,50 +308,52 @@
                     :key="itemIdx"
                     class="p-2.5 rounded bg-zinc-950/70 border border-zinc-800/80 space-y-2"
                   >
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-2">
                       <input
                         v-model="item.name"
                         type="text"
                         placeholder="Dish / Item Name"
-                        class="flex-1 px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 outline-none"
+                        class="w-full sm:flex-1 min-w-0 px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 outline-none"
                       />
-                      <div class="relative w-28">
-                        <span class="absolute left-2 top-1 text-zinc-500 text-xs">฿</span>
-                        <input
-                          v-model.number="item.price"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          class="w-full pl-5 pr-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 text-right font-mono outline-none"
-                        />
+                      <div class="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                        <div class="relative flex-1 sm:w-28 min-w-0">
+                          <span class="absolute left-2 top-1 text-zinc-500 text-xs">฿</span>
+                          <input
+                            v-model.number="item.price"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            class="w-full pl-5 pr-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 text-right font-mono outline-none"
+                          />
+                        </div>
+                        <div class="flex items-center gap-1 text-[11px] text-zinc-500 shrink-0">
+                          <span>x</span>
+                          <input
+                            v-model.number="item.quantity"
+                            type="number"
+                            min="1"
+                            class="w-10 px-1 py-1 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 text-center font-mono outline-none"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          @click="removeHarntungItem(itemIdx)"
+                          class="p-1 text-zinc-500 hover:text-rose-400 transition-colors cursor-pointer shrink-0 ml-auto sm:ml-0"
+                          title="Remove dish"
+                        >
+                          <Trash2 class="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                      <div class="flex items-center gap-1 text-[11px] text-zinc-500">
-                        <span>x</span>
-                        <input
-                          v-model.number="item.quantity"
-                          type="number"
-                          min="1"
-                          class="w-10 px-1 py-1 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 text-center font-mono outline-none"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        @click="removeHarntungItem(itemIdx)"
-                        class="p-1 text-zinc-500 hover:text-rose-400 transition-colors cursor-pointer"
-                        title="Remove dish"
-                      >
-                        <Trash2 class="w-3.5 h-3.5" />
-                      </button>
                     </div>
 
                     <!-- Who Ate This? (Consumers Chips) -->
                     <div class="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
-                      <span class="text-zinc-500 text-[10px] mr-1">Consumers:</span>
+                      <span class="text-zinc-500 text-[10px] mr-1 shrink-0">Consumers:</span>
                       <button
                         type="button"
                         @click="toggleAllConsumers(item)"
-                        class="px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors cursor-pointer"
+                        class="px-1.5 py-0.5 rounded text-[10px] font-mono border transition-colors cursor-pointer shrink-0"
                         :class="item.consumers.length === harntungParticipants.length ? 'bg-zinc-800 text-zinc-200 border-zinc-600' : 'text-zinc-500 border-zinc-800 hover:text-zinc-300'"
                       >
                         [All]
@@ -357,13 +363,13 @@
                         :key="p.name"
                         type="button"
                         @click="toggleConsumer(item, p.name)"
-                        class="px-2 py-0.5 rounded text-[10px] font-mono border transition-colors cursor-pointer"
+                        class="px-2 py-0.5 rounded text-[10px] font-mono border transition-colors cursor-pointer max-w-full truncate"
                         :class="item.consumers.includes(p.name) ? 'bg-zinc-800 text-zinc-100 border-zinc-600 font-semibold' : 'text-zinc-600 border-zinc-800/80 hover:text-zinc-400'"
                       >
                         {{ p.name }}
                       </button>
 
-                      <span v-if="item.consumers.length > 0 && item.price > 0" class="text-[10px] text-zinc-500 font-mono ml-auto">
+                      <span v-if="item.consumers.length > 0 && item.price > 0" class="text-[10px] text-zinc-500 font-mono w-full sm:w-auto sm:ml-auto pt-0.5 sm:pt-0">
                         ≈ ฿{{ (Number(item.price * (item.quantity || 1)) / item.consumers.length).toFixed(2) }} each
                       </span>
                     </div>
@@ -451,14 +457,14 @@
                   placeholder="Friend's name"
                   class="flex-1 px-2.5 py-1.5 rounded bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-600 text-xs font-mono outline-none hover:border-zinc-700 focus:border-zinc-500 min-w-0 transition-colors"
                 />
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 w-full sm:w-auto">
                   <input
                     v-model="p.counterparty_contact"
                     type="text"
                     placeholder="Phone / PromptPay"
-                    class="w-32 sm:w-36 px-2 py-1.5 rounded bg-zinc-950 border border-zinc-800 text-zinc-300 placeholder-zinc-600 text-[11px] font-mono outline-none hover:border-zinc-700 focus:border-zinc-500 transition-colors"
+                    class="flex-1 sm:w-36 px-2 py-1.5 rounded bg-zinc-950 border border-zinc-800 text-zinc-300 placeholder-zinc-600 text-[11px] font-mono outline-none hover:border-zinc-700 focus:border-zinc-500 transition-colors min-w-0"
                   />
-                  <div class="relative w-28 sm:w-32">
+                  <div class="relative w-28 sm:w-32 shrink-0">
                     <span class="absolute left-2 top-1.5 text-zinc-500 text-[11px]">฿</span>
                     <input
                       v-model.number="p.amount"
@@ -585,9 +591,10 @@
             class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 transition-colors"
           />
         </div>
+        </div>
 
-        <!-- Form Actions -->
-        <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-zinc-800/80">
+        <!-- Form Actions (Sticky Footer) -->
+        <div class="shrink-0 p-4 border-t border-zinc-800/80 bg-zinc-950/90 flex items-center justify-end gap-2.5">
           <button
             type="button"
             @click="emit('close')"
@@ -612,6 +619,7 @@
 import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import { useLedgerStore } from '../../stores/ledger'
 import { useStorageStore } from '../../stores/storage'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { TransactionType } from '../../types/ledger'
 import {
   X,
@@ -633,6 +641,8 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'created'): void
 }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const ledgerStore = useLedgerStore()
 const storageStore = useStorageStore()

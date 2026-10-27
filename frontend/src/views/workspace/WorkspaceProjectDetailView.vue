@@ -592,21 +592,25 @@
     <!-- Add / Edit Link Modal -->
     <div
       v-if="showLinkModal"
-      class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 font-sans"
+      class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 font-sans overflow-hidden"
       @click.self="showLinkModal = false"
     >
-      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md p-5 shadow-2xl relative">
-        <button
-          @click="showLinkModal = false"
-          class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
-        >
-          <X class="w-4 h-4" />
-        </button>
+      <div class="relative bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden">
+        <!-- Fixed Header -->
+        <div class="shrink-0 px-4 sm:px-5 py-3.5 border-b border-zinc-800 flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-zinc-100">{{ editingLink ? 'Edit Link' : 'Add Link' }}</h3>
+            <p class="text-xs text-zinc-500 mt-0.5">Attach websites, Canva decks, Figma files or repos.</p>
+          </div>
+          <button
+            @click="showLinkModal = false"
+            class="text-zinc-500 hover:text-zinc-300 transition-colors p-1 cursor-pointer"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
 
-        <h3 class="text-sm font-semibold text-zinc-100 mb-1">{{ editingLink ? 'Edit Link' : 'Add Link' }}</h3>
-        <p class="text-xs text-zinc-500 mb-4">Attach websites, Canva decks, Figma files or repos to this project.</p>
-
-        <div class="space-y-3">
+        <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-3">
           <input
             v-model="linkForm.title"
             type="text"
@@ -638,18 +642,19 @@
           </div>
         </div>
 
-        <div class="flex items-center justify-end gap-2.5 mt-5 pt-3 border-t border-zinc-800/80">
+        <!-- Sticky Footer -->
+        <div class="shrink-0 p-4 border-t border-zinc-800/80 bg-zinc-950/90 flex items-center justify-end gap-2.5">
           <button
             type="button"
             @click="showLinkModal = false"
-            class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors"
+            class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="button"
             @click="submitLink"
-            class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors shadow-sm"
+            class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors shadow-sm cursor-pointer"
           >
             {{ editingLink ? 'Save Link' : 'Add Link' }}
           </button>
@@ -660,21 +665,25 @@
     <!-- Edit Project Modal -->
     <div
       v-if="showProjectModal"
-      class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 font-sans overflow-y-auto"
+      class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 font-sans overflow-hidden"
       @click.self="showProjectModal = false"
     >
-      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-lg p-5 shadow-2xl relative my-8">
-        <button
-          @click="showProjectModal = false"
-          class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
-        >
-          <X class="w-4 h-4" />
-        </button>
+      <div class="relative bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-lg max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden">
+        <!-- Fixed Header -->
+        <div class="shrink-0 px-4 sm:px-5 py-3.5 border-b border-zinc-800 flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-zinc-100">Edit Project</h3>
+            <p class="text-xs text-zinc-500 mt-0.5">Update properties of this project.</p>
+          </div>
+          <button
+            @click="showProjectModal = false"
+            class="text-zinc-500 hover:text-zinc-300 transition-colors p-1 cursor-pointer"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
 
-        <h3 class="text-sm font-semibold text-zinc-100 mb-1">Edit Project</h3>
-        <p class="text-xs text-zinc-500 mb-4">Update properties of this project.</p>
-
-        <div class="space-y-3.5">
+        <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-3.5">
           <div>
             <label class="block text-[10px] font-mono uppercase text-zinc-500 mb-1">Project Name</label>
             <input
@@ -721,7 +730,7 @@
                 :key="color"
                 type="button"
                 @click="projectForm.color = color"
-                class="w-6 h-6 rounded-full border-2 transition-transform"
+                class="w-6 h-6 rounded-full border-2 transition-transform cursor-pointer"
                 :class="projectForm.color === color ? 'scale-110 border-zinc-100' : 'border-transparent'"
                 :style="{ backgroundColor: color }"
               />
@@ -731,7 +740,7 @@
                 :key="preset.key"
                 type="button"
                 @click="projectForm.icon = preset.key"
-                class="w-7 h-7 rounded-md flex items-center justify-center transition-colors border"
+                class="w-7 h-7 rounded-md flex items-center justify-center transition-colors border cursor-pointer"
                 :class="projectForm.icon === preset.key ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700 text-zinc-400'"
                 :title="preset.label"
               >
@@ -769,18 +778,19 @@
           </div>
         </div>
 
-        <div class="flex items-center justify-end gap-2.5 mt-5 pt-3 border-t border-zinc-800/80">
+        <!-- Sticky Footer -->
+        <div class="shrink-0 p-4 border-t border-zinc-800/80 bg-zinc-950/90 flex items-center justify-end gap-2.5">
           <button
             type="button"
             @click="showProjectModal = false"
-            class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors"
+            class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="button"
             @click="submitProject"
-            class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors shadow-sm"
+            class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors shadow-sm cursor-pointer"
           >
             Save Changes
           </button>
@@ -867,6 +877,7 @@ import type { Component } from 'vue'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import WorkspaceKanbanBoard from '../../components/workspace/WorkspaceKanbanBoard.vue'
 import ProjectInfrastructureTab from '../../components/workspace/ProjectInfrastructureTab.vue'
@@ -1113,6 +1124,7 @@ async function deleteProject() {
 
 // ===== Links =====
 const showLinkModal = ref(false)
+useBodyScrollLock(() => showProjectModal.value || showLinkModal.value)
 const editingLink = ref<ProjectLink | null>(null)
 const linkToDelete = ref<ProjectLink | null>(null)
 const isDeletingLink = ref(false)

@@ -2,93 +2,97 @@
   <Teleport to="body">
     <div
       v-if="isOpen"
-      class="fixed inset-0 z-[70] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 font-sans"
+      class="fixed inset-0 z-[70] bg-black/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans"
       @click.self="emit('close')"
     >
-      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-3xl p-4 shadow-2xl relative">
-        <div class="flex items-center justify-between mb-3">
+      <div class="relative bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-3xl max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden">
+        <!-- Header -->
+        <div class="shrink-0 px-4 sm:px-5 py-3 border-b border-zinc-800 flex items-center justify-between">
           <div>
             <h3 class="text-sm font-semibold text-zinc-100">Crop Image</h3>
-            <p class="text-[11px] text-zinc-500 mt-0.5">{{ fileName || 'Drag the crop box, pick a ratio or rotate' }}</p>
+            <p class="text-[11px] text-zinc-500 mt-0.5 truncate max-w-[240px] sm:max-w-md">{{ fileName || 'Drag the crop box, pick a ratio or rotate' }}</p>
           </div>
-          <button type="button" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 transition-colors" @click="emit('close')">
+          <button type="button" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 transition-colors cursor-pointer" @click="emit('close')">
             <X class="w-4 h-4" />
           </button>
         </div>
 
-        <!-- Aspect ratio presets + rotation -->
-        <div class="flex items-center gap-1.5 flex-wrap mb-3">
-          <button
-            v-for="ratio in ASPECTS"
-            :key="ratio.key"
-            type="button"
-            class="px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors border"
-            :class="aspect === ratio.key ? 'bg-zinc-800 text-zinc-100 border-zinc-600' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'"
-            @click="setAspect(ratio.key)"
-          >
-            {{ ratio.label }}
-          </button>
-          <span class="w-px h-5 bg-zinc-800 mx-1" />
-          <button type="button" class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors" title="Rotate -90°" @click="rotate(-90)">
-            <RotateCcw class="w-3.5 h-3.5" />
-          </button>
-          <button type="button" class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors" title="Rotate +90°" @click="rotate(90)">
-            <RotateCw class="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        <!-- Crop canvas area -->
-        <div class="flex items-center justify-center rounded-lg bg-zinc-900/50 border border-zinc-800 p-3 overflow-hidden">
-          <div
-           
-            class="relative touch-none"
-            :style="{ width: `${dispW}px`, height: `${dispH}px`, cursor: dragging ? 'grabbing' : 'default' }"
-            @pointermove="onPointerMove"
-            @pointerup="onPointerUp"
-            @pointerleave="onPointerUp"
-          >
-            <img
-              :src="rotatedPreviewUrl"
-              class="absolute inset-0 w-full h-full select-none"
-              draggable="false"
-              alt="Crop source"
-            />
-            <!-- Dimmed overlay (4 panels around the crop box) -->
-            <div class="absolute inset-0 pointer-events-none" v-if="crop.w > 0">
-              <div class="absolute bg-black/55" :style="topStyle" />
-              <div class="absolute bg-black/55" :style="bottomStyle" />
-              <div class="absolute bg-black/55" :style="leftStyle" />
-              <div class="absolute bg-black/55" :style="rightStyle" />
-            </div>
-
-            <!-- Crop box -->
-            <div
-              v-if="crop.w > 0"
-              class="absolute border-2 border-sky-400 cursor-move"
-              :style="{ left: `${crop.x}px`, top: `${crop.y}px`, width: `${crop.w}px`, height: `${crop.h}px` }"
-              @pointerdown.prevent="startDrag('move', $event)"
+        <!-- Body -->
+        <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4 space-y-3 flex flex-col">
+          <!-- Aspect ratio presets + rotation -->
+          <div class="flex items-center gap-1.5 flex-wrap shrink-0">
+            <button
+              v-for="ratio in ASPECTS"
+              :key="ratio.key"
+              type="button"
+              class="px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors border cursor-pointer"
+              :class="aspect === ratio.key ? 'bg-zinc-800 text-zinc-100 border-zinc-600' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200'"
+              @click="setAspect(ratio.key)"
             >
-              <span
-                v-for="corner in CORNERS"
-                :key="corner"
-                class="absolute w-3 h-3 rounded-sm bg-sky-400 border border-zinc-950"
-                :class="cornerClass(corner)"
-                @pointerdown.prevent.stop="startDrag(corner, $event)"
+              {{ ratio.label }}
+            </button>
+            <span class="w-px h-5 bg-zinc-800 mx-1" />
+            <button type="button" class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer" title="Rotate -90°" @click="rotate(-90)">
+              <RotateCcw class="w-3.5 h-3.5" />
+            </button>
+            <button type="button" class="p-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer" title="Rotate +90°" @click="rotate(90)">
+              <RotateCw class="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <!-- Crop canvas area -->
+          <div class="flex-1 min-h-0 flex items-center justify-center rounded-lg bg-zinc-900/50 border border-zinc-800 p-2 sm:p-3 overflow-hidden">
+            <div
+              class="relative touch-none select-none shrink-0"
+              :style="{ width: `${dispW}px`, height: `${dispH}px`, cursor: dragging ? 'grabbing' : 'default' }"
+              @pointermove="onPointerMove"
+              @pointerup="onPointerUp"
+              @pointerleave="onPointerUp"
+            >
+              <img
+                :src="rotatedPreviewUrl"
+                class="absolute inset-0 w-full h-full select-none pointer-events-none"
+                draggable="false"
+                alt="Crop source"
               />
-              <span class="absolute inset-0 border border-white/40 pointer-events-none" />
+              <!-- Dimmed overlay (4 panels around the crop box) -->
+              <div class="absolute inset-0 pointer-events-none" v-if="crop.w > 0">
+                <div class="absolute bg-black/55" :style="topStyle" />
+                <div class="absolute bg-black/55" :style="bottomStyle" />
+                <div class="absolute bg-black/55" :style="leftStyle" />
+                <div class="absolute bg-black/55" :style="rightStyle" />
+              </div>
+
+              <!-- Crop box -->
+              <div
+                v-if="crop.w > 0"
+                class="absolute border-2 border-sky-400 cursor-move"
+                :style="{ left: `${crop.x}px`, top: `${crop.y}px`, width: `${crop.w}px`, height: `${crop.h}px` }"
+                @pointerdown.prevent="startDrag('move', $event)"
+              >
+                <span
+                  v-for="corner in CORNERS"
+                  :key="corner"
+                  class="absolute w-3 h-3 rounded-sm bg-sky-400 border border-zinc-950"
+                  :class="cornerClass(corner)"
+                  @pointerdown.prevent.stop="startDrag(corner, $event)"
+                />
+                <span class="absolute inset-0 border border-white/40 pointer-events-none" />
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="flex items-center justify-between mt-4 pt-3 border-t border-zinc-800/80">
+        <!-- Sticky Footer -->
+        <div class="shrink-0 p-3 sm:p-4 border-t border-zinc-800/80 bg-zinc-950/90 flex items-center justify-between">
           <span class="text-[10px] font-mono text-zinc-500">
             {{ Math.round(crop.w / dispScale) }} × {{ Math.round(crop.h / dispScale) }} px output
           </span>
           <div class="flex items-center gap-2.5">
-            <button type="button" class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors" @click="emit('close')">
+            <button type="button" class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors cursor-pointer" @click="emit('close')">
               Cancel
             </button>
-            <button type="button" class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors" @click="applyCrop">
+            <button type="button" class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors cursor-pointer" @click="applyCrop">
               Apply Crop
             </button>
           </div>
@@ -99,8 +103,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RotateCcw, RotateCw, X } from 'lucide-vue-next'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 
 const props = defineProps<{
   isOpen: boolean
@@ -112,6 +117,8 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'cropped', file: File): void
 }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const ASPECTS = [
   { key: 'free', label: 'Free', value: 0 },
@@ -131,12 +138,38 @@ const crop = reactive({ x: 0, y: 0, w: 0, h: 0 })
 const dragging = ref<'move' | Corner | null>(null)
 let dragStart = { x: 0, y: 0, cx: 0, cy: 0, cw: 0, ch: 0 }
 
-// Canvas box clamps to the viewport so the crop area never overflows a
-// phone screen (fixed 640x420 used to spill past a 360px display).
-const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1024
-const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800
-const MAX_W = Math.min(640, Math.max(240, viewportW - 96))
-const MAX_H = Math.min(420, Math.max(220, Math.floor(viewportH * 0.45)))
+// Reactive viewport calculation
+const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
+const windowHeight = ref(typeof window !== 'undefined' ? window.innerHeight : 800)
+
+function updateViewport() {
+  if (typeof window === 'undefined') return
+  windowWidth.value = window.innerWidth
+  windowHeight.value = window.innerHeight
+}
+
+onMounted(() => {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', updateViewport)
+    window.addEventListener('orientationchange', updateViewport)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', updateViewport)
+    window.removeEventListener('orientationchange', updateViewport)
+  }
+})
+
+watch(() => props.isOpen, (open) => {
+  if (open) {
+    updateViewport()
+  }
+})
+
+const maxW = computed(() => Math.min(640, Math.max(200, windowWidth.value - 64)))
+const maxH = computed(() => Math.min(480, Math.max(180, windowHeight.value - 240)))
 
 // Rotated natural dimensions (90° steps swap width/height)
 const rotatedW = computed(() => (rotation.value % 180 === 0 ? natural.w : natural.h))
@@ -144,11 +177,24 @@ const rotatedH = computed(() => (rotation.value % 180 === 0 ? natural.h : natura
 
 const dispScale = computed(() => {
   if (!rotatedW.value || !rotatedH.value) return 1
-  return Math.min(MAX_W / rotatedW.value, MAX_H / rotatedH.value, 1)
+  return Math.min(maxW.value / rotatedW.value, maxH.value / rotatedH.value, 1)
 })
 
 const dispW = computed(() => Math.round(rotatedW.value * dispScale.value))
 const dispH = computed(() => Math.round(rotatedH.value * dispScale.value))
+
+// When displayed dimensions change due to resize/orientationchange, scale crop proportionally
+watch([dispW, dispH], ([newW, newH], [oldW, oldH]) => {
+  if (oldW && oldH && oldW > 0 && oldH > 0 && crop.w > 0) {
+    const rx = newW / oldW
+    const ry = newH / oldH
+    crop.x = Math.round(crop.x * rx)
+    crop.y = Math.round(crop.y * ry)
+    crop.w = Math.round(crop.w * rx)
+    crop.h = Math.round(crop.h * ry)
+    clampCrop()
+  }
+})
 
 // Rotated image preview via a data URL so the on-screen image matches the output
 const rotatedPreviewUrl = ref('')
@@ -238,64 +284,69 @@ const rightStyle = computed(() => ({ right: 0, top: `${crop.y}px`, width: `${Mat
 
 function startDrag(mode: 'move' | Corner, event: PointerEvent) {
   dragging.value = mode
-  dragStart = { x: event.clientX, y: event.clientY, cx: crop.x, cy: crop.y, cw: crop.w, ch: crop.h }
+  dragStart = {
+    x: event.clientX,
+    y: event.clientY,
+    cx: crop.x,
+    cy: crop.y,
+    cw: crop.w,
+    ch: crop.h
+  }
 }
 
 function onPointerMove(event: PointerEvent) {
   if (!dragging.value) return
   const dx = event.clientX - dragStart.x
   const dy = event.clientY - dragStart.y
-  const mode = dragging.value
-  const ratio = currentAspectValue()
 
-  if (mode === 'move') {
+  if (dragging.value === 'move') {
     crop.x = Math.max(0, Math.min(dragStart.cx + dx, dispW.value - crop.w))
     crop.y = Math.max(0, Math.min(dragStart.cy + dy, dispH.value - crop.h))
     return
   }
 
-  // Corner resize
-  let newW = dragStart.cw
-  let newH = dragStart.ch
-  if (mode === 'ne' || mode === 'se') {
-    newW = dragStart.cw + dx
-  } else {
-    newW = dragStart.cw - dx
-  }
-  if (mode === 'sw' || mode === 'se') {
-    newH = dragStart.ch + dy
-  } else {
-    newH = dragStart.ch - dy
-  }
+  const ratio = currentAspectValue()
+  let newX = crop.x
+  let newY = crop.y
+  let newW = crop.w
+  let newH = crop.h
 
-  if (ratio > 0) {
-    // Keep aspect: use the dominant dimension
-    if (Math.abs(newW - dragStart.cw) > Math.abs(newH - dragStart.ch)) {
-      newH = newW / ratio
-    } else {
+  if (dragging.value === 'se') {
+    newW = Math.max(24, Math.min(dragStart.cw + dx, dispW.value - dragStart.cx))
+    newH = ratio > 0 ? newW / ratio : Math.max(24, Math.min(dragStart.ch + dy, dispH.value - dragStart.cy))
+    if (ratio > 0 && dragStart.cy + newH > dispH.value) {
+      newH = dispH.value - dragStart.cy
       newW = newH * ratio
     }
+  } else if (dragging.value === 'sw') {
+    newW = Math.max(24, Math.min(dragStart.cw - dx, dragStart.cx + dragStart.cw))
+    newH = ratio > 0 ? newW / ratio : Math.max(24, Math.min(dragStart.ch + dy, dispH.value - dragStart.cy))
+    if (ratio > 0 && dragStart.cy + newH > dispH.value) {
+      newH = dispH.value - dragStart.cy
+      newW = newH * ratio
+    }
+    newX = dragStart.cx + dragStart.cw - newW
+  } else if (dragging.value === 'ne') {
+    newW = Math.max(24, Math.min(dragStart.cw + dx, dispW.value - dragStart.cx))
+    newH = ratio > 0 ? newW / ratio : Math.max(24, Math.min(dragStart.ch - dy, dragStart.cy + dragStart.ch))
+    if (ratio > 0 && dragStart.cy + dragStart.ch - newH < 0) {
+      newH = dragStart.cy + dragStart.ch
+      newW = newH * ratio
+    }
+    newY = dragStart.cy + dragStart.ch - newH
+  } else if (dragging.value === 'nw') {
+    newW = Math.max(24, Math.min(dragStart.cw - dx, dragStart.cx + dragStart.cw))
+    newH = ratio > 0 ? newW / ratio : Math.max(24, Math.min(dragStart.ch - dy, dragStart.cy + dragStart.ch))
+    if (ratio > 0 && dragStart.cy + dragStart.ch - newH < 0) {
+      newH = dragStart.cy + dragStart.ch
+      newW = newH * ratio
+    }
+    newX = dragStart.cx + dragStart.cw - newW
+    newY = dragStart.cy + dragStart.ch - newH
   }
 
-  newW = Math.max(24, newW)
-  newH = Math.max(24, newH)
-  if (ratio > 0) {
-    // Re-apply after clamping to keep ratio
-    if (newW / newH > ratio) newW = newH * ratio
-    else newH = newW / ratio
-  }
-
-  let x = dragStart.cx
-  let y = dragStart.cy
-  if (mode === 'nw' || mode === 'sw') {
-    x = dragStart.cx + (dragStart.cw - newW)
-  }
-  if (mode === 'nw' || mode === 'ne') {
-    y = dragStart.cy + (dragStart.ch - newH)
-  }
-
-  crop.x = x
-  crop.y = y
+  crop.x = newX
+  crop.y = newY
   crop.w = newW
   crop.h = newH
   clampCrop()

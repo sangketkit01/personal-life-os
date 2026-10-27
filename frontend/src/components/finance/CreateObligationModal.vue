@@ -1,60 +1,59 @@
 <template>
-  <div v-if="isOpen" @click.self="emit('close')" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto font-sans">
-    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-lg p-6 shadow-2xl relative my-8">
-      <!-- Close button -->
-      <button
-        @click="emit('close')"
-        class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
-      >
-        <X class="w-4 h-4" />
-      </button>
-
-      <!-- Modal Title -->
-      <div class="mb-4">
+  <div v-if="isOpen" @click.self="emit('close')" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 font-sans overflow-hidden">
+    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-lg shadow-2xl relative flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-hidden">
+      <!-- Modal Header -->
+      <div class="px-5 py-3.5 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
         <h2 class="text-base font-semibold text-zinc-100 tracking-tight flex items-center gap-2">
           <span>Create Obligation</span>
-          <span class="text-xs font-normal text-zinc-500 font-mono">Financial Commitment</span>
+          <span class="text-xs font-normal text-zinc-500 font-mono hidden sm:inline">Financial Commitment</span>
         </h2>
-      </div>
-
-      <!-- Type Selector Tabs -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-zinc-900 border border-zinc-800 rounded-lg mb-4">
         <button
-          v-for="t in typeOptions"
-          :key="t.value"
+          @click="emit('close')"
           type="button"
-          @click="selectedType = t.value"
-          class="py-1.5 px-2 rounded text-center transition-all active:scale-[0.98] flex flex-col items-center gap-1"
-          :class="[
-            selectedType === t.value
-              ? 'bg-zinc-800 text-zinc-100 shadow-sm font-semibold'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
-          ]"
+          class="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
         >
-          <component :is="t.icon" class="w-3.5 h-3.5" />
-          <span class="text-[11px] font-medium">{{ t.label }}</span>
+          <X class="w-4 h-4" />
         </button>
       </div>
 
-      <!-- Error message -->
-      <div v-if="errorMessage" class="mb-4 p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
-        {{ errorMessage }}
-      </div>
-
-        <!-- Linked Project (SUBSCRIPTION & FREE_TRIAL only) -->
-        <div v-if="selectedType === 'SUBSCRIPTION' || selectedType === 'FREE_TRIAL'" class="space-y-1.5">
-          <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400">{{ t('fin.linkedProject') }}</label>
-          <select
-            v-model="form.project"
-            class="w-full bg-zinc-900 border border-zinc-800 rounded-md px-2.5 py-2 text-xs text-zinc-100 outline-none focus:border-zinc-600"
-          >
-            <option :value="null">—</option>
-            <option v-for="p in workspaceStore.projects" :key="p.id" :value="p.id">{{ p.name }}</option>
-          </select>
-        </div>
-
       <!-- Form -->
-      <form @submit.prevent="handleSubmit" class="space-y-3.5">
+      <form @submit.prevent="handleSubmit" class="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div class="p-4 sm:p-5 space-y-3.5 overflow-y-auto overscroll-contain flex-1 min-h-0">
+          <!-- Type Selector Tabs -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-zinc-900 border border-zinc-800 rounded-lg">
+            <button
+              v-for="t in typeOptions"
+              :key="t.value"
+              type="button"
+              @click="selectedType = t.value"
+              class="py-1.5 px-2 rounded text-center transition-all active:scale-[0.98] flex flex-col items-center gap-1"
+              :class="[
+                selectedType === t.value
+                  ? 'bg-zinc-800 text-zinc-100 shadow-sm font-semibold'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
+              ]"
+            >
+              <component :is="t.icon" class="w-3.5 h-3.5" />
+              <span class="text-[11px] font-medium">{{ t.label }}</span>
+            </button>
+          </div>
+
+          <!-- Error message -->
+          <div v-if="errorMessage" class="p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
+            {{ errorMessage }}
+          </div>
+
+          <!-- Linked Project (SUBSCRIPTION & FREE_TRIAL only) -->
+          <div v-if="selectedType === 'SUBSCRIPTION' || selectedType === 'FREE_TRIAL'" class="space-y-1.5">
+            <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400">{{ t('fin.linkedProject') }}</label>
+            <select
+              v-model="form.project"
+              class="w-full bg-zinc-900 border border-zinc-800 rounded-md px-2.5 py-2 text-xs text-zinc-100 outline-none focus:border-zinc-600"
+            >
+              <option :value="null">—</option>
+              <option v-for="p in workspaceStore.projects" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+          </div>
         <!-- Subtype Switcher for INSTALLMENT -->
         <div v-if="selectedType === 'INSTALLMENT'" class="space-y-1.5">
           <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400">Installment Category</label>
@@ -436,9 +435,10 @@
             />
           </div>
         </div>
+        </div>
 
-        <!-- Action Buttons -->
-        <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-zinc-800/80">
+        <!-- Action Buttons (Sticky Footer) -->
+        <div class="flex items-center justify-end gap-2.5 p-4 border-t border-zinc-800/80 shrink-0 bg-zinc-950/90">
           <button
             type="button"
             @click="emit('close')"
@@ -462,6 +462,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useFinanceStore } from '../../stores/finance'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { ObligationType, ObligationSubtype } from '../../types/finance'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { t } from '../../i18n'
@@ -481,6 +482,8 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'created'): void
 }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const financeStore = useFinanceStore()
 const workspaceStore = useWorkspaceStore()

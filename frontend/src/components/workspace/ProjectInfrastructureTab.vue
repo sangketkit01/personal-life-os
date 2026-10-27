@@ -698,41 +698,41 @@
 
     <!-- Docker logs viewer -->
     <Teleport to="body">
-      <div v-if="logsViewer.open" class="fixed inset-0 z-[68] flex items-center justify-center p-4 font-sans">
+      <div v-if="logsViewer.open" class="fixed inset-0 z-[68] flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans">
         <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" @click="logsViewer.open = false" />
-        <div class="relative w-full max-w-3xl h-[70vh] flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden shadow-2xl">
+        <div class="relative w-full max-w-3xl h-[calc(100dvh-1rem)] sm:h-[70vh] flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden shadow-2xl">
           <div class="px-4 py-3 border-b border-zinc-800 flex items-center justify-between shrink-0">
             <div class="flex items-center gap-2">
               <FileText class="w-4 h-4 text-sky-400" />
               <span class="text-xs font-mono text-zinc-200">{{ logsViewer.title }}</span>
             </div>
-            <button type="button" @click="logsViewer.open = false" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-100 transition-colors">
+            <button type="button" @click="logsViewer.open = false" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-100 transition-colors cursor-pointer">
               <X class="w-4 h-4" />
             </button>
           </div>
-          <pre class="flex-1 overflow-auto p-4 bg-[#0d0f14] text-[11px] font-mono text-zinc-300 whitespace-pre-wrap break-all m-0">{{ logsViewer.content || t('infra.noLogs') }}</pre>
+          <pre class="flex-1 min-h-0 overflow-auto overscroll-contain p-4 bg-[#0d0f14] text-[11px] font-mono text-zinc-300 whitespace-pre-wrap break-all m-0">{{ logsViewer.content || t('infra.noLogs') }}</pre>
         </div>
       </div>
     </Teleport>
 
     <!-- Link Existing Server / Service modal -->
     <Teleport to="body">
-      <div v-if="linkModal.open" class="fixed inset-0 z-[66] flex items-center justify-center p-4 font-sans">
+      <div v-if="linkModal.open" class="fixed inset-0 z-[66] flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans">
         <div class="absolute inset-0 bg-black/75 backdrop-blur-sm" @click="linkModal.open = false" />
 
-        <div class="relative w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden">
-          <div class="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
+        <div class="relative w-full max-w-md max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden">
+          <div class="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800 shrink-0">
             <div class="flex items-center gap-2">
               <Link2 class="w-4 h-4 text-sky-400" />
               <h3 class="text-sm font-semibold text-zinc-100">
                 {{ linkModal.mode === 'server' ? t('infra.linkServer') : t('infra.linkService') }}
               </h3>
             </div>
-            <button type="button" @click="linkModal.open = false" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-100 transition-colors">
+            <button type="button" @click="linkModal.open = false" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-100 transition-colors cursor-pointer">
               <X class="w-4 h-4" />
             </button>
           </div>
-          <div class="p-4 max-h-[60dvh] overflow-y-auto space-y-1.5">
+          <div class="p-4 flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-1.5">
             <p v-if="linkModal.loading" class="text-xs text-zinc-500 font-mono text-center py-6">{{ t('common.loading') }}</p>
             <p v-else-if="linkModal.candidates.length === 0" class="text-xs text-zinc-500 font-mono text-center py-6">{{ t('infra.noLinkCandidates') }}</p>
             <button
@@ -740,7 +740,7 @@
               :key="candidate.id"
               type="button"
               @click="linkAsset(candidate)"
-              class="w-full text-left p-3 rounded-lg bg-zinc-900/50 border border-zinc-800 hover:border-zinc-600 transition-colors flex items-center justify-between gap-3"
+              class="w-full text-left p-3 rounded-lg bg-zinc-900/50 border border-zinc-800 hover:border-zinc-600 transition-colors flex items-center justify-between gap-3 cursor-pointer"
             >
               <div class="min-w-0">
                 <div class="flex items-center gap-2">
@@ -815,6 +815,7 @@ import { parseSshHostKeyError, type SshHostKeyErrorInfo } from '../../utils/sshS
 import { t, formatLocaleDate } from '../../i18n'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import ConfirmModal from '../common/ConfirmModal.vue'
 import MaBillingEditModal from './MaBillingEditModal.vue'
 import InfraAssetFormModal from './InfraAssetFormModal.vue'
@@ -876,6 +877,8 @@ const linkModal = reactive({
   loading: false,
   candidates: [] as InfrastructureAsset[]
 })
+
+useBodyScrollLock(() => logsViewer.open || linkModal.open)
 
 function openLinkModal(mode: LinkMode) {
   linkModal.open = true

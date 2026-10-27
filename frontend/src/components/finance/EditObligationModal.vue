@@ -1,39 +1,40 @@
 <template>
-  <div v-if="isOpen && obligation" @click.self="emit('close')" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto font-sans">
-    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-lg p-6 shadow-2xl relative my-8">
-      <!-- Close button -->
-      <button
-        @click="emit('close')"
-        class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
-      >
-        <X class="w-4 h-4" />
-      </button>
-
-      <!-- Modal Title -->
-      <div class="mb-4">
-        <div class="flex items-center gap-2 mb-1">
-          <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border bg-zinc-900 text-zinc-400 border-zinc-800">
-            {{ obligation.type }}
-          </span>
-          <span v-if="obligation.subtype" class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border bg-zinc-900 text-zinc-300 border-zinc-800">
-            {{ obligation.subtype }}
-          </span>
-          <span class="text-xs text-zinc-500 font-mono">ID: {{ obligation.id.slice(0, 8) }}</span>
+  <div v-if="isOpen && obligation" @click.self="emit('close')" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 font-sans overflow-hidden">
+    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-lg shadow-2xl relative flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-hidden">
+      <!-- Fixed Header -->
+      <div class="px-5 py-3.5 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
+        <div>
+          <div class="flex items-center gap-2 mb-0.5">
+            <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border bg-zinc-900 text-zinc-400 border-zinc-800">
+              {{ obligation.type }}
+            </span>
+            <span v-if="obligation.subtype" class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border bg-zinc-900 text-zinc-300 border-zinc-800">
+              {{ obligation.subtype }}
+            </span>
+            <span class="text-xs text-zinc-500 font-mono">ID: {{ obligation.id.slice(0, 8) }}</span>
+          </div>
+          <h2 class="text-base font-semibold text-zinc-100 tracking-tight flex items-center gap-2">
+            <span>Edit Obligation</span>
+          </h2>
         </div>
-        <h2 class="text-base font-semibold text-zinc-100 tracking-tight flex items-center gap-2">
-          <span>Edit Obligation</span>
-          <span class="text-xs font-normal text-zinc-500 font-mono">Edit Obligation</span>
-        </h2>
-      </div>
-
-      <!-- Error message -->
-      <div v-if="errorMessage" class="mb-4 p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
-        {{ errorMessage }}
+        <button
+          @click="emit('close')"
+          type="button"
+          class="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
+        >
+          <X class="w-4 h-4" />
+        </button>
       </div>
 
       <!-- Form -->
-      <form @submit.prevent="handleSubmit" class="space-y-3.5">
-        <!-- Common Title & Amount -->
+      <form @submit.prevent="handleSubmit" class="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div class="p-4 sm:p-5 space-y-3.5 overflow-y-auto overscroll-contain flex-1 min-h-0">
+          <!-- Error message -->
+          <div v-if="errorMessage" class="p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
+            {{ errorMessage }}
+          </div>
+
+          <!-- Common Title & Amount -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div class="sm:col-span-2">
             <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Title</label>
@@ -318,9 +319,10 @@
             class="w-full px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 font-mono"
           />
         </div>
+        </div>
 
-        <!-- Action Buttons -->
-        <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-zinc-800/80">
+        <!-- Action Buttons (Sticky Footer) -->
+        <div class="flex items-center justify-end gap-2.5 p-4 border-t border-zinc-800/80 shrink-0 bg-zinc-950/90">
           <button
             type="button"
             @click="emit('close')"
@@ -344,6 +346,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useFinanceStore } from '../../stores/finance'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { FinancialObligation } from '../../types/finance'
 import { X } from 'lucide-vue-next'
 
@@ -356,6 +359,8 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'updated'): void
 }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const financeStore = useFinanceStore()
 const isSubmitting = ref(false)

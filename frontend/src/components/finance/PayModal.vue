@@ -1,37 +1,42 @@
 <template>
-  <div v-if="isOpen && obligation" @click.self="emit('close')" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto font-sans">
-    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md p-6 shadow-2xl relative my-8 max-h-[90vh] overflow-y-auto">
-      <button
-        @click="emit('close')"
-        class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
-      >
-        <X class="w-4 h-4" />
-      </button>
-
-      <div class="mb-4">
-        <div class="text-[10px] font-mono uppercase tracking-wider text-zinc-400 mb-0.5">
-          {{ obligation.direction === 'INFLOW' ? 'Record Repayment' : (obligation.subtype === 'BNPL_ACCOUNT' ? 'BNPL Statement Settlement' : (obligation.type === 'INSTALLMENT' ? 'Term Settlement' : (obligation.type === 'DEBT' ? 'Debt Settlement' : 'Record Payment'))) }}
+  <div v-if="isOpen && obligation" @click.self="emit('close')" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 font-sans overflow-hidden">
+    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl relative flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-hidden">
+      <!-- Fixed Header -->
+      <div class="px-5 py-3.5 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
+        <div>
+          <div class="text-[10px] font-mono uppercase tracking-wider text-zinc-400 mb-0.5">
+            {{ obligation.direction === 'INFLOW' ? 'Record Repayment' : (obligation.subtype === 'BNPL_ACCOUNT' ? 'BNPL Statement Settlement' : (obligation.type === 'INSTALLMENT' ? 'Term Settlement' : (obligation.type === 'DEBT' ? 'Debt Settlement' : 'Record Payment'))) }}
+          </div>
+          <h3 class="text-sm font-semibold text-zinc-100">{{ obligation.title }}</h3>
         </div>
-        <h3 class="text-sm font-semibold text-zinc-100">{{ obligation.title }}</h3>
+        <button
+          @click="emit('close')"
+          type="button"
+          class="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
+        >
+          <X class="w-4 h-4" />
+        </button>
       </div>
 
-      <!-- Error message -->
-      <div v-if="errorMessage" class="mb-4 p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
-        {{ errorMessage }}
-      </div>
+      <!-- Form -->
+      <form @submit.prevent="handlePay" class="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div class="p-4 sm:p-5 space-y-3.5 overflow-y-auto overscroll-contain flex-1 min-h-0">
+          <!-- Error message -->
+          <div v-if="errorMessage" class="p-2.5 rounded bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
+            {{ errorMessage }}
+          </div>
 
-      <form @submit.prevent="handlePay" class="space-y-3.5">
-        <!-- Installment Context -->
-        <div v-if="obligation.type === 'INSTALLMENT' && obligation.subtype !== 'BNPL_ACCOUNT'" class="p-3 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono space-y-1">
-          <div class="flex justify-between text-zinc-400 text-[11px]">
-            <span>Current Term:</span>
-            <span class="text-zinc-200">{{ obligation.summary?.current_term }} / {{ obligation.summary?.total_terms }}</span>
+          <!-- Installment Context -->
+          <div v-if="obligation.type === 'INSTALLMENT' && obligation.subtype !== 'BNPL_ACCOUNT'" class="p-3 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono space-y-1">
+            <div class="flex justify-between text-zinc-400 text-[11px]">
+              <span>Current Term:</span>
+              <span class="text-zinc-200">{{ obligation.summary?.current_term }} / {{ obligation.summary?.total_terms }}</span>
+            </div>
+            <div class="flex justify-between text-zinc-400 text-[11px]">
+              <span>Advancing to:</span>
+              <span class="text-zinc-100 font-semibold">Term {{ Number(obligation.summary?.current_term || 0) + 1 }}</span>
+            </div>
           </div>
-          <div class="flex justify-between text-zinc-400 text-[11px]">
-            <span>Advancing to:</span>
-            <span class="text-zinc-100 font-semibold">Term {{ Number(obligation.summary?.current_term || 0) + 1 }}</span>
-          </div>
-        </div>
 
         <!-- BNPL Statement Context -->
         <div v-if="obligation.subtype === 'BNPL_ACCOUNT'" class="p-3 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono space-y-1">
@@ -173,9 +178,10 @@
             </div>
           </div>
         </div>
+        </div>
 
-        <!-- Action Buttons -->
-        <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-zinc-800/80">
+        <!-- Action Buttons (Sticky Footer) -->
+        <div class="flex items-center justify-end gap-2.5 p-4 border-t border-zinc-800/80 shrink-0 bg-zinc-950/90">
           <button
             type="button"
             @click="emit('close')"
@@ -203,6 +209,7 @@ import {
 import { useFinanceStore } from '../../stores/finance'
 import { useLedgerStore } from '../../stores/ledger'
 import { useStorageStore } from '../../stores/storage'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { FinancialObligation } from '../../types/finance'
 import {
   AlertTriangle,
@@ -220,6 +227,8 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'paid'): void
 }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const financeStore = useFinanceStore()
 const ledgerStore = useLedgerStore()

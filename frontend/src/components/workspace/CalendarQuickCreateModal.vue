@@ -1,23 +1,28 @@
 <template>
   <div
     v-if="isOpen"
-    class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 font-sans"
+    class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans"
     @click.self="emit('close')"
   >
-    <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md max-h-[90dvh] overflow-y-auto p-5 shadow-2xl relative">
-      <button
-        @click="emit('close')"
-        class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
-      >
-        <X class="w-4 h-4" />
-      </button>
+    <div class="relative bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Fixed Header -->
+      <div class="shrink-0 px-4 sm:px-5 py-3.5 border-b border-zinc-800 flex items-center justify-between">
+        <div>
+          <h3 class="text-sm font-semibold text-zinc-100">New Entry</h3>
+          <p v-if="initialDate" class="text-[11px] font-mono text-zinc-500">Scheduled for {{ initialDate }}</p>
+          <p v-else class="text-xs text-zinc-500">Add a Kanban task or a standalone schedule</p>
+        </div>
+        <button
+          @click="emit('close')"
+          class="text-zinc-500 hover:text-zinc-300 transition-colors p-1 cursor-pointer"
+        >
+          <X class="w-4 h-4" />
+        </button>
+      </div>
 
-      <h3 class="text-sm font-semibold text-zinc-100 mb-1">New Entry</h3>
-      <p v-if="initialDate" class="text-[11px] font-mono text-zinc-500 mb-3">Scheduled for {{ initialDate }}</p>
-      <p v-else class="text-xs text-zinc-500 mb-3">Add a Kanban task or a standalone schedule to the calendar.</p>
-
-      <!-- Type Toggle -->
-      <div class="flex items-center gap-0.5 bg-zinc-900 border border-zinc-800 p-0.5 rounded-md mb-3.5 w-fit">
+      <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-3.5">
+        <!-- Type Toggle -->
+        <div class="flex items-center gap-0.5 bg-zinc-900 border border-zinc-800 p-0.5 rounded-md w-fit">
         <button
           type="button"
           @click="entryType = 'TASK'"
@@ -152,19 +157,21 @@
           class="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-600 resize-y"
         />
       </div>
+      </div>
 
-      <div class="flex items-center justify-end gap-2.5 mt-5 pt-3 border-t border-zinc-800/80">
+      <!-- Sticky Footer -->
+      <div class="shrink-0 p-4 border-t border-zinc-800/80 bg-zinc-950/90 flex items-center justify-end gap-2.5">
         <button
           type="button"
           @click="emit('close')"
-          class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors"
+          class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors cursor-pointer"
         >
           Cancel
         </button>
         <button
           type="button"
           @click="submit"
-          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors shadow-sm"
+          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors shadow-sm cursor-pointer"
         >
           Create {{ entryType === 'TASK' ? 'Task' : 'Event' }}
         </button>
@@ -178,6 +185,7 @@ import { nextTick, reactive, ref, watch } from 'vue'
 import { CalendarClock, Columns3, X } from 'lucide-vue-next'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { CalendarEvent, TaskDocument, TaskStatus, WorkspaceProject } from '../../types/workspace'
 
 const props = defineProps<{
@@ -193,6 +201,8 @@ const emit = defineEmits<{
   (e: 'created-task', task: TaskDocument): void
   (e: 'created-event', event: CalendarEvent): void
 }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const workspaceStore = useWorkspaceStore()
 const toast = useToastStore()

@@ -428,87 +428,101 @@
 
     <!-- Modals -->
     <!-- Pay / Renewal Modal -->
-    <div v-if="showPayModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md p-6 shadow-2xl relative">
-        <h3 class="text-sm font-semibold text-zinc-100">Record Subscription Renewal</h3>
-        <p class="text-xs text-zinc-400 mt-1">
-          Records a payment and advances the billing due date according to cycle ({{ subscription?.metadata?.billing_cycle || 'Monthly' }})
-        </p>
-
-        <form @submit.prevent="submitRenewal" class="space-y-4 mt-4 text-xs font-mono">
+    <div v-if="showPayModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden">
+      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl relative flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-hidden">
+        <!-- Header -->
+        <div class="p-4 sm:p-5 pb-3 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
           <div>
-            <label class="block text-zinc-400 mb-1">Amount Paid</label>
-            <input
-              v-model.number="payAmount"
-              type="number"
-              step="0.01"
-              required
-              class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-zinc-700 outline-none"
-            />
+            <h3 class="text-sm font-semibold text-zinc-100">Record Subscription Renewal</h3>
+            <p class="text-xs text-zinc-400 mt-0.5">
+              Advances due date according to cycle ({{ subscription?.metadata?.billing_cycle || 'Monthly' }})
+            </p>
           </div>
+          <button
+            type="button"
+            @click="showPayModal = false"
+            class="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
 
-          <div>
-            <label class="block text-zinc-400 mb-1">Notes / Invoice Ref</label>
-            <input
-              v-model="payNote"
-              type="text"
-              placeholder="e.g. Auto-debited on KBank Card"
-              class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-zinc-700 outline-none"
-            />
-          </div>
-
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-zinc-400">Deduct from Account / Card</label>
-              <span class="text-[10px] text-zinc-500">Ledger 2-Way Sync</span>
+        <form @submit.prevent="submitRenewal" class="flex flex-col flex-1 min-h-0 overflow-hidden text-xs font-mono">
+          <div class="p-4 sm:p-5 space-y-4 overflow-y-auto overscroll-contain flex-1 min-h-0">
+            <div>
+              <label class="block text-zinc-400 mb-1">Amount Paid</label>
+              <input
+                v-model.number="payAmount"
+                type="number"
+                step="0.01"
+                required
+                class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-zinc-700 outline-none"
+              />
             </div>
-            <select
-              v-model="payAccountId"
-              class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-zinc-700 outline-none"
-            >
-              <option value="">-- No Account Link --</option>
-              <option
-                v-for="acc in ledgerStore.activeAccounts"
-                :key="acc.id"
-                :value="acc.id"
+
+            <div>
+              <label class="block text-zinc-400 mb-1">Notes / Invoice Ref</label>
+              <input
+                v-model="payNote"
+                type="text"
+                placeholder="e.g. Auto-debited on KBank Card"
+                class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-zinc-700 outline-none"
+              />
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-zinc-400">Deduct from Account / Card</label>
+                <span class="text-[10px] text-zinc-500">Ledger 2-Way Sync</span>
+              </div>
+              <select
+                v-model="payAccountId"
+                class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-zinc-700 outline-none"
               >
-                {{ acc.name }} ({{ acc.currency }} {{ Number(acc.current_balance).toLocaleString('en-US', { minimumFractionDigits: 2 }) }})
-              </option>
-            </select>
+                <option value="">-- No Account Link --</option>
+                <option
+                  v-for="acc in ledgerStore.activeAccounts"
+                  :key="acc.id"
+                  :value="acc.id"
+                >
+                  {{ acc.name }} ({{ acc.currency }} {{ Number(acc.current_balance).toLocaleString('en-US', { minimumFractionDigits: 2 }) }})
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-zinc-400 text-xs">Upload Receipt Slip (Optional)</label>
+                <span v-if="storageStore.isConnected" class="text-[10px] text-zinc-500 font-mono">Direct GDrive</span>
+              </div>
+              <div
+                v-if="!storageStore.isConnected"
+                class="p-2 rounded bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between"
+              >
+                <span>Connect Drive to attach slips</span>
+                <router-link to="/settings" class="text-zinc-200 underline font-mono">Settings &rarr;</router-link>
+              </div>
+              <input
+                v-else
+                type="file"
+                @change="(e: any) => paySlipFile = e.target.files[0]"
+                class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-400 text-xs file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-zinc-800 file:text-zinc-200"
+              />
+            </div>
           </div>
 
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-zinc-400 text-xs">Upload Receipt Slip (Optional)</label>
-              <span v-if="storageStore.isConnected" class="text-[10px] text-zinc-500 font-mono">Direct GDrive</span>
-            </div>
-            <div
-              v-if="!storageStore.isConnected"
-              class="p-2 rounded bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between"
-            >
-              <span>Connect Drive to attach slips</span>
-              <router-link to="/settings" class="text-zinc-200 underline font-mono">Settings &rarr;</router-link>
-            </div>
-            <input
-              v-else
-              type="file"
-              @change="(e: any) => paySlipFile = e.target.files[0]"
-              class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-400 text-xs file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-zinc-800 file:text-zinc-200"
-            />
-          </div>
-
-          <div class="flex items-center justify-end gap-2 pt-2">
+          <div class="flex items-center justify-end gap-2 p-4 border-t border-zinc-800/80 shrink-0 bg-zinc-950/90">
             <button
               type="button"
               @click="showPayModal = false"
-              class="px-3 py-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300"
+              class="px-3 py-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               :disabled="isSubmittingPay"
-              class="px-4 py-1.5 rounded bg-zinc-100 hover:bg-white text-zinc-950 font-semibold"
+              class="px-4 py-1.5 rounded bg-zinc-100 hover:bg-white text-zinc-950 font-semibold transition-colors disabled:opacity-50"
             >
               {{ isSubmittingPay ? 'Processing...' : 'Confirm Payment' }}
             </button>
@@ -518,49 +532,63 @@
     </div>
 
     <!-- Convert Trial Modal -->
-    <div v-if="showConvertModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md p-6 shadow-2xl relative">
-        <h3 class="text-sm font-semibold text-zinc-100">Convert Trial to Recurring Subscription</h3>
-        <p class="text-xs text-zinc-400 mt-1">
-          Keep this service active and establish a recurring billing cycle.
-        </p>
-
-        <form @submit.prevent="submitConvertTrial" class="space-y-4 mt-4 text-xs font-mono">
+    <div v-if="showConvertModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden">
+      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl relative flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-hidden">
+        <!-- Header -->
+        <div class="p-4 sm:p-5 pb-3 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
           <div>
-            <label class="block text-zinc-400 mb-1">Billing Cycle</label>
-            <select
-              v-model="convertCycle"
-              class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-zinc-700 outline-none"
-            >
-              <option value="MONTHLY">Monthly</option>
-              <option value="YEARLY">Yearly</option>
-              <option value="QUARTERLY">Quarterly</option>
-            </select>
+            <h3 class="text-sm font-semibold text-zinc-100">Convert Trial to Recurring Subscription</h3>
+            <p class="text-xs text-zinc-400 mt-0.5">
+              Keep this service active and establish a recurring billing cycle.
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="showConvertModal = false"
+            class="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+
+        <form @submit.prevent="submitConvertTrial" class="flex flex-col flex-1 min-h-0 overflow-hidden text-xs font-mono">
+          <div class="p-4 sm:p-5 space-y-4 overflow-y-auto overscroll-contain flex-1 min-h-0">
+            <div>
+              <label class="block text-zinc-400 mb-1">Billing Cycle</label>
+              <select
+                v-model="convertCycle"
+                class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-zinc-700 outline-none"
+              >
+                <option value="MONTHLY">Monthly</option>
+                <option value="YEARLY">Yearly</option>
+                <option value="QUARTERLY">Quarterly</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-zinc-400 mb-1">Recurring Cost</label>
+              <input
+                v-model.number="convertAmount"
+                type="number"
+                step="0.01"
+                required
+                class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-zinc-700 outline-none"
+              />
+            </div>
           </div>
 
-          <div>
-            <label class="block text-zinc-400 mb-1">Recurring Cost</label>
-            <input
-              v-model.number="convertAmount"
-              type="number"
-              step="0.01"
-              required
-              class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-zinc-700 outline-none"
-            />
-          </div>
-
-          <div class="flex items-center justify-end gap-2 pt-2">
+          <div class="flex items-center justify-end gap-2 p-4 border-t border-zinc-800/80 shrink-0 bg-zinc-950/90">
             <button
               type="button"
               @click="showConvertModal = false"
-              class="px-3 py-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300"
+              class="px-3 py-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               :disabled="isConverting"
-              class="px-4 py-1.5 rounded bg-zinc-100 hover:bg-white text-zinc-950 font-semibold"
+              class="px-4 py-1.5 rounded bg-zinc-100 hover:bg-white text-zinc-950 font-semibold transition-colors disabled:opacity-50"
             >
               {{ isConverting ? 'Converting...' : 'Convert to Active' }}
             </button>
@@ -591,6 +619,7 @@ import { useSubscriptions } from '../../composables/finance/useSubscriptions'
 import { useLedgerStore } from '../../stores/ledger'
 import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import {
   ArrowLeft,
@@ -640,6 +669,8 @@ const showConvertModal = ref(false)
 const convertCycle = ref('MONTHLY')
 const convertAmount = ref(0)
 const isConverting = ref(false)
+
+useBodyScrollLock(() => showPayModal.value || showConvertModal.value)
 
 const isUploading = ref(false)
 

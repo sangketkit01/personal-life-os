@@ -561,23 +561,23 @@
     <!-- Confirmation Modal for Delete -->
     <div
       v-if="showDeleteModal && txToDelete"
-      class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 font-sans"
+      class="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans"
     >
-      <div class="bg-zinc-950 border border-zinc-800 rounded-xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+      <div class="bg-zinc-950 border border-zinc-800 rounded-xl max-w-sm w-full max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col p-5 space-y-4 shadow-2xl overflow-y-auto overscroll-contain">
         <div class="text-sm font-semibold text-zinc-100">Delete Trade Execution?</div>
-        <p class="text-xs text-zinc-400 font-sans">
+        <p class="text-xs text-zinc-400 font-sans leading-relaxed">
           Are you sure you want to delete this {{ txToDelete.transaction_type }} trade of {{ txToDelete.shares }} units? This action cannot be undone.
         </p>
-        <div class="flex items-center justify-end gap-2 pt-2">
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800/80">
           <button
             @click="showDeleteModal = false"
-            class="px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-400 hover:text-zinc-200"
+            class="px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer"
           >
             Cancel
           </button>
           <button
             @click="executeDeleteTx"
-            class="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white"
+            class="px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-500 text-xs font-semibold text-white cursor-pointer"
           >
             Delete Execution
           </button>
@@ -593,6 +593,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { t } from '../i18n'
 import { usePortfolioStore, isTickerMatch } from '../stores/portfolio'
 import { useToastStore } from '../stores/toast'
+import { useBodyScrollLock } from '../composables/useBodyScrollLock'
 import type { StockHolding, StockTransaction, StockNewsArticle } from '../types/portfolio'
 import AddTransactionModal from '../components/portfolio/AddTransactionModal.vue'
 import MoveHoldingModal from '../components/portfolio/MoveHoldingModal.vue'
@@ -685,6 +686,8 @@ const selectedTxToEdit = ref<StockTransaction | null>(null)
 const showMoveModal = ref(false)
 const showDeleteModal = ref(false)
 const txToDelete = ref<StockTransaction | null>(null)
+
+useBodyScrollLock(() => showDeleteModal.value)
 
 const nativeSymbol = computed(() => {
   return (holding.value?.currency || 'THB').toUpperCase() === 'USD' ? '$' : '฿'

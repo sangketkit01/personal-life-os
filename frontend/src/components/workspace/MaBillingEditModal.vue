@@ -1,23 +1,23 @@
 <template>
   <Teleport to="body">
-    <div v-if="isOpen" class="fixed inset-0 z-[65] flex items-center justify-center p-4 font-sans">
+    <div v-if="isOpen" class="fixed inset-0 z-[65] flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans">
       <div class="absolute inset-0 bg-black/75 backdrop-blur-sm" @click="emit('close')" />
 
       <form
         @submit.prevent="save"
-        class="relative w-full max-w-2xl max-h-[88vh] flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden"
+        class="relative w-full max-w-2xl max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden"
       >
         <div class="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800 shrink-0">
           <div class="flex items-center gap-2">
             <FileSignature class="w-4 h-4 text-sky-400" />
             <h3 class="text-sm font-semibold text-zinc-100">{{ t('ma.edit.title') }}</h3>
           </div>
-          <button type="button" @click="emit('close')" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-100 transition-colors">
+          <button type="button" @click="emit('close')" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-100 transition-colors cursor-pointer">
             <X class="w-4 h-4" />
           </button>
         </div>
 
-        <div class="flex-1 min-h-0 overflow-y-auto p-5 space-y-5">
+        <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-5">
           <!-- Contract identity -->
           <section class="space-y-3">
             <p class="text-[10px] font-mono uppercase tracking-wider text-zinc-500 border-b border-zinc-800/70 pb-1.5">{{ t('ma.edit.contract') }}</p>
@@ -141,6 +141,7 @@ import { FileSignature, X, Save, Info } from 'lucide-vue-next'
 import { t } from '../../i18n'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { WorkspaceProject, ProjectType } from '../../types/workspace'
 
 const props = defineProps<{
@@ -149,6 +150,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved'): void }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const workspaceStore = useWorkspaceStore()
 const toast = useToastStore()

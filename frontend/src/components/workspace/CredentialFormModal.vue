@@ -1,25 +1,25 @@
 <template>
   <Teleport to="body">
-    <div v-if="isOpen" class="fixed inset-0 z-[65] flex items-center justify-center p-4 font-sans">
+    <div v-if="isOpen" class="fixed inset-0 z-[65] flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans">
       <div class="absolute inset-0 bg-black/75 backdrop-blur-sm" @click="emit('close')" />
 
       <form
         @submit.prevent="save"
-        class="relative w-full max-w-lg max-h-[90dvh] overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl"
+        class="relative w-full max-w-lg max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden"
       >
-        <div class="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800">
+        <div class="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800 shrink-0">
           <div class="flex items-center gap-2">
             <KeyRound class="w-4 h-4 text-amber-400" />
             <h3 class="text-sm font-semibold text-zinc-100">
               {{ editing ? t('cred.form.editTitle') : t('cred.form.createTitle') }}
             </h3>
           </div>
-          <button type="button" @click="emit('close')" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-100 transition-colors">
+          <button type="button" @click="emit('close')" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-100 transition-colors cursor-pointer">
             <X class="w-4 h-4" />
           </button>
         </div>
 
-        <div class="p-5 space-y-3">
+        <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-3">
           <label class="block">
             <span class="text-[11px] text-zinc-400 font-mono">{{ t('cred.form.title') }} *</span>
             <input v-model="form.title" type="text" required maxlength="150"
@@ -74,13 +74,13 @@
           </label>
         </div>
 
-        <div class="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-zinc-800">
+        <div class="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-zinc-800 shrink-0 bg-zinc-950/90">
           <button type="button" @click="emit('close')"
-            class="px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 text-xs transition-colors">
+            class="px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-100 text-xs transition-colors cursor-pointer">
             {{ t('common.cancel') }}
           </button>
           <button type="submit" :disabled="isSaving"
-            class="px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50">
+            class="px-3 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50 cursor-pointer">
             <Save class="w-3.5 h-3.5" />
             {{ t('common.save') }}
           </button>
@@ -96,6 +96,7 @@ import { KeyRound, X, Save } from 'lucide-vue-next'
 import { t } from '../../i18n'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { ServerCredential, CredentialCategory, InfrastructureAsset } from '../../types/workspace'
 
 const props = defineProps<{
@@ -106,6 +107,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved'): void }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const workspaceStore = useWorkspaceStore()
 const toast = useToastStore()

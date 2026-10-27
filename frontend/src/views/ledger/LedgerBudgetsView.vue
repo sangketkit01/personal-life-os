@@ -147,52 +147,55 @@
     <div
       v-if="showCreateBudgetModal"
       @click.self="showCreateBudgetModal = false"
-      class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto font-sans"
+      class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans"
     >
-      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md p-6 shadow-2xl relative my-8 font-mono text-xs">
-        <button
-          @click="showCreateBudgetModal = false"
-          class="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 transition-colors"
-        >
-          <X class="w-4 h-4" />
-        </button>
+      <div class="relative bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden font-mono text-xs">
+        <div class="shrink-0 px-4 sm:px-6 py-3.5 border-b border-zinc-800 flex items-center justify-between font-sans">
+          <h3 class="text-base font-semibold text-zinc-100">
+            Set Category Budget
+          </h3>
+          <button
+            @click="showCreateBudgetModal = false"
+            class="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
+          >
+            <X class="w-4 h-4" />
+          </button>
+        </div>
 
-        <h3 class="text-base font-semibold text-zinc-100 font-sans mb-3">
-          Set Category Budget
-        </h3>
-
-        <form @submit.prevent="handleSaveBudget" class="space-y-4">
-          <div>
-            <label class="block text-[11px] text-zinc-300 mb-1 font-medium font-sans">Expense Category <span class="text-rose-400">*</span></label>
-            <select
-              v-model="newBudgetCategory"
-              required
-              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
-            >
-              <option value="" disabled>Select category</option>
-              <option
-                v-for="c in expenseCategories"
-                :key="c.id"
-                :value="c.id"
+        <form @submit.prevent="handleSaveBudget" class="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div class="flex-1 overflow-y-auto overscroll-contain min-h-0 p-4 sm:p-6 space-y-4">
+            <div>
+              <label class="block text-[11px] text-zinc-300 mb-1 font-medium font-sans">Expense Category <span class="text-rose-400">*</span></label>
+              <select
+                v-model="newBudgetCategory"
+                required
+                class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
               >
-                {{ c.name }}
-              </option>
-            </select>
+                <option value="" disabled>Select category</option>
+                <option
+                  v-for="c in expenseCategories"
+                  :key="c.id"
+                  :value="c.id"
+                >
+                  {{ c.name }}
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-[11px] text-zinc-300 mb-1 font-medium font-sans">Monthly Limit (฿) <span class="text-rose-400">*</span></label>
+              <input
+                v-model.number="newBudgetLimit"
+                type="number"
+                step="100"
+                required
+                placeholder="0.00"
+                class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
+              />
+            </div>
           </div>
 
-          <div>
-            <label class="block text-[11px] text-zinc-300 mb-1 font-medium font-sans">Monthly Limit (฿) <span class="text-rose-400">*</span></label>
-            <input
-              v-model.number="newBudgetLimit"
-              type="number"
-              step="100"
-              required
-              placeholder="0.00"
-              class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono transition-colors"
-            />
-          </div>
-
-          <div class="flex items-center justify-end gap-2.5 pt-2 border-t border-zinc-800/80">
+          <div class="shrink-0 p-4 border-t border-zinc-800/80 bg-zinc-950/90 flex items-center justify-end gap-2.5">
             <button
               type="button"
               @click="showCreateBudgetModal = false"
@@ -203,7 +206,7 @@
             <button
               type="submit"
               :disabled="isSaving"
-              class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 font-sans font-semibold transition-all active:scale-[0.98] disabled:opacity-50 shadow-sm"
+              class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 font-sans font-semibold transition-all active:scale-[0.98] disabled:opacity-50 shadow-sm cursor-pointer"
             >
               {{ isSaving ? 'Saving...' : 'Save Budget' }}
             </button>
@@ -233,6 +236,7 @@ import {
 import { useLedgerStore } from '../../stores/ledger'
 import { useToastStore } from '../../stores/toast'
 import { ledgerApi } from '../../api/ledger'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import {
   AlertTriangle,
@@ -249,6 +253,8 @@ const showCreateBudgetModal = ref(false)
 const isSaving = ref(false)
 const newBudgetCategory = ref('')
 const newBudgetLimit = ref<number | null>(null)
+
+useBodyScrollLock(() => showCreateBudgetModal.value)
 
 const totalBudgetCap = computed(() => {
   return ledgerStore.budgets.reduce((sum, b) => sum + Number(b.limit_amount || 0), 0)

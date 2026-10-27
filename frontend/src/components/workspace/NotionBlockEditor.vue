@@ -664,9 +664,9 @@
 
     <!-- Live Camera Capture Modal -->
     <Teleport to="body">
-      <div v-if="cameraState.open" class="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 font-sans">
-        <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-lg p-4 shadow-2xl relative">
-          <div class="flex items-center justify-between mb-3">
+      <div v-if="cameraState.open" class="fixed inset-0 z-[60] bg-black/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans">
+        <div class="relative bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-lg max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col p-4 shadow-2xl overflow-y-auto overscroll-contain">
+          <div class="flex items-center justify-between mb-3 shrink-0">
             <h3 class="text-sm font-semibold text-zinc-100">Take Photo</h3>
             <button type="button" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 transition-colors" @click="closeCamera">
               <X class="w-4 h-4" />
@@ -752,6 +752,7 @@ import ImageCropperModal from './ImageCropperModal.vue'
 import apiClient from '../../api/client'
 import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { NoteBlock, NoteBlockType } from '../../types/workspace'
 import { isEmptyHtml, sanitizeRichHTML, stripHtml } from '../../utils/richText'
 
@@ -2315,6 +2316,8 @@ const cameraState = reactive({
   capturedDataUrl: '',
   error: ''
 })
+
+useBodyScrollLock(() => cameraState.open)
 const cameraVideo = ref<HTMLVideoElement | null>(null)
 let cameraPendingBlockId = ''
 

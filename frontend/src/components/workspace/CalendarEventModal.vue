@@ -27,7 +27,7 @@
         </div>
 
         <!-- Body -->
-        <div class="flex-1 overflow-y-auto p-4 space-y-3.5">
+        <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3.5">
           <input
             v-model="form.title"
             type="text"
@@ -158,6 +158,7 @@ import { CalendarClock, Trash2, X } from 'lucide-vue-next'
 import ConfirmModal from '../common/ConfirmModal.vue'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
+import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { CalendarEvent, CalendarEventType, WorkspaceProject } from '../../types/workspace'
 
 const props = defineProps<{
@@ -175,6 +176,8 @@ const emit = defineEmits<{
 
 const workspaceStore = useWorkspaceStore()
 const toast = useToastStore()
+
+useBodyScrollLock(() => props.isOpen)
 
 const showDeleteConfirm = ref(false)
 const isDeleting = ref(false)
@@ -282,6 +285,7 @@ async function saveNow() {
 
 function handleEscape(event: KeyboardEvent) {
   if (!props.isOpen) return
+  if (showDeleteConfirm.value) return
   if (event.key === 'Escape') {
     event.preventDefault()
     emit('close')

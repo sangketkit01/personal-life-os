@@ -2,20 +2,20 @@
   <Teleport to="body">
     <div
       v-if="isOpen"
-      class="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 font-sans"
+      class="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4 font-sans overflow-hidden"
     >
       <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" @click="emit('close')" />
 
-      <div class="relative w-full max-w-3xl max-h-[90dvh] flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden">
+      <div class="relative w-full max-w-3xl max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden">
         <!-- Header -->
-        <div class="px-5 py-4 border-b border-zinc-800 bg-zinc-900/60 flex items-center justify-between shrink-0">
-          <div class="flex items-center gap-2.5">
-            <div class="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+        <div class="px-4 sm:px-5 py-3 sm:py-4 border-b border-zinc-800 bg-zinc-900/60 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div class="p-1.5 sm:p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shrink-0">
               <ArrowDownLeft class="w-4 h-4" />
             </div>
-            <div>
-              <div class="flex items-center gap-2">
-                <h3 class="text-sm font-semibold text-zinc-100">
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h3 class="text-xs sm:text-sm font-semibold text-zinc-100 truncate">
                   {{ t('fin.inflowBreakdownTitle') }}
                 </h3>
                 <span class="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase border border-emerald-800/60 text-emerald-400 bg-emerald-950/40">
@@ -25,7 +25,7 @@
                   THB
                 </span>
               </div>
-              <p class="text-xs text-zinc-400 mt-0.5 font-mono">
+              <p class="text-[11px] sm:text-xs text-zinc-400 mt-0.5 font-mono truncate">
                 {{ t('fin.inflowBreakdownSubtitle') }}
               </p>
             </div>
@@ -33,14 +33,14 @@
           <button
             type="button"
             @click="emit('close')"
-            class="p-1.5 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors"
+            class="p-1.5 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors shrink-0"
           >
             <X class="w-4 h-4" />
           </button>
         </div>
 
         <!-- Category Summary Grid -->
-        <div class="p-4 sm:p-5 border-b border-zinc-800/70 bg-zinc-950 grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
+        <div class="p-3 sm:p-5 border-b border-zinc-800/70 bg-zinc-950 grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 shrink-0 max-h-[35vh] sm:max-h-none overflow-y-auto">
           <!-- Total Expected Inflow Card -->
           <div class="p-3.5 rounded-lg bg-emerald-950/20 border border-emerald-800/40">
             <div class="flex items-center justify-between text-[10px] font-mono text-emerald-400/90 uppercase">
@@ -136,7 +136,7 @@
         </div>
 
         <!-- Item List Body -->
-        <div class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-2">
+        <div class="flex-1 overflow-y-auto overscroll-contain min-h-0 p-3 sm:p-5 space-y-2">
           <div
             v-if="filteredItems.length === 0"
             class="p-12 text-center rounded-lg bg-zinc-900/30 border border-zinc-800/80 space-y-2"
@@ -235,6 +235,7 @@ import {
   ArrowDownLeft, X, Coins, FileSignature, HandCoins, Repeat, ArrowUpRight
 } from 'lucide-vue-next'
 import { t, formatLocaleDate } from '../../../i18n'
+import { useBodyScrollLock } from '../../../composables/useBodyScrollLock'
 import type { ExpectedInflowItem, ExpectedInflowBreakdown } from '../../../types/finance'
 
 const props = defineProps<{
@@ -247,6 +248,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
+
+useBodyScrollLock(() => props.isOpen)
 
 const router = useRouter()
 const activeCategory = ref<'ALL' | 'MA' | 'DEBT' | 'RECURRING'>('ALL')

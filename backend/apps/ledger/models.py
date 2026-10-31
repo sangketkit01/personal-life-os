@@ -133,6 +133,16 @@ class TransactionType(models.TextChoices):
     TRANSFER = 'TRANSFER', 'Transfer Between Accounts'
 
 
+class ReportingKind(models.TextChoices):
+    AUTO = 'AUTO', 'Use linked records / transaction direction'
+    INCOME = 'INCOME', 'Earned income'
+    EXPENSE = 'EXPENSE', 'Personal expense'
+    REIMBURSEMENT = 'REIMBURSEMENT', 'Reimbursement'
+    LOAN = 'LOAN', 'Loan principal'
+    INVESTMENT = 'INVESTMENT', 'Investment movement'
+    CARD_PAYMENT = 'CARD_PAYMENT', 'Credit card settlement'
+
+
 class Transaction(models.Model):
     """
     Core double-entry or single-entry cash flow ledger record.
@@ -157,6 +167,7 @@ class Transaction(models.Model):
         db_index=True,
         verbose_name="Transaction Type"
     )
+    reporting_kind = models.CharField(max_length=20, choices=ReportingKind.choices, default=ReportingKind.AUTO)
     category = models.ForeignKey(
         Category,
         on_delete=models.SET_NULL,
@@ -378,6 +389,7 @@ class CategoryBudget(models.Model):
         db_index=True,
         verbose_name="Budget Period (YYYY-MM)"
     )
+    currency = models.CharField(max_length=5, default='THB')
     limit_amount = models.DecimalField(
         max_digits=12,
         decimal_places=2,
@@ -387,7 +399,7 @@ class CategoryBudget(models.Model):
 
     class Meta:
         db_table = 'ledger_category_budgets'
-        unique_together = ('user', 'category', 'period_month')
+        unique_together = ('user', 'category', 'period_month', 'currency')
         ordering = ['period_month', 'category__name']
         verbose_name = 'Category Budget'
         verbose_name_plural = 'Category Budgets'

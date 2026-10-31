@@ -72,7 +72,7 @@
                 :key="acc.id"
                 :value="acc.id"
               >
-                {{ acc.name }} (฿{{ Number(acc.current_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }})
+                {{ acc.name }} ({{ acc.currency }} {{ Number(acc.current_balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }})
               </option>
             </select>
             <span v-if="isAccountLocked" class="text-[10px] text-zinc-500 font-mono block mt-0.5">
@@ -82,13 +82,13 @@
 
           <div>
             <div class="flex items-center justify-between mb-1">
-              <label class="text-[11px] text-zinc-300 font-medium">Gross Amount (฿) <span class="text-rose-400">*</span></label>
+              <label class="text-[11px] text-zinc-300 font-medium">Gross Amount ({{ transactionCurrency || '' }} ) <span class="text-rose-400">*</span></label>
               <span v-if="isSplit && splitMode === 'ITEMIZED'" class="text-[10px] text-zinc-500 font-mono">
                 Auto-calculated
               </span>
             </div>
             <div class="relative">
-              <span class="absolute left-3 top-2 text-zinc-500">฿</span>
+              <span class="absolute left-3 top-2 text-zinc-500">{{ transactionCurrency || '' }} </span>
               <input
                 v-model.number="form.gross_amount"
                 type="number"
@@ -97,7 +97,7 @@
                 required
                 :disabled="(isSplit && splitMode === 'ITEMIZED') || isAmountLocked"
                 placeholder="0.00"
-                class="w-full pl-7 pr-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono font-semibold transition-colors disabled:opacity-75 disabled:cursor-not-allowed"
+                class="w-full pl-12 pr-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-600 hover:border-zinc-700 focus:outline-none focus:border-zinc-500 font-mono font-semibold transition-colors disabled:opacity-75 disabled:cursor-not-allowed"
               />
             </div>
             <span v-if="isAmountLocked" class="text-[9px] text-amber-500/90 font-mono block mt-1 leading-tight">
@@ -165,6 +165,19 @@
         </div>
 
         <!-- 5. SMART BILL-SPLITTING PANEL (Expense Only, Create Mode Only) -->
+        <div>
+          <label class="block text-[11px] text-zinc-300 mb-1 font-medium">วิธีนับในรายงาน</label>
+          <select v-model="form.reporting_kind" :disabled="!!(transactionToEdit?.transfer_peer || transactionToEdit?.transfer_destination || isSplit)" class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 disabled:opacity-50">
+            <option value="AUTO">ตามประเภทรายการและข้อมูลที่เชื่อมไว้</option>
+            <option v-if="form.transaction_type === 'INFLOW'" value="INCOME">รายได้</option>
+            <option v-if="form.transaction_type === 'OUTFLOW'" value="EXPENSE">ค่าใช้จ่ายส่วนตัว</option>
+            <option v-if="form.transaction_type === 'INFLOW'" value="REIMBURSEMENT">เงินรับคืนจากการสำรองจ่าย</option>
+            <option value="LOAN">เงินต้นเงินกู้ / เงินให้ยืม</option>
+            <option value="INVESTMENT">เงินเข้าออกจากการลงทุน</option>
+            <option v-if="form.transaction_type === 'OUTFLOW'" value="CARD_PAYMENT">ชำระยอดบัตรเครดิต</option>
+          </select>
+          <p class="mt-1 text-[10px] text-zinc-500">เงินกู้ เงินรับคืน เงินลงทุน และชำระบัตรจะแสดงในเงินเข้าออก แยกจากรายรับและค่าใช้จ่ายส่วนตัว</p>
+        </div>
         <div v-if="!isEdit && form.transaction_type === 'OUTFLOW'" class="pt-1">
           <div class="flex items-center justify-between pb-2 border-b border-zinc-800/80">
             <label class="flex items-center gap-2 cursor-pointer select-none">
@@ -180,7 +193,7 @@
             </label>
 
             <span v-if="isSplit" class="text-[11px] text-zinc-400 font-mono">
-              {{ splitMode === 'ITEMIZED' && harntungPayerName ? `${harntungPayerName}'s Share:` : 'My Net Share:' }} <strong class="text-emerald-400 font-semibold">฿{{ calculatedNetExpense.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</strong>
+              {{ splitMode === 'ITEMIZED' && harntungPayerName ? `${harntungPayerName}'s Share:` : 'My Net Share:' }} <strong class="text-emerald-400 font-semibold">{{ transactionCurrency || '' }} {{ calculatedNetExpense.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</strong>
             </span>
           </div>
 
@@ -340,7 +353,7 @@
                       />
                       <div class="flex items-center gap-2 w-full sm:w-auto shrink-0">
                         <div class="relative flex-1 sm:w-28 min-w-0">
-                          <span class="absolute left-2 top-1 text-zinc-500 text-xs">฿</span>
+                          <span class="absolute left-2 top-1 text-zinc-500 text-xs">{{ transactionCurrency || '' }} </span>
                           <input
                             v-model.number="item.price"
                             type="number"
@@ -393,7 +406,7 @@
                       </button>
 
                       <span v-if="item.consumers.length > 0 && item.price > 0" class="text-[10px] text-zinc-500 font-mono w-full sm:w-auto sm:ml-auto pt-0.5 sm:pt-0">
-                        ≈ ฿{{ (Number(item.price * (item.quantity || 1)) / item.consumers.length).toFixed(2) }} each
+                        ≈ {{ transactionCurrency || '' }} {{ (Number(item.price * (item.quantity || 1)) / item.consumers.length).toFixed(2) }} each
                       </span>
                     </div>
                   </div>
@@ -429,7 +442,7 @@
                 </div>
 
                 <div class="text-right text-zinc-400 text-[11px]">
-                  <span>Subtotal: ฿{{ harntungSubtotal.toFixed(2) }}</span>
+                  <span>Subtotal: {{ transactionCurrency || '' }} {{ harntungSubtotal.toFixed(2) }}</span>
                 </div>
               </div>
 
@@ -460,7 +473,7 @@
                       <span class="text-[10px] text-zinc-500">({{ share.itemsCount }} items)</span>
                     </div>
                     <span :class="harntungPayerName && share.name === harntungPayerName ? 'text-emerald-400 font-semibold' : 'text-zinc-200'">
-                      ฿{{ share.finalShare.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                      {{ transactionCurrency || '' }} {{ share.finalShare.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                     </span>
                   </div>
                 </div>
@@ -488,7 +501,7 @@
                     class="flex-1 sm:w-36 px-2 py-1.5 rounded bg-zinc-950 border border-zinc-800 text-zinc-300 placeholder-zinc-600 text-[11px] font-mono outline-none hover:border-zinc-700 focus:border-zinc-500 transition-colors min-w-0"
                   />
                   <div class="relative w-28 sm:w-32 shrink-0">
-                    <span class="absolute left-2 top-1.5 text-zinc-500 text-[11px]">฿</span>
+                    <span class="absolute left-2 top-1.5 text-zinc-500 text-[11px]">{{ transactionCurrency || '' }} </span>
                     <input
                       v-model.number="p.amount"
                       type="number"
@@ -767,6 +780,7 @@ interface ParticipantRow {
 const participants = ref<ParticipantRow[]>([])
 
 const form = reactive({
+  reporting_kind: 'AUTO' as import('../../types/ledger').ReportingKind,
   account: '',
   transaction_type: 'OUTFLOW' as TransactionType,
   category: null as string | null,
@@ -776,10 +790,17 @@ const form = reactive({
   transaction_date: ''
 })
 
+const transactionCurrency = computed(() => ledgerStore.accounts.find(a => a.id === form.account)?.currency || '')
 const filteredCategories = computed(() => {
   const targetType = form.transaction_type === 'INFLOW' ? 'INCOME' : 'EXPENSE'
   return ledgerStore.categories.filter((c) => c.category_type === targetType)
 })
+
+watch(() => form.transaction_type, direction => {
+  if ((direction === 'OUTFLOW' && ['INCOME','REIMBURSEMENT'].includes(form.reporting_kind)) ||
+      (direction === 'INFLOW' && ['EXPENSE','CARD_PAYMENT'].includes(form.reporting_kind))) form.reporting_kind = 'AUTO'
+})
+watch(isSplit, split => { if (split) form.reporting_kind = 'AUTO' })
 
 // ============= Harntung Calculations =============
 const harntungSubtotal = computed(() => {
@@ -885,6 +906,7 @@ watch(
         form.notes = txToEdit.notes || ''
         form.category = txToEdit.category || null
         form.transaction_type = txToEdit.transaction_type
+        form.reporting_kind = txToEdit.reporting_kind || 'AUTO'
         form.transaction_date = txToEdit.transaction_date
         isSplit.value = false
         selectedFile.value = null
@@ -895,6 +917,7 @@ watch(
         form.notes = ''
         form.category = null
         form.transaction_type = 'OUTFLOW'
+        form.reporting_kind = 'AUTO'
         form.transaction_date = ''
         isSplit.value = false
         splitMode.value = 'ITEMIZED'
@@ -1037,7 +1060,7 @@ function toggleAllConsumers(item: HarntungItem) {
 function copySettlementSummary() {
   let text = ''
   if (splitMode.value === 'ITEMIZED') {
-    text = `Receipt: ${form.title || 'Shared Bill'} (Total: ฿${harntungGrossTotal.value.toLocaleString('en-US', { minimumFractionDigits: 2 })})\n`
+    text = `Receipt: ${form.title || 'Shared Bill'} (Total: ${transactionCurrency.value || ''} ${harntungGrossTotal.value.toLocaleString('en-US', { minimumFractionDigits: 2 })})\n`
     if (serviceChargePct.value > 0 || vatPct.value > 0) {
       text += `Charges: SC +${serviceChargePct.value}% | VAT +${vatPct.value}%\n`
     }
@@ -1045,14 +1068,14 @@ function copySettlementSummary() {
     harntungCalculatedShares.value.forEach(s => {
       const contactInfo = s.contact ? ` (${s.contact})` : ''
       const isPayer = harntungPayerName.value && s.name === harntungPayerName.value
-      text += `• ${s.name}${isPayer ? ' (Payer)' : ''}${contactInfo}: ฿${s.finalShare.toLocaleString('en-US', { minimumFractionDigits: 2 })}\n`
+      text += `• ${s.name}${isPayer ? ' (Payer)' : ''}${contactInfo}: ${transactionCurrency.value || ''} ${s.finalShare.toLocaleString('en-US', { minimumFractionDigits: 2 })}\n`
     })
     text += `--------------------------------\n`
-    text += `${harntungPayerName.value ? `${harntungPayerName.value}'s` : 'Payer'} Net Share: ฿${harntungPayerShare.value.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+    text += `${harntungPayerName.value ? `${harntungPayerName.value}'s` : 'Payer'} Net Share: ${transactionCurrency.value || ''} ${harntungPayerShare.value.toLocaleString('en-US', { minimumFractionDigits: 2 })}`
   } else {
-    text = `Bill: ${form.title || 'Shared Expense'} (฿${Number(form.gross_amount).toLocaleString('en-US')})\n` +
-      participants.value.map((p) => `• ${p.counterparty_name}: ฿${Number(p.amount).toLocaleString('en-US')}`).join('\n') +
-      `\nMy Net Share: ฿${Number(calculatedNetExpense.value).toLocaleString('en-US')}`
+    text = `Bill: ${form.title || 'Shared Expense'} (${transactionCurrency.value || ''} ${Number(form.gross_amount).toLocaleString('en-US')})\n` +
+      participants.value.map((p) => `• ${p.counterparty_name}: ${transactionCurrency.value || ''} ${Number(p.amount).toLocaleString('en-US')}`).join('\n') +
+      `\nMy Net Share: ${transactionCurrency.value || ''} ${Number(calculatedNetExpense.value).toLocaleString('en-US')}`
   }
 
   navigator.clipboard.writeText(text)
@@ -1082,6 +1105,7 @@ async function handleSubmit() {
   try {
     if (isEdit.value && props.transactionToEdit) {
       const updatePayload: any = {
+        reporting_kind: form.reporting_kind,
         title: form.title.trim(),
         notes: form.notes,
         category: form.category,
@@ -1098,6 +1122,7 @@ async function handleSubmit() {
     }
 
     const payload: any = {
+      reporting_kind: isSplit.value ? 'AUTO' : form.reporting_kind,
       account: form.account,
       transaction_type: form.transaction_type,
       category: form.category,
@@ -1145,7 +1170,8 @@ async function handleSubmit() {
     emit('created')
     emit('close')
   } catch (err: any) {
-    errorMessage.value = err.response?.data?.error || err.response?.data?.gross_amount || err.message || 'Failed to record transaction.'
+    const message = err.response?.data?.reporting_kind || err.response?.data?.detail || err.response?.data?.error || err.response?.data?.gross_amount || err.message || 'Failed to record transaction.'
+    errorMessage.value = Array.isArray(message) ? message.join(' ') : String(message)
   } finally {
     isSubmitting.value = false
   }

@@ -165,6 +165,7 @@ class TransactionAttachmentSerializer(serializers.ModelSerializer):
 
 class TransactionSerializer(serializers.ModelSerializer):
     account_name = serializers.CharField(source='account.name', read_only=True)
+    account_currency = serializers.CharField(source='account.currency', read_only=True)
     account_type = serializers.CharField(source='account.account_type', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     category_icon = serializers.CharField(source='category.icon', read_only=True)
@@ -210,8 +211,10 @@ class TransactionSerializer(serializers.ModelSerializer):
             'user',
             'account',
             'account_name',
+            'account_currency',
             'account_type',
             'transaction_type',
+            'reporting_kind',
             'category',
             'category_name',
             'category_icon',
@@ -289,6 +292,13 @@ class TransactionSerializer(serializers.ModelSerializer):
 
         transfer_dest = attrs.get('transfer_destination')
         tx_type = attrs.get('transaction_type', getattr(self.instance, 'transaction_type', None))
+        kind = attrs.get('reporting_kind', getattr(self.instance, 'reporting_kind', 'AUTO'))
+        if (kind in ('INCOME', 'REIMBURSEMENT') and tx_type != 'INFLOW') or (kind in ('EXPENSE', 'CARD_PAYMENT') and tx_type != 'OUTFLOW'):
+            raise serializers.ValidationError({'reporting_kind': 'Reporting kind does not match the money direction.'})
+        if (is_split or attrs.get('splits_payload') or (attrs.get('split_metadata') or {}).get('items')) and kind not in ('AUTO','EXPENSE'):
+            raise serializers.ValidationError({'reporting_kind': 'Shared bills must remain personal expenses.'})
+        if self.instance and (self.instance.transfer_peer_id or self.instance.transfer_destination_id or self.instance.settled_splits.exists()) and kind != 'AUTO':
+            raise serializers.ValidationError({'reporting_kind': 'Linked transfers and reimbursements are classified from their source records.'})
 
         if not self.instance and tx_type == TransactionType.TRANSFER:
             raise serializers.ValidationError({
@@ -320,7 +330,7 @@ class TransactionSerializer(serializers.ModelSerializer):
             notes = validated_data.get('notes', '')
             workspace_project = validated_data.get('workspace_project')
 
-            return BillSplitService.create_split_transaction(
+            split_tx = BillSplitService.create_split_transaction(
                 user=user,
                 account=account,
                 category=category,
@@ -334,6 +344,10 @@ class TransactionSerializer(serializers.ModelSerializer):
                 split_metadata=split_metadata,
                 workspace_project=workspace_project
             )
+            if validated_data.get('reporting_kind', 'AUTO') != 'AUTO':
+                split_tx.reporting_kind = validated_data['reporting_kind']
+                split_tx.save(update_fields=['reporting_kind'])
+            return split_tx
 
         # Normal single transaction - lock account row
         from apps.ledger.models import AccountType
@@ -439,6 +453,7 @@ class TransactionSerializer(serializers.ModelSerializer):
 
 class CategoryBudgetSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
+    category_parent = serializers.UUIDField(source='category.parent_id', read_only=True, allow_null=True)
     category_icon = serializers.CharField(source='category.icon', read_only=True)
     spent_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True, default=Decimal('0.00'))
     remaining_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True, default=Decimal('0.00'))
@@ -446,13 +461,16 @@ class CategoryBudgetSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CategoryBudget
+        validators = []
         fields = [
             'id',
             'user',
             'category',
             'category_name',
+            'category_parent',
             'category_icon',
             'period_month',
+            'currency',
             'limit_amount',
             'spent_amount',
             'remaining_amount',
@@ -460,6 +478,39 @@ class CategoryBudgetSerializer(serializers.ModelSerializer):
             'created_at'
         ]
         read_only_fields = ['id', 'user', 'created_at']
+
+    def validate_currency(self, value):
+        value = value.strip().upper()
+        if not value.isascii() or not value.isalpha() or not 3 <= len(value) <= 5:
+            raise serializers.ValidationError('Use a currency code.')
+        return value
+
+    def validate_limit_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Budget must be greater than zero.')
+        return value
+
+    def validate_category(self, value):
+        if value.category_type != 'EXPENSE':
+            raise serializers.ValidationError('Choose an expense category.')
+        return value
+
+    def validate_period_month(self, value):
+        from .views import parse_month_param
+        parse_month_param(value)
+        return value
+
+    def validate(self, attrs):
+        user = self.context['request'].user
+        category = attrs.get('category', getattr(self.instance, 'category', None))
+        period = attrs.get('period_month', getattr(self.instance, 'period_month', None))
+        currency = attrs.get('currency', getattr(self.instance, 'currency', 'THB'))
+        duplicate = CategoryBudget.objects.filter(user=user, category=category, period_month=period, currency=currency)
+        if self.instance:
+            duplicate = duplicate.exclude(pk=self.instance.pk)
+        if duplicate.exists():
+            raise serializers.ValidationError('A budget already exists for this category, month and currency.')
+        return attrs
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

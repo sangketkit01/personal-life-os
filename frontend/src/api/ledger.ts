@@ -1,5 +1,6 @@
 import apiClient from './client'
 import type {
+  LedgerDashboard,
   LedgerAccount,
   LedgerCategory,
   LedgerTransaction,
@@ -81,6 +82,9 @@ export const ledgerApi = {
     is_split?: boolean
     search?: string
     page?: number
+    currency?: string
+    report_kind?: string
+    uncategorized?: string
   }): Promise<{
     count: number
     next: string | null
@@ -94,6 +98,14 @@ export const ledgerApi = {
   async createTransaction(payload: CreateTransactionPayload): Promise<LedgerTransaction> {
     const res = await apiClient.post<LedgerTransaction>('/ledger/transactions/', payload)
     return res.data
+  },
+
+  async getTransaction(id: string): Promise<LedgerTransaction> {
+    return (await apiClient.get<LedgerTransaction>(`/ledger/transactions/${id}/`)).data
+  },
+
+  async getDashboard(month: string, currency: string, history = '12'): Promise<LedgerDashboard> {
+    return (await apiClient.get<LedgerDashboard>('/ledger/transactions/dashboard/', { params: { month, currency, history } })).data
   },
 
   async updateTransaction(id: string, payload: Partial<UpdateTransactionPayload>): Promise<LedgerTransaction> {
@@ -147,6 +159,7 @@ export const ledgerApi = {
     category: string
     period_month: string
     limit_amount: number
+    currency?: string
   }): Promise<CategoryBudgetItem> {
     const res = await apiClient.post<CategoryBudgetItem>('/ledger/budgets/', payload)
     return res.data

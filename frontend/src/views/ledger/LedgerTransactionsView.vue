@@ -31,6 +31,8 @@
     </div>
 
     <!-- Filter Bar -->
+    <div v-if="filters.currency || filters.report_kind || filters.category || filters.uncategorized" class="rounded-lg border border-zinc-800 p-3 text-xs text-zinc-400 flex flex-wrap justify-between gap-2"><span>จาก Dashboard · {{ filters.currency || 'ทุกสกุลเงิน' }} · {{ reportLabels[filters.report_kind] || 'ทุกรายการ' }}{{ filters.category ? ' · กรองหมวดที่เลือก' : '' }}{{ filters.uncategorized ? ' · ยังไม่จัดหมวด' : '' }}</span><button type="button" @click="resetFilters" class="underline text-zinc-200">ล้างตัวกรอง</button></div>
+    <p v-if="loadError" role="alert" class="text-xs text-rose-300">{{ loadError }} <button type="button" @click="fetchFiltered" class="underline">ลองอีกครั้ง</button></p>
     <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-3 font-mono text-xs">
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         <!-- Search Query -->
@@ -184,11 +186,11 @@
               </td>
               <td class="py-3 px-4 text-right font-mono tabular-nums font-semibold">
                 <span :class="tx.transaction_type === 'INFLOW' ? 'text-emerald-400' : 'text-zinc-200'">
-                  {{ tx.transaction_type === 'INFLOW' ? '+' : '-' }}฿{{ Number(tx.gross_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                  {{ tx.transaction_type === 'INFLOW' ? '+' : '-' }}{{ tx.account_currency || 'THB' }} {{ Number(tx.gross_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
                 </span>
               </td>
               <td class="py-3 px-4 text-right font-mono tabular-nums text-zinc-400">
-                ฿{{ Number(tx.net_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+                {{ tx.account_currency || 'THB' }} {{ Number(tx.net_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
               </td>
               <td class="py-3 px-4 text-right pr-4">
                 <button
@@ -264,7 +266,8 @@
 
 <script setup lang="ts">
 import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useLedgerStore } from '../../stores/ledger'
 import TransactionModal from '../../components/ledger/TransactionModal.vue'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
@@ -281,6 +284,8 @@ import {
 } from 'lucide-vue-next'
 
 const ledgerStore = useLedgerStore()
+const route = useRoute(), router = useRouter(), loadError = ref('')
+const reportLabels: Record<string,string> = { INCOME:'รายรับจริง', EXPENSE:'ค่าใช้จ่ายส่วนตัว', SURPLUS:'รายรับและรายจ่ายส่วนตัว', CASH:'เงินเข้าออกจากบัญชีที่พร้อมใช้', LOAN:'เงินต้นเงินกู้', INVESTMENT:'เงินลงทุน', REIMBURSEMENT:'เงินรับคืน', TRANSFER:'โอนเงิน', CARD_PAYMENT:'ชำระบัตร' }
 const showTransactionModal = ref(false)
 const editingTransaction = ref<any>(null)
 const currentPage = ref(1)
@@ -301,7 +306,8 @@ const filters = reactive({
   account: '',
   type: '',
   start_date: '',
-  end_date: ''
+  end_date: '',
+  currency: '', report_kind: '', category: '', uncategorized: ''
 })
 
 const hasActiveFilters = computed(() => {
@@ -310,7 +316,7 @@ const hasActiveFilters = computed(() => {
     filters.account ||
     filters.type ||
     filters.start_date ||
-    filters.end_date
+    filters.end_date || filters.currency || filters.report_kind || filters.category || filters.uncategorized
   )
 })
 
@@ -343,6 +349,7 @@ async function executeConfirmAction() {
 }
 
 onMounted(async () => {
+  applyQuery()
   await Promise.all([
     ledgerStore.fetchAccounts(),
     ledgerStore.fetchCategories(),
@@ -350,16 +357,30 @@ onMounted(async () => {
   ])
 })
 
+let listRequest = 0
 async function fetchFiltered() {
-  await ledgerStore.fetchTransactions({
+  const request = ++listRequest
+  loadError.value = ''
+  try { await ledgerStore.fetchTransactions({
     account: filters.account || undefined,
     type: filters.type || undefined,
     start_date: filters.start_date || undefined,
     end_date: filters.end_date || undefined,
     search: filters.search || undefined,
+    currency: filters.currency || undefined,
+    report_kind: filters.report_kind || undefined,
+    category: filters.category || undefined,
+    uncategorized: filters.uncategorized || undefined,
     page: currentPage.value
-  })
+  }) } catch { if (request === listRequest) loadError.value = 'โหลดรายการไม่สำเร็จ' }
 }
+
+function applyQuery() {
+  for (const key of Object.keys(filters) as Array<keyof typeof filters>) filters[key] = typeof route.query[key] === 'string' ? route.query[key] as string : ''
+  currentPage.value = 1
+}
+watch(() => route.query, () => { applyQuery(); void fetchFiltered() })
+onUnmounted(() => clearTimeout(debounceTimer))
 
 let debounceTimer: any = null
 function handleSearchInput() {
@@ -381,8 +402,10 @@ function resetFilters() {
   filters.type = ''
   filters.start_date = ''
   filters.end_date = ''
+  filters.currency = ''; filters.report_kind = ''; filters.category = ''; filters.uncategorized = ''
   currentPage.value = 1
-  fetchFiltered()
+  if (Object.keys(route.query).length) void router.replace({ path:route.path, query:{} })
+  else void fetchFiltered()
 }
 
 function changePage(page: number) {

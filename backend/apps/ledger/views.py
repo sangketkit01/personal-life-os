@@ -41,6 +41,8 @@ def parse_month_param(month_str: str | None) -> tuple[int, int, str]:
     if not MONTH_REGEX.match(month_str):
         raise exceptions.ValidationError({'month': 'Month must be in format YYYY-MM (e.g. 2026-10).'})
     year, month = map(int, month_str.split('-'))
+    if not 1900 <= year <= 9998:
+        raise exceptions.ValidationError({'month': 'Choose a year from 1900 to 9998.'})
     return year, month, month_str
 
 
@@ -166,9 +168,8 @@ class TransactionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = Transaction.objects.filter(user=user).select_related(
-            'account', 'category', 'obligation', 'portfolio', 'workspace_project'
-        ).prefetch_related('splits', 'attachments')
+        from .dashboard import reporting_queryset, reporting_kind, cash_movement
+        qs = reporting_queryset(user).select_related('portfolio', 'workspace_project').prefetch_related('splits', 'attachments', 'settled_splits')
 
         # Filters
         account_id = self.request.query_params.get('account')
@@ -197,7 +198,35 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 Q(title__icontains=search) | Q(notes__icontains=search)
             )
 
+        currency = self.request.query_params.get('currency')
+        if currency:
+            qs = qs.filter(account__currency=currency.upper())
+        report = self.request.query_params.get('report_kind')
+        if report:
+            if report not in ('INCOME','EXPENSE','SURPLUS','CASH','REIMBURSEMENT','LOAN','INVESTMENT','CARD_PAYMENT','TRANSFER'):
+                raise exceptions.ValidationError({'report_kind':'Unknown report filter.'})
+            qs = qs.filter(pk__in=[tx.pk for tx in qs if
+                (bool(cash_movement(tx)) if report == 'CASH' else reporting_kind(tx) in ('INCOME','EXPENSE') if report == 'SURPLUS' else reporting_kind(tx) == report)])
+        if self.request.query_params.get('uncategorized') == 'true':
+            qs = qs.filter(category__isnull=True)
+            if not report:
+                qs = qs.filter(pk__in=[tx.pk for tx in qs if reporting_kind(tx) in ('INCOME','EXPENSE')])
+
         return qs.order_by('-transaction_date', '-created_at')
+
+    @action(detail=False, methods=['get'], url_path='dashboard')
+    def dashboard(self, request):
+        from .dashboard import dashboard
+        year, month, period = parse_month_param(request.query_params.get('month'))
+        if not 1900 <= year <= 9998:
+            raise exceptions.ValidationError({'month':'Choose a year from 1900 to 9998.'})
+        currency = request.query_params.get('currency', 'THB').strip().upper()
+        if not re.fullmatch(r'[A-Z]{3,5}', currency):
+            raise exceptions.ValidationError({'currency':'Use a currency code.'})
+        history = request.query_params.get('history', '12')
+        if history not in ('6','12'):
+            raise exceptions.ValidationError({'history':'Choose 6 or 12 months.'})
+        return Response(dashboard(request.user,period,currency,int(history)))
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -532,30 +561,11 @@ class CategoryBudgetViewSet(viewsets.ModelViewSet):
         if not budgets:
             return Response([])
 
-        # Batch resolution: map budget categories and their subcategories to avoid N+1 queries
-        budget_cat_map = {}
-        all_relevant_cat_ids = set()
-        for b in budgets:
-            sub_ids = list(b.category.subcategories.values_list('id', flat=True))
-            cat_family = [b.category_id] + sub_ids
-            budget_cat_map[b.id] = cat_family
-            all_relevant_cat_ids.update(cat_family)
-
-        # Single batch aggregation query for all budget categories
-        spent_records = Transaction.objects.filter(
-            user=user,
-            category_id__in=all_relevant_cat_ids,
-            transaction_type=TransactionType.OUTFLOW,
-            transaction_date__year=year,
-            transaction_date__month=month
-        ).values('category_id').annotate(total=Coalesce(Sum('net_amount'), Decimal('0.00')))
-
-        spent_by_cat = {r['category_id']: r['total'] for r in spent_records}
-
+        from .dashboard import budget_data
+        totals = {row['id']:row for currency in {b.currency for b in budgets} for row in budget_data(user,period_month,currency)}
         results = []
         for b in budgets:
-            cat_family = budget_cat_map[b.id]
-            spent = sum((spent_by_cat.get(cid, Decimal('0.00')) for cid in cat_family), Decimal('0.00'))
+            spent = Decimal(totals[str(b.id)]['spent'])
 
             b.spent_amount = spent
             b.remaining_amount = b.limit_amount - spent

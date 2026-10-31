@@ -95,6 +95,7 @@ export const useLedgerStore = defineStore('ledger', () => {
     }
   }
 
+  let transactionRequest = 0
   async function fetchTransactions(params?: {
     account?: string
     category?: string
@@ -104,15 +105,21 @@ export const useLedgerStore = defineStore('ledger', () => {
     is_split?: boolean
     search?: string
     page?: number
+    currency?: string
+    report_kind?: string
+    uncategorized?: string
   }) {
+    const request = ++transactionRequest
     isLoading.value = true
     try {
       const res = await ledgerApi.getTransactions(params)
-      transactions.value = res.results || []
-      totalTransactionsCount.value = res.count || 0
+      if (request === transactionRequest) {
+        transactions.value = res.results || []
+        totalTransactionsCount.value = res.count || 0
+      }
       return res
     } finally {
-      isLoading.value = false
+      if (request === transactionRequest) isLoading.value = false
     }
   }
 
@@ -127,15 +134,17 @@ export const useLedgerStore = defineStore('ledger', () => {
     }
   }
 
+  let budgetRequest = 0
   async function fetchBudgets(month?: string) {
+    const request = ++budgetRequest
     try {
       const targetMonth = month || activeMonth.value
       const data = await ledgerApi.getBudgets(targetMonth)
-      budgets.value = data
+      if (request === budgetRequest) budgets.value = data
       return data
     } catch (err) {
       console.error('Failed to fetch budgets', err)
-      return []
+      throw err
     }
   }
 

@@ -20,6 +20,7 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+        <label class="text-xs text-zinc-400">สกุลเงิน<select v-model="activeCurrency" class="ml-2 px-2 py-1.5 rounded border border-zinc-700 bg-zinc-900 text-zinc-100"><option v-for="code in currencies" :key="code">{{ code }}</option></select></label>
         <input
           v-model="activeMonth"
           type="month"
@@ -38,19 +39,21 @@
     </div>
 
     <!-- Executive Budget Summary Strip -->
-    <div v-if="ledgerStore.budgets.length > 0" class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 font-mono text-xs">
+    <p v-if="budgetError" role="alert" class="text-xs text-rose-300">{{ budgetError }} <button type="button" @click="loadBudgets" class="underline">ลองอีกครั้ง</button></p>
+    <p v-if="budgetLoading" role="status" class="text-xs text-zinc-500">กำลังโหลดงบประมาณ…</p>
+    <div v-if="visibleBudgets.length > 0" class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 font-mono text-xs">
       <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-200">
         <span class="text-[10px] uppercase text-zinc-400 font-semibold block">Total Budget Limit</span>
         <div class="text-2xl font-bold text-zinc-100 mt-2 tabular-nums tracking-tight">
-          ฿{{ totalBudgetCap.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+          {{ activeCurrency }} {{ totalBudgetCap.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
-        <span class="text-[11px] text-zinc-400 block mt-1.5">Across {{ ledgerStore.budgets.length }} active categories</span>
+        <span class="text-[11px] text-zinc-400 block mt-1.5">Across {{ visibleBudgets.length }} active categories</span>
       </div>
 
       <div class="p-4 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-200">
         <span class="text-[10px] uppercase text-zinc-400 font-semibold block">Total Spent This Month</span>
         <div class="text-2xl font-bold text-zinc-200 mt-2 tabular-nums tracking-tight">
-          ฿{{ totalBudgetSpent.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+          {{ activeCurrency }} {{ totalBudgetSpent.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
         <span class="text-[11px] text-zinc-400 block mt-1.5">{{ overallUsagePct }}% of allocated limit</span>
       </div>
@@ -61,7 +64,7 @@
           class="text-2xl font-bold mt-2 tabular-nums tracking-tight"
           :class="totalBudgetCushion < 0 ? 'text-rose-400' : 'text-emerald-400'"
         >
-          ฿{{ totalBudgetCushion.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+          {{ activeCurrency }} {{ totalBudgetCushion.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
         </div>
         <span class="text-[11px] text-zinc-400 block mt-1.5 flex items-center gap-1">
           <AlertTriangle v-if="totalBudgetCushion < 0" class="w-3 h-3 text-rose-400" />
@@ -71,7 +74,7 @@
     </div>
 
     <!-- Budgets Grid -->
-    <div v-if="ledgerStore.budgets.length === 0" class="p-16 rounded-xl bg-zinc-900/20 border border-zinc-800/80 text-center space-y-3 font-mono text-xs text-zinc-500">
+    <div v-if="!budgetLoading && !budgetError && visibleBudgets.length === 0" class="p-16 rounded-xl bg-zinc-900/20 border border-zinc-800/80 text-center space-y-3 font-mono text-xs text-zinc-500">
       <p>No category budgets allocated for {{ activeMonth }}.</p>
       <button
         @click="openCreateBudgetModal"
@@ -83,7 +86,7 @@
 
     <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 font-mono">
       <div
-        v-for="b in ledgerStore.budgets"
+        v-for="b in visibleBudgets"
         :key="b.id"
         class="p-5 rounded-xl bg-zinc-900/50 border border-zinc-800/80 hover:border-zinc-700/80 hover:bg-zinc-900/70 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all duration-200 space-y-4"
       >
@@ -129,10 +132,10 @@
 
           <div class="flex justify-between text-xs pt-1">
             <span class="text-zinc-300">
-              Spent: ฿{{ Number(b.spent_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+              Spent: {{ activeCurrency }} {{ Number(b.spent_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
             </span>
             <span class="text-zinc-400">
-              Limit: ฿{{ Number(b.limit_amount).toLocaleString('en-US') }}
+              Limit: {{ activeCurrency }} {{ Number(b.limit_amount).toLocaleString('en-US') }}
             </span>
           </div>
         </div>
@@ -144,7 +147,7 @@
             class="font-bold tabular-nums"
             :class="Number(b.remaining_amount) < 0 ? 'text-rose-400 font-semibold' : 'text-emerald-400 font-semibold'"
           >
-            ฿{{ Number(b.remaining_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+            {{ activeCurrency }} {{ Number(b.remaining_amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
           </span>
         </div>
       </div>
@@ -195,7 +198,7 @@
             </div>
 
             <div>
-              <label class="block text-[11px] text-zinc-300 mb-1 font-medium font-sans">Monthly Limit (฿) <span class="text-rose-400">*</span></label>
+              <label class="block text-[11px] text-zinc-300 mb-1 font-medium font-sans">Monthly Limit ({{ activeCurrency }} ) <span class="text-rose-400">*</span></label>
               <input
                 v-model.number="newBudgetLimit"
                 type="number"
@@ -246,6 +249,7 @@
 import {
  ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useLedgerStore } from '../../stores/ledger'
+import { useRoute } from 'vue-router'
 import { useToastStore } from '../../stores/toast'
 import { ledgerApi } from '../../api/ledger'
 import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
@@ -261,11 +265,16 @@ import {
 } from 'lucide-vue-next'
 
 const ledgerStore = useLedgerStore()
+const route = useRoute()
+const activeCurrency = ref(typeof route.query.currency === 'string' && /^[A-Z]{3,5}$/.test(route.query.currency) ? route.query.currency : 'THB')
+const budgetError = ref(''), budgetLoading = ref(false)
+const loadedBudgetMonth = ref('')
+const currencies = computed(() => [...new Set([activeCurrency.value, ...ledgerStore.accounts.map(a => a.currency)])].sort())
+const visibleBudgets = computed(() => loadedBudgetMonth.value === activeMonth.value ? ledgerStore.budgets.filter(b => (b.currency || 'THB') === activeCurrency.value) : [])
+const summaryBudgets = computed(() => { const categories = new Set(visibleBudgets.value.map(b => b.category)); return visibleBudgets.value.filter(b => !b.category_parent || !categories.has(b.category_parent)) })
 const toast = useToastStore()
 const now = new Date()
-const activeMonth = ref<string>(
-  `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-)
+const activeMonth = ref<string>(typeof route.query.month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(route.query.month) ? route.query.month : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`)
 
 const showCreateBudgetModal = ref(false)
 const editingBudget = ref<CategoryBudgetItem | null>(null)
@@ -290,11 +299,11 @@ function openEditBudgetModal(b: CategoryBudgetItem) {
 }
 
 const totalBudgetCap = computed(() => {
-  return ledgerStore.budgets.reduce((sum, b) => sum + Number(b.limit_amount || 0), 0)
+  return summaryBudgets.value.reduce((sum, b) => sum + Number(b.limit_amount || 0), 0)
 })
 
 const totalBudgetSpent = computed(() => {
-  return ledgerStore.budgets.reduce((sum, b) => sum + Number(b.spent_amount || 0), 0)
+  return summaryBudgets.value.reduce((sum, b) => sum + Number(b.spent_amount || 0), 0)
 })
 
 const totalBudgetCushion = computed(() => {
@@ -307,7 +316,7 @@ const overallUsagePct = computed(() => {
 })
 
 const expenseCategories = computed(() =>
-  ledgerStore.categories.filter((c) => c.category_type === 'EXPENSE')
+  ledgerStore.categories.filter(c => c.category_type === 'EXPENSE').flatMap(c => [c, ...(c.subcategories || [])])
 )
 
 const confirmModal = reactive({
@@ -358,12 +367,19 @@ onUnmounted(() => {
 onMounted(async () => {
   await Promise.all([
     ledgerStore.fetchCategories('EXPENSE'),
+    ledgerStore.fetchAccounts(),
     loadBudgets()
   ])
 })
 
+let budgetGeneration = 0
 async function loadBudgets() {
-  await ledgerStore.fetchBudgets(activeMonth.value)
+  const request = ++budgetGeneration, period = activeMonth.value
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) { budgetError.value = 'กรุณาเลือกเดือน'; budgetLoading.value = false; return }
+  budgetLoading.value = true; budgetError.value = ''
+  try { await ledgerStore.fetchBudgets(period); if (request === budgetGeneration) loadedBudgetMonth.value = period }
+  catch { if (request === budgetGeneration) budgetError.value = 'โหลดงบประมาณไม่สำเร็จ' }
+  finally { if (request === budgetGeneration) budgetLoading.value = false }
 }
 
 async function handleSaveBudget() {
@@ -386,6 +402,7 @@ async function handleSaveBudget() {
     } else {
       await ledgerApi.createBudget({
         category: newBudgetCategory.value,
+        currency: activeCurrency.value,
         period_month: activeMonth.value,
         limit_amount: newBudgetLimit.value
       })
@@ -395,7 +412,8 @@ async function handleSaveBudget() {
     editingBudget.value = null
     await loadBudgets()
   } catch (err: any) {
-    toast.error(err?.response?.data?.limit_amount || err?.response?.data?.error || 'Failed to save budget limit')
+    const message = err?.response?.data?.detail || err?.response?.data?.non_field_errors || err?.response?.data?.limit_amount || err?.response?.data?.error || 'Failed to save budget limit'
+    toast.error(Array.isArray(message) ? message.join(' ') : String(message))
   } finally {
     isSaving.value = false
   }

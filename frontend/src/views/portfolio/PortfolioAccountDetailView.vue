@@ -6,7 +6,7 @@
         <button
           @click="router.push('/portfolio/accounts')"
           class="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
-          title="Back to Brokerage Accounts"
+          :title="t('portfolio.ui.back')"
         >
           <ArrowLeft class="w-4 h-4" />
         </button>
@@ -19,16 +19,16 @@
               :style="{ backgroundColor: getPortfolioColor(currentPortfolio.color) }"
             ></span>
             <span class="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800 font-semibold">
-              {{ currentPortfolio?.currency || 'THB' }} ACCOUNT
+              {{ currentPortfolio?.currency || 'THB' }}
             </span>
             <h1 class="text-lg font-semibold text-zinc-100 tracking-tight font-sans">
-              {{ currentPortfolio?.name || 'Brokerage Account Dossier' }}
+              {{ currentPortfolio?.name || t('portfolio.ui.details') }}
             </h1>
             <span
               v-if="currentPortfolio?.is_default"
               class="text-[9px] font-mono px-2 py-0.2 rounded border uppercase font-medium bg-zinc-900 text-zinc-300 border-zinc-700"
             >
-              DEFAULT
+              {{ t('portfolio.ui.default') }}
             </span>
           </div>
           <div class="flex items-center gap-3 text-xs text-zinc-500 font-mono mt-0.5">
@@ -39,30 +39,24 @@
       </div>
 
       <!-- Action Buttons -->
-      <div class="flex items-center gap-2 self-start sm:self-auto">
+      <div class="flex flex-wrap items-center gap-2 self-start sm:self-auto">
         <button
           @click="openEditModal"
-          class="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
-          title="Edit Account Details"
+          :disabled="isLoading || !currentPortfolio"
+          class="px-3 py-1.5 flex items-center gap-2 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors text-xs disabled:opacity-50"
+          :title="t('portfolio.ui.edit')"
         >
-          <Edit2 class="w-4 h-4" />
+          <Edit2 class="w-4 h-4" /><span>{{ t('portfolio.ui.edit') }}</span>
         </button>
 
-        <button
-          v-if="!currentPortfolio?.is_default"
-          @click="confirmDeletePortfolio"
-          class="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-500 hover:text-rose-400 transition-colors"
-          title="Delete Account"
-        >
-          <Trash2 class="w-4 h-4" />
-        </button>
 
         <button
           @click="openAddTradeModal"
+          :disabled="isLoading || !currentPortfolio"
           class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold font-sans transition-colors flex items-center gap-1.5 shadow-sm"
         >
           <Plus class="w-3.5 h-3.5 text-zinc-950" />
-          <span>Record Trade</span>
+          <span>{{ t('portfolio.ui.recordTrade') }}</span>
         </button>
       </div>
     </div>
@@ -71,7 +65,7 @@
     <MarketStatusBar />
 
     <div v-if="isLoading" class="p-16 text-center text-xs font-mono text-zinc-500">
-      Loading account dossier and positions...
+      {{ t('portfolio.ui.loading') }}
     </div>
 
     <div v-else-if="currentPortfolio" class="space-y-6">
@@ -185,7 +179,7 @@
 
         <!-- Holdings Table -->
         <div v-if="filteredHoldings.length === 0" class="p-12 text-center text-xs font-mono text-zinc-500 bg-zinc-900/20 rounded-xl border border-zinc-800 space-y-2">
-          <p>No active asset holdings recorded in this brokerage account.</p>
+          <p>No holdings recorded in this portfolio.</p>
           <button
             @click="openAddTradeModal"
             class="px-3 py-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-sans text-xs transition-colors"
@@ -277,7 +271,7 @@
                       <button
                         @click="openMoveModal(h)"
                         class="p-1 rounded text-zinc-500 hover:text-zinc-200 transition-colors"
-                        title="Move to another brokerage"
+                        :title="t('portfolio.ui.moveHolding')"
                       >
                         <ArrowRightLeft class="w-3.5 h-3.5" />
                       </button>
@@ -308,7 +302,7 @@
               class="px-3.5 py-1.5 rounded bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold font-sans transition-colors flex items-center gap-1.5 shadow-sm"
             >
               <Plus class="w-3.5 h-3.5 text-zinc-950" />
-              <span>Record Trade</span>
+              <span>{{ t('portfolio.ui.recordTrade') }}</span>
             </button>
           </div>
 
@@ -394,13 +388,13 @@
         <div class="p-5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-4">
           <div class="pb-3 border-b border-zinc-800/60">
             <h3 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">
-              Brokerage Strategy & Parameters
+              {{ t('portfolio.ui.details') }}
             </h3>
           </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 font-mono text-xs">
             <div class="p-3 rounded-lg bg-zinc-950 border border-zinc-800/80 space-y-1">
-              <span class="text-[10px] text-zinc-500 uppercase block">Account Name</span>
+              <span class="text-[10px] text-zinc-500 uppercase block">{{ t('portfolio.ui.name') }}</span>
               <span class="text-zinc-200 font-semibold">{{ currentPortfolio.name }}</span>
             </div>
             <div class="p-3 rounded-lg bg-zinc-950 border border-zinc-800/80 space-y-1">
@@ -408,16 +402,20 @@
               <span class="text-zinc-200 font-semibold">{{ currentPortfolio.currency }}</span>
             </div>
             <div class="p-3 rounded-lg bg-zinc-950 border border-zinc-800/80 space-y-1">
-              <span class="text-[10px] text-zinc-500 uppercase block">Account Type</span>
-              <span class="text-zinc-200">{{ currentPortfolio.is_default ? 'Primary Main Portfolio' : 'Sub-Account Basket' }}</span>
+              <span class="text-[10px] text-zinc-500 uppercase block">{{ t('portfolio.ui.default') }}</span>
+              <span class="text-zinc-200">{{ currentPortfolio.is_default ? t('portfolio.ui.yes') : t('portfolio.ui.no') }}</span>
             </div>
           </div>
 
           <div class="p-4 rounded-lg bg-zinc-950 border border-zinc-800/80 space-y-1 font-mono text-xs">
             <span class="text-[10px] text-zinc-500 uppercase block">Investment Strategy Thesis</span>
             <p class="text-zinc-300 font-sans leading-relaxed">
-              {{ currentPortfolio.description || 'No strategic mandate defined yet for this account basket. Click edit to document DCA goals and risk parameters.' }}
+              {{ currentPortfolio.description || t('portfolio.ui.emptyDescription') }}
             </p>
+          </div>
+          <div v-if="!currentPortfolio.is_default" class="pt-4 border-t border-zinc-800 space-y-2">
+            <p v-if="accountOverview?.holdings?.length" class="text-xs text-zinc-500">{{ t('portfolio.ui.deleteBlocked') }}</p>
+            <button type="button" @click="confirmDeletePortfolio" :disabled="!!accountOverview?.holdings?.length" class="px-3 py-1.5 rounded border border-rose-500/30 text-rose-300 text-xs hover:bg-rose-500/10 disabled:opacity-40 disabled:cursor-not-allowed">{{ t('portfolio.ui.delete') }}</button>
           </div>
         </div>
       </div>
@@ -434,9 +432,9 @@
       @saved="refreshAll"
     />
 
-    <CreatePortfolioModal
+    <EditPortfolioModal
       :is-open="showEditPortfolioModal"
-      :edit-portfolio="currentPortfolio"
+      :portfolio="currentPortfolio"
       @close="showEditPortfolioModal = false"
       @saved="refreshAll"
     />
@@ -473,6 +471,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '../../i18n'
 import QuoteFreshness from '../../components/portfolio/QuoteFreshness.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -483,7 +482,7 @@ import apiClient from '../../api/client'
 import MarketStatusBar from '../../components/portfolio/MarketStatusBar.vue'
 import AddTransactionModal from '../../components/portfolio/AddTransactionModal.vue'
 import EditHoldingModal from '../../components/portfolio/EditHoldingModal.vue'
-import CreatePortfolioModal from '../../components/portfolio/CreatePortfolioModal.vue'
+import EditPortfolioModal from '../../components/portfolio/EditPortfolioModal.vue'
 import MoveHoldingModal from '../../components/portfolio/MoveHoldingModal.vue'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import {
@@ -537,9 +536,9 @@ const filteredHoldings = computed(() => {
 })
 
 const tabs = computed<Array<{ id: 'HOLDINGS' | 'EXECUTIONS' | 'STRATEGY'; label: string; icon: any; badge?: string }>>(() => [
-  { id: 'HOLDINGS', label: 'Holdings Position Ledger', icon: Layers, badge: `${accountOverview.value?.holdings?.length || 0}` },
-  { id: 'EXECUTIONS', label: 'Trade Executions History', icon: History, badge: `${portfolioTransactions.value.length}` },
-  { id: 'STRATEGY', label: 'Strategy & Thesis', icon: FileText }
+  { id: 'HOLDINGS', label: t('portfolio.ui.holdings'), icon: Layers, badge: `${accountOverview.value?.holdings?.length || 0}` },
+  { id: 'EXECUTIONS', label: t('portfolio.ui.trades'), icon: History, badge: `${portfolioTransactions.value.length}` },
+  { id: 'STRATEGY', label: t('portfolio.ui.details'), icon: FileText }
 ])
 
 onMounted(async () => {
@@ -555,7 +554,7 @@ async function refreshAll() {
       portfolioStore.fetchTransactions({ portfolioId: accountId.value })
     ])
     if (!currentPortfolio.value) {
-      toast.error('Brokerage account not found')
+      toast.error(t('portfolio.ui.notFound'))
       router.push('/portfolio/accounts')
       return
     }
@@ -570,7 +569,7 @@ async function refreshAll() {
     })
     accountOverview.value = res.data
   } catch (err: any) {
-    toast.error('Failed to load portfolio account dossier')
+    toast.error(t('portfolio.ui.loadFailed'))
   } finally {
     isLoading.value = false
   }
@@ -656,17 +655,17 @@ function handleDeleteTransaction(txId: string) {
 function confirmDeletePortfolio() {
   if (!currentPortfolio.value) return
   if (accountOverview.value?.holdings && accountOverview.value.holdings.length > 0) {
-    toast.error('Cannot delete account with active holdings. Move or close all positions first.')
+    toast.error(t('portfolio.ui.deleteBlocked'))
     return
   }
-  confirmModal.title = 'Delete Brokerage Account'
-  confirmModal.message = `Are you sure you want to delete brokerage account "${currentPortfolio.value.name}"?`
-  confirmModal.confirmText = 'Delete Account'
+  confirmModal.title = t('portfolio.ui.delete')
+  confirmModal.message = t('portfolio.ui.deleteConfirm', { name: currentPortfolio.value.name })
+  confirmModal.confirmText = t('portfolio.ui.delete')
   confirmModal.isDanger = true
   confirmModal.errorMessage = ''
   confirmModal.action = async () => {
     await portfolioStore.deletePortfolio(accountId.value)
-    toast.success('Brokerage account removed')
+    toast.success(t('portfolio.ui.deleted'))
     router.push('/portfolio/accounts')
   }
   confirmModal.isOpen = true

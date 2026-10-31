@@ -4,13 +4,10 @@
     <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
       <div>
         <div class="flex items-center gap-2.5">
-          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">My Portfolios & Holdings</h1>
-          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-zinc-900 text-zinc-400 border border-zinc-800">
-            ACCOUNT BASKETS
-          </span>
+          <h1 class="text-lg font-semibold text-zinc-100 tracking-tight">{{ t('nav.portfolio.accounts') }}</h1>
         </div>
         <p class="text-xs text-zinc-500 mt-1">
-          Manage separate portfolio accounts (Dime US, InnovestX, Bitkub, Binance) with weighted DCA cost basis
+          {{ t('portfolio.ui.manageHelp') }}
         </p>
       </div>
 
@@ -23,17 +20,17 @@
           <button
             @click="router.push('/portfolio/accounts/new')"
             class="px-3 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white text-xs font-mono transition-colors flex items-center gap-1.5"
-            title="Create new portfolio bucket"
+            :title="t('portfolio.ui.create')"
           >
             <FolderPlus class="w-3.5 h-3.5 text-zinc-400" />
-            <span class="hidden sm:inline">New Account</span>
+            <span>{{ t('portfolio.ui.create') }}</span>
           </button>
           <button
             @click="openAddModal()"
             class="px-3.5 py-2 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
           >
             <Plus class="w-3.5 h-3.5 text-zinc-950" />
-            <span>Record Trade</span>
+            <span>{{ t('portfolio.ui.recordTrade') }}</span>
           </button>
         </div>
       </div>
@@ -55,10 +52,7 @@
             : 'bg-zinc-900/60 text-zinc-400 border-zinc-800/80 hover:text-zinc-200 hover:bg-zinc-900'"
         >
           <Globe class="w-3.5 h-3.5 text-zinc-400" />
-          <span>All Portfolios</span>
-          <span class="text-[10px] px-1 py-0.2 rounded bg-zinc-950 text-zinc-500 border border-zinc-800">
-            Consolidated
-          </span>
+          <span>{{ t('portfolio.ui.all') }}</span>
         </button>
 
         <!-- User Named Sub-Portfolios -->
@@ -87,41 +81,9 @@
             </span>
           </button>
 
-          <!-- Edit & Delete buttons (always visible on touch/active, hover on desktop) -->
-          <div
-            class="items-center gap-1 absolute -top-2 -right-2 z-10"
-            :class="portfolioStore.selectedPortfolioId === p.id ? 'flex' : 'hidden group-hover:flex'"
-          >
-            <button
-              @click.stop="openEditPortfolio(p)"
-              type="button"
-              class="w-4 h-4 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 flex items-center justify-center transition-colors shadow"
-              title="Edit portfolio"
-            >
-              <Edit2 class="w-2.5 h-2.5" />
-            </button>
-            <button
-              v-if="!p.is_default"
-              @click.stop="confirmDeletePortfolio(p)"
-              type="button"
-              class="w-4 h-4 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-rose-400 hover:border-rose-500/50 flex items-center justify-center transition-colors shadow"
-              title="Delete portfolio"
-            >
-              <X class="w-2.5 h-2.5" />
-            </button>
-          </div>
         </div>
       </div>
 
-      <!-- Add New Portfolio Button -->
-      <button
-        @click="showCreatePortfolioModal = true"
-        type="button"
-        class="px-2.5 py-1.5 rounded-lg text-xs font-mono text-zinc-400 hover:text-zinc-200 bg-zinc-900/40 hover:bg-zinc-900 border border-dashed border-zinc-800 hover:border-zinc-700 transition-colors flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
-      >
-        <FolderPlus class="w-3.5 h-3.5 text-zinc-400" />
-        <span>New Portfolio</span>
-      </button>
     </div>
 
     <!-- Active Portfolio Card Info (if single portfolio selected) -->
@@ -143,10 +105,10 @@
               {{ currentPortfolio.currency }}
             </span>
             <span v-if="currentPortfolio.is_default" class="text-[10px] font-mono text-zinc-500 bg-zinc-800 px-1.5 py-0.2 rounded">
-              Default Basket
+              {{ t('portfolio.ui.default') }}
             </span>
           </div>
-          <p class="text-zinc-500 mt-0.5 text-[11px]">{{ currentPortfolio.description || 'Dedicated investment basket' }}</p>
+          <p class="text-zinc-500 mt-0.5 text-[11px]">{{ currentPortfolio.description || t('portfolio.ui.emptyDescription') }}</p>
         </div>
       </div>
 
@@ -155,26 +117,9 @@
           :to="`/portfolio/accounts/${currentPortfolio.id}`"
           class="px-3 py-1 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold font-sans flex items-center gap-1.5 shadow-sm transition-colors"
         >
-          <span>Open Full Dossier</span>
+          <span>{{ t('portfolio.ui.view') }}</span>
           <ArrowRight class="w-3.5 h-3.5 text-zinc-950" />
         </RouterLink>
-        <button
-          @click="openEditPortfolio(currentPortfolio)"
-          type="button"
-          class="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-mono flex items-center gap-1.5"
-        >
-          <Edit2 class="w-3 h-3 text-zinc-400" />
-          <span>Edit Basket</span>
-        </button>
-        <button
-          v-if="!currentPortfolio.is_default"
-          @click="confirmDeletePortfolio(currentPortfolio)"
-          type="button"
-          class="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs font-mono flex items-center gap-1.5"
-        >
-          <Trash2 class="w-3 h-3 text-zinc-400" />
-          <span>Delete</span>
-        </button>
       </div>
     </div>
 
@@ -356,7 +301,7 @@
                     @click="openMoveHolding(holding)"
                     type="button"
                     class="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
-                    title="Move Holding to another account basket"
+                    :title="t('portfolio.ui.moveHolding')"
                   >
                     <FolderInput class="w-3.5 h-3.5" />
                   </button>
@@ -389,7 +334,7 @@
               <td colspan="8" class="py-12 text-center text-xs text-zinc-500 font-mono">
                 <div class="flex flex-col items-center justify-center gap-2">
                   <TrendingUp class="w-6 h-6 text-zinc-600" />
-                  <p>No holdings found in this portfolio basket</p>
+                  <p>No holdings found in this portfolio</p>
                   <button
                     @click="openAddModal()"
                     type="button"
@@ -422,18 +367,7 @@
       @saved="refreshHoldings"
     />
 
-    <CreatePortfolioModal
-      :is-open="showCreatePortfolioModal"
-      @close="showCreatePortfolioModal = false"
-      @created="handlePortfolioCreated"
-    />
 
-    <EditPortfolioModal
-      :is-open="showEditPortfolioModal"
-      :portfolio="selectedPortfolioForEdit"
-      @close="showEditPortfolioModal = false"
-      @saved="handlePortfolioUpdated"
-    />
 
     <MoveHoldingModal
       :is-open="showMoveModal"
@@ -457,6 +391,7 @@
 </template>
 
 <script setup lang="ts">
+import { t } from '../../i18n'
 import QuoteFreshness from '../../components/portfolio/QuoteFreshness.vue'
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -466,11 +401,9 @@ import UniversalAssetSearch from '../../components/portfolio/UniversalAssetSearc
 import MarketStatusBar from '../../components/portfolio/MarketStatusBar.vue'
 import AddTransactionModal from '../../components/portfolio/AddTransactionModal.vue'
 import EditHoldingModal from '../../components/portfolio/EditHoldingModal.vue'
-import CreatePortfolioModal from '../../components/portfolio/CreatePortfolioModal.vue'
-import EditPortfolioModal from '../../components/portfolio/EditPortfolioModal.vue'
 import MoveHoldingModal from '../../components/portfolio/MoveHoldingModal.vue'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
-import { getPortfolioColor, type StockHolding, type StockTransaction, type InvestmentPortfolio } from '../../types/portfolio'
+import { getPortfolioColor, type StockHolding, type StockTransaction } from '../../types/portfolio'
 import {
   TrendingUp,
   Plus,
@@ -479,7 +412,6 @@ import {
   Globe,
   FolderPlus,
   FolderInput,
-  X,
   ArrowRight
 } from 'lucide-vue-next'
 
@@ -490,11 +422,8 @@ const toast = useToastStore()
 
 const showAddModal = ref(false)
 const showEditHoldingModal = ref(false)
-const showCreatePortfolioModal = ref(false)
-const showEditPortfolioModal = ref(false)
 const showMoveModal = ref(false)
 
-const selectedPortfolioForEdit = ref<InvestmentPortfolio | null>(null)
 const selectedHoldingToMove = ref<StockHolding | null>(null)
 const selectedHoldingToEdit = ref<StockHolding | null>(null)
 const selectedEditingTx = ref<StockTransaction | null>(null)
@@ -723,20 +652,6 @@ function openMoveHolding(holding: StockHolding) {
   showMoveModal.value = true
 }
 
-function openEditPortfolio(p: InvestmentPortfolio) {
-  selectedPortfolioForEdit.value = p
-  showEditPortfolioModal.value = true
-}
-
-function handlePortfolioUpdated(updated: InvestmentPortfolio) {
-  toast.success(`Updated portfolio "${updated.name}"`)
-}
-
-async function handlePortfolioCreated(created: InvestmentPortfolio) {
-  toast.success(`Created portfolio "${created.name}"`)
-  await portfolioStore.setSelectedPortfolio(created.id)
-}
-
 async function handleTradeSaved() {
   toast.success('Trade execution recorded and updated')
   await refreshHoldings()
@@ -758,23 +673,6 @@ function confirmDeleteHolding(holding: StockHolding) {
   confirmModal.action = async () => {
     await portfolioStore.deleteHolding(holding.id)
     toast.info(`Deleted holding ${holding.ticker}`)
-  }
-  confirmModal.isOpen = true
-}
-
-function confirmDeletePortfolio(p: InvestmentPortfolio) {
-  if (p.is_default) {
-    toast.error('Default portfolio cannot be deleted')
-    return
-  }
-  confirmModal.title = 'Delete Portfolio'
-  confirmModal.message = `Are you sure you want to delete portfolio "${p.name}"? Holdings under this portfolio will be removed.`
-  confirmModal.confirmText = 'Delete Portfolio'
-  confirmModal.isDanger = true
-  confirmModal.errorMessage = ''
-  confirmModal.action = async () => {
-    await portfolioStore.deletePortfolio(p.id)
-    toast.info(`Deleted portfolio "${p.name}"`)
   }
   confirmModal.isOpen = true
 }

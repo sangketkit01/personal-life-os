@@ -70,7 +70,7 @@
             </select>
           </div>
           <span class="text-[10px] text-zinc-500 block">
-            All imported trades will be attributed to this brokerage account.
+            All imported trades will be recorded in the selected portfolio.
           </span>
         </div>
 

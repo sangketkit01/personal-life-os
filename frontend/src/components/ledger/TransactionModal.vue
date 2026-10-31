@@ -683,6 +683,7 @@ import {
 const props = defineProps<{
   isOpen: boolean
   transactionToEdit?: LedgerTransaction | null
+  defaultAccountId?: string
 }>()
 
 const emit = defineEmits<{
@@ -912,6 +913,7 @@ watch(
         selectedFile.value = null
       } else {
         form.account = ''
+        if (props.defaultAccountId) form.account = props.defaultAccountId
         form.title = ''
         form.gross_amount = null as any
         form.notes = ''

@@ -6,10 +6,10 @@
         <div>
           <div class="flex items-center gap-2">
             <Edit3 class="w-4 h-4 text-zinc-300" />
-            <h2 class="text-base font-semibold text-zinc-100 tracking-tight">Edit Portfolio</h2>
+            <h2 class="text-base font-semibold text-zinc-100 tracking-tight">{{ t('portfolio.ui.edit') }}</h2>
           </div>
           <p class="text-xs text-zinc-500 mt-1">
-            Update portfolio details, tag colors, and investment strategy notes.
+            {{ t('portfolio.ui.editHelp') }}
           </p>
         </div>
         <button
@@ -30,7 +30,7 @@
           <!-- Portfolio Name -->
           <div>
             <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">
-              Portfolio Name <span class="text-rose-400">*</span>
+              {{ t('portfolio.ui.name') }} <span class="text-rose-400">*</span>
             </label>
             <input
               v-model.trim="form.name"
@@ -47,7 +47,7 @@
             <!-- Currency Selection -->
             <div>
               <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">
-                Base Currency
+                {{ t('portfolio.ui.baseCurrency') }}
               </label>
               <div class="grid grid-cols-2 gap-1 p-0.5 bg-zinc-900 border border-zinc-800 rounded-md">
                 <button
@@ -99,7 +99,7 @@
               v-model.trim="form.description"
               rows="2"
               maxlength="200"
-              placeholder="e.g. Long-term DCA basket, core tech holdings..."
+              placeholder="e.g. Long-term DCA portfolio, core tech holdings..."
               class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors resize-none"
             ></textarea>
           </div>
@@ -112,14 +112,14 @@
             @click="emit('close')"
             class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors cursor-pointer"
           >
-            Cancel
+            {{ t('portfolio.ui.cancel') }}
           </button>
           <button
             type="submit"
             :disabled="isSubmitting || !form.name"
             class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
           >
-            {{ isSubmitting ? 'Saving...' : 'Save Changes' }}
+            {{ isSubmitting ? t('portfolio.ui.saving') : t('portfolio.ui.save') }}
           </button>
         </div>
       </form>
@@ -129,6 +129,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { t } from '../../i18n'
 import { usePortfolioStore } from '../../stores/portfolio'
 import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { InvestmentPortfolio } from '../../types/portfolio'
@@ -184,9 +185,10 @@ watch(
 )
 
 const handleSubmit = async () => {
+  if (isSubmitting.value) return
   if (!props.portfolio) return
   if (!form.value.name.trim()) {
-    errorMessage.value = 'Portfolio name is required'
+    errorMessage.value = t('portfolio.ui.nameRequired')
     return
   }
 
@@ -196,7 +198,7 @@ const handleSubmit = async () => {
   try {
     const updated = await portfolioStore.updatePortfolio(props.portfolio.id, {
       name: form.value.name.trim(),
-      description: form.value.description.trim() || undefined,
+      description: form.value.description.trim(),
       currency: form.value.currency,
       color: form.value.color
     })
@@ -205,7 +207,7 @@ const handleSubmit = async () => {
   } catch (err: any) {
     errorMessage.value = err?.response?.data?.name?.[0] ||
       err?.response?.data?.detail ||
-      'Failed to update portfolio. Please check your inputs.'
+      t('portfolio.ui.updateFailed')
   } finally {
     isSubmitting.value = false
   }

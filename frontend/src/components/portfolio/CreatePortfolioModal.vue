@@ -1,15 +1,15 @@
 <template>
-  <div v-if="isOpen" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans">
+  <div v-if="isOpen" :class="inline ? 'font-sans' : 'fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden font-sans'">
     <div class="relative bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden">
       <!-- Fixed Header -->
       <div class="shrink-0 px-4 sm:px-6 py-3.5 border-b border-zinc-800 flex items-center justify-between">
         <div>
           <div class="flex items-center gap-2">
             <FolderPlus class="w-4 h-4 text-zinc-300" />
-            <h2 class="text-base font-semibold text-zinc-100 tracking-tight">Create Portfolio</h2>
+            <h2 class="text-base font-semibold text-zinc-100 tracking-tight">{{ t('portfolio.ui.create') }}</h2>
           </div>
           <p class="text-xs text-zinc-500 mt-0.5">
-            Organize holdings by strategy or brokerage account
+            {{ t('portfolio.ui.createHelp') }}
           </p>
         </div>
         <button
@@ -30,7 +30,7 @@
           <!-- Portfolio Name -->
           <div>
             <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">
-              Portfolio Name <span class="text-rose-400">*</span>
+              {{ t('portfolio.ui.name') }} <span class="text-rose-400">*</span>
             </label>
             <input
               v-model.trim="form.name"
@@ -47,7 +47,7 @@
             <!-- Currency Selection -->
             <div>
               <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">
-                Base Currency
+                {{ t('portfolio.ui.baseCurrency') }}
               </label>
               <div class="grid grid-cols-2 gap-1 p-0.5 bg-zinc-900 border border-zinc-800 rounded-md">
                 <button
@@ -99,7 +99,7 @@
               v-model.trim="form.description"
               rows="2"
               maxlength="200"
-              placeholder="e.g. Long-term DCA basket, core tech holdings..."
+              placeholder="e.g. Long-term DCA portfolio, core tech holdings..."
               class="w-full px-3 py-2 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors resize-none"
             ></textarea>
           </div>
@@ -112,14 +112,14 @@
             @click="emit('close')"
             class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-colors cursor-pointer"
           >
-            Cancel
+            {{ t('portfolio.ui.cancel') }}
           </button>
           <button
             type="submit"
             :disabled="isSubmitting || !form.name"
             class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
           >
-            {{ isSubmitting ? 'Creating...' : 'Create Portfolio' }}
+            {{ isSubmitting ? t('portfolio.ui.creating') : t('portfolio.ui.create') }}
           </button>
         </div>
       </form>
@@ -129,6 +129,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { t } from '../../i18n'
 import { usePortfolioStore } from '../../stores/portfolio'
 import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { InvestmentPortfolio } from '../../types/portfolio'
@@ -136,6 +137,7 @@ import { X, FolderPlus } from 'lucide-vue-next'
 
 const props = defineProps<{
   isOpen: boolean
+  inline?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -143,7 +145,7 @@ const emit = defineEmits<{
   (e: 'created', portfolio: InvestmentPortfolio): void
 }>()
 
-useBodyScrollLock(() => props.isOpen)
+useBodyScrollLock(() => props.isOpen && !props.inline)
 
 const portfolioStore = usePortfolioStore()
 const isSubmitting = ref(false)
@@ -181,12 +183,13 @@ watch(
 )
 
 const handleSubmit = async () => {
+  if (isSubmitting.value) return
   if (!form.value.name.trim()) {
-    errorMessage.value = 'Portfolio name is required'
+    errorMessage.value = t('portfolio.ui.nameRequired')
     return
   }
   if (!form.value.currency) {
-    errorMessage.value = 'Please select a currency (THB or USD)'
+    errorMessage.value = t('portfolio.ui.currencyRequired')
     return
   }
 
@@ -205,7 +208,7 @@ const handleSubmit = async () => {
   } catch (err: any) {
     errorMessage.value = err?.response?.data?.name?.[0] ||
       err?.response?.data?.detail ||
-      'Failed to create portfolio. Please check your inputs.'
+      t('portfolio.ui.createFailed')
   } finally {
     isSubmitting.value = false
   }

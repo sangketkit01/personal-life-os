@@ -89,6 +89,39 @@ test('transaction editing persists report classification, prevents double submis
   assert.deepEqual(events,['updated','close'])
 })
 
+test('account context fills only new transactions and never replaces the account on edits',()=>{
+  for (const mode of ['standalone','account','edit']) {
+    const props={isOpen:true,defaultAccountId:mode==='standalone' ? undefined : 'usd',transactionToEdit:mode==='edit' ? {account:'thb',title:'Recorded',gross_amount:100,transaction_type:'OUTFLOW',transaction_date:'2026-10-10'} : null}
+    const m=evaluate('src/components/ledger/TransactionModal.vue',{...vue,defineProps:()=>props,defineEmits:()=>()=>{},
+      window:{addEventListener(){},removeEventListener(){}},onUnmounted(){},useBodyScrollLock(){},useStorageStore:()=>({fetchStatus:async()=>{}}),
+      useLedgerStore:()=>({accounts:[{id:'usd',currency:'USD'},{id:'thb',currency:'THB'}],categories:[{id:'existing'}]})},
+      ['form','isAccountLocked','transactionCurrency'],true)
+    assert.equal(m.form.account,mode==='edit' ? 'thb' : mode==='account' ? 'usd' : '')
+    assert.equal(m.isAccountLocked.value,mode==='edit')
+    if (mode==='account') {
+      assert.equal(m.transactionCurrency.value,'USD')
+      assert.equal(m.form.title,'');assert.equal(m.form.gross_amount,null);assert.equal(m.form.transaction_date,'')
+    }
+  }
+})
+
+test('creating from account detail resets pagination and reloads the account balance and statement',async()=>{
+  const queries=[]
+  const store=vue.reactive({accounts:[{id:'bank',name:'Bank',is_archived:false,current_balance:'100'}],
+    fetchAccounts:async()=>{store.accounts[0].current_balance='150'},fetchCategories:async()=>{},
+    fetchTransactions:async query=>{queries.push(query);return {results:[{id:'new'}],count:1}}})
+  const m=evaluate('src/views/ledger/LedgerAccountDetailView.vue',{...vue,onMounted(){},useRoute:()=>({params:{id:'bank'}}),
+    useLedgerStore:()=>store,useToastStore:()=>({})},['handleCreateTransaction','handleTransactionCreated','editingTransaction','showTransactionModal','currentPage','accountTransactions','account'],true)
+  m.editingTransaction.value={id:'old'};m.currentPage.value=3
+  m.handleCreateTransaction()
+  assert.equal(m.editingTransaction.value,null);assert.equal(m.showTransactionModal.value,true)
+  await m.handleTransactionCreated()
+  assert.equal(m.currentPage.value,1)
+  assert.deepEqual(queries,[{account:'bank',page:1}])
+  assert.equal(m.account.value.current_balance,'150')
+  assert.equal(m.accountTransactions.value[0].id,'new')
+})
+
 test('the actual dashboard template renders loaded and empty states without a browser',async()=>{
   const {compile}=require('@vue/compiler-dom')
   const {renderToString}=require('@vue/server-renderer')

@@ -40,7 +40,7 @@
             </div>
 
             <div class="text-right">
-              <div class="text-[10px] font-mono uppercase text-zinc-500">Current Basket</div>
+              <div class="text-[10px] font-mono uppercase text-zinc-500">{{ t('portfolio.ui.current') }}</div>
               <div class="text-xs font-semibold text-zinc-200 mt-0.5 flex items-center justify-end gap-1.5">
                 <span
                   v-if="currentPortfolio"
@@ -121,6 +121,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { t } from '../../i18n'
 import { usePortfolioStore } from '../../stores/portfolio'
 import { useToastStore } from '../../stores/toast'
 import { useBodyScrollLock } from '../../composables/useBodyScrollLock'

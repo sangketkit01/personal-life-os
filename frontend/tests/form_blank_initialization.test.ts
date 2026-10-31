@@ -66,7 +66,9 @@ describe('Manual Entry Forms & Blank Initialization Verification', () => {
 
       assert.strictEqual(content.includes('brokerPresets'), false, 'Should not contain brokerPresets')
       assert.strictEqual(content.includes('applyPreset'), false, 'Should not contain applyPreset')
-      assert.strictEqual(content.includes("currency: ''"), true, 'currency should start unselected')
+      assert.strictEqual(content.includes('<CreatePortfolioModal'), true, 'Page must reuse the shared portfolio form')
+      const form = fs.readFileSync(path.resolve(process.cwd(), 'src/components/portfolio/CreatePortfolioModal.vue'), 'utf8')
+      assert.strictEqual(form.includes("currency: ''"), true, 'currency should start unselected in the shared form')
     })
 
     test('CreateObligationModal does not pre-fill dummy terms, rates or providers on type change', () => {

@@ -23,7 +23,7 @@
           </div>
         </div>
 
-        <div class="flex items-center gap-2.5 self-start sm:self-auto">
+        <div class="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
           <button
             @click="handleRecalculate"
             :disabled="isRecalculating"
@@ -36,10 +36,19 @@
 
           <button
             @click="showTransferModal = true"
-            class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-all active:scale-[0.98] flex items-center gap-1.5 shadow-sm hover:shadow-white/10"
+            class="px-3.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-xs font-semibold transition-all active:scale-[0.98] flex items-center gap-1.5"
           >
-            <ArrowRightLeft class="w-3.5 h-3.5 text-zinc-950" />
+            <ArrowRightLeft class="w-3.5 h-3.5 text-zinc-400" />
             <span>Transfer</span>
+          </button>
+          <button
+            type="button"
+            @click="handleCreateTransaction"
+            :disabled="!account || account.is_archived"
+            class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-all active:scale-[0.98] flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus class="w-3.5 h-3.5" />
+            <span>บันทึกรายการ</span>
           </button>
         </div>
       </div>
@@ -205,12 +214,13 @@
       @transferred="loadAccountData"
     />
 
-    <!-- Transaction Edit Modal -->
+    <!-- Transaction Create / Edit Modal -->
     <TransactionModal
       :is-open="showTransactionModal"
       :transaction-to-edit="editingTransaction"
+      :default-account-id="accountId"
       @close="showTransactionModal = false; editingTransaction = null"
-      @created="handleTransactionSaved"
+      @created="handleTransactionCreated"
       @updated="handleTransactionSaved"
     />
   </div>
@@ -225,6 +235,7 @@ import type { LedgerTransaction } from '../../types/ledger'
 import TransferModal from '../../components/ledger/TransferModal.vue'
 import TransactionModal from '../../components/ledger/TransactionModal.vue'
 import {
+  Plus,
   ArrowRightLeft,
   RefreshCw,
   Receipt,
@@ -252,6 +263,17 @@ const currentPage = ref(1)
 const totalRecords = ref(0)
 const pageSize = 20
 
+function handleCreateTransaction() {
+  if (!account.value || account.value.is_archived) return
+  editingTransaction.value = null
+  showTransactionModal.value = true
+}
+
+async function handleTransactionCreated() {
+  currentPage.value = 1
+  await handleTransactionSaved()
+}
+
 function handleEditTransaction(tx: LedgerTransaction) {
   editingTransaction.value = tx
   showTransactionModal.value = true
@@ -259,7 +281,6 @@ function handleEditTransaction(tx: LedgerTransaction) {
 
 async function handleTransactionSaved() {
   await loadAccountData()
-  await ledgerStore.fetchAccounts()
 }
 
 const totalPages = computed(() => Math.ceil(totalRecords.value / pageSize))

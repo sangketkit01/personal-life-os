@@ -141,11 +141,11 @@
           </h2>
         </div>
         <button
-          @click="showCreatePortfolioModal = true"
+          @click="router.push('/portfolio/accounts/new')"
           class="px-2.5 py-1 rounded-md text-xs font-mono text-zinc-300 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 transition-colors flex items-center gap-1.5"
         >
           <FolderPlus class="w-3.5 h-3.5 text-zinc-400" />
-          <span>New Account Basket</span>
+          <span>{{ t('portfolio.ui.create') }}</span>
         </button>
       </div>
 
@@ -217,7 +217,7 @@
           </div>
 
           <p class="text-xs text-zinc-500 mt-1 line-clamp-1">
-            {{ p.description || 'Active investment bucket' }}
+            {{ p.description || t('portfolio.ui.emptyDescription') }}
           </p>
 
           <div class="mt-4 pt-2.5 border-t border-zinc-800/60 flex items-center justify-between text-xs text-zinc-500">
@@ -227,7 +227,7 @@
             <span v-else class="text-[10px] font-mono text-zinc-500">Custom</span>
 
             <span class="text-zinc-400 text-[11px] group-hover:underline flex items-center gap-1">
-              <span>View Account</span>
+              <span>{{ t('portfolio.ui.view') }}</span>
               <ArrowRight class="w-3 h-3 text-zinc-500" />
             </span>
           </div>
@@ -309,11 +309,6 @@
       @saved="refreshOverview"
     />
 
-    <CreatePortfolioModal
-      :is-open="showCreatePortfolioModal"
-      @close="showCreatePortfolioModal = false"
-      @created="handlePortfolioCreated"
-    />
   </div>
 </template>
 
@@ -323,13 +318,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePortfolioStore } from '../../stores/portfolio'
 import { t } from '../../i18n'
-import { useToastStore } from '../../stores/toast'
 import UniversalAssetSearch from '../../components/portfolio/UniversalAssetSearch.vue'
 import MarketStatusBar from '../../components/portfolio/MarketStatusBar.vue'
 import AssetAllocationChart from '../../components/portfolio/AssetAllocationChart.vue'
 import AddTransactionModal from '../../components/portfolio/AddTransactionModal.vue'
-import CreatePortfolioModal from '../../components/portfolio/CreatePortfolioModal.vue'
-import { getPortfolioColor, type InvestmentPortfolio } from '../../types/portfolio'
+import { getPortfolioColor } from '../../types/portfolio'
 import {
   TrendingUp,
   TrendingDown,
@@ -347,10 +340,8 @@ import {
 
 const router = useRouter()
 const portfolioStore = usePortfolioStore()
-const toast = useToastStore()
 
 const showAddModal = ref(false)
-const showCreatePortfolioModal = ref(false)
 const prefillTicker = ref('')
 
 const currSymbol = computed(() => (portfolioStore.displayCurrency === 'USD' ? '$' : '฿'))
@@ -396,15 +387,8 @@ function openTradeModalForTicker(ticker: string) {
 function goToPortfolio(portfolioId: string) {
   portfolioStore.setSelectedPortfolio(portfolioId)
   router.push({
-    path: '/portfolio/accounts',
-    query: portfolioId !== 'ALL' ? { portfolio: portfolioId } : {}
+    path: portfolioId === 'ALL' ? '/portfolio/accounts' : `/portfolio/accounts/${portfolioId}`
   })
-}
-
-async function handlePortfolioCreated(created: InvestmentPortfolio) {
-  toast.success(`Created portfolio "${created.name}"`)
-  await portfolioStore.fetchPortfolios()
-  await portfolioStore.fetchOverview({ currency: portfolioStore.displayCurrency })
 }
 
 async function refreshOverview() {

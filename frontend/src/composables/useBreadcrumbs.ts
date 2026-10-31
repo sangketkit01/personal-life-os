@@ -192,7 +192,7 @@ export function useBreadcrumbs() {
             homeItem,
             portfolioDomainItem,
             accountsParent,
-            { label: t('crumb.newBasket') }
+            { label: t('crumb.newPortfolio') }
           ]
         }
         if (name === 'portfolio-accounts-detail' || (params.id && path.startsWith('/portfolio/accounts/'))) {
@@ -200,7 +200,7 @@ export function useBreadcrumbs() {
             homeItem,
             portfolioDomainItem,
             accountsParent,
-            { label: t('crumb.accountDossier') }
+            { label: t('crumb.portfolioDetails') }
           ]
         }
         return [
@@ -272,7 +272,7 @@ export function useBreadcrumbs() {
             homeItem,
             portfolioDomainItem,
             { label: t('crumb.myPortfolios'), to: '/portfolio/accounts' },
-            { label: t('crumb.accountDossier'), to: `/portfolio/accounts/${portfolioId}` },
+            { label: t('crumb.portfolioDetails'), to: `/portfolio/accounts/${portfolioId}` },
             { label: ticker }
           ]
         }

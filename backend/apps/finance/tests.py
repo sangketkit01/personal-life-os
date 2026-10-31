@@ -1,7 +1,9 @@
 import tempfile
 import shutil
+import uuid
+import copy
 from decimal import Decimal
-from datetime import date
+from datetime import date, timedelta
 from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -2100,3 +2102,1095 @@ class FinancialAPITestCase(TestCase):
         self.assertEqual(res2.status_code, 400)
         self.assertIn('amount', res2.data)
         self.assertIn('managed by Workspace', str(res2.data['amount']))
+
+
+class SubscriptionMultiItemAndTerminationTestCase(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username='sub_user', password='password123')
+        self.other_user = User.objects.create_user(username='other_user', password='password123')
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+        from apps.ledger.models import Account
+        self.account = Account.objects.create(
+            user=self.user,
+            name='Main Checking',
+            account_type='CHECKING',
+            currency='THB',
+            initial_balance=Decimal('50000.00'),
+            current_balance=Decimal('50000.00')
+        )
+
+    def test_01_legacy_single_amount_lifecycle(self):
+        """1. Legacy single-amount subscription lifecycle (create, edit, pay, roll over) preserves exact behavior."""
+        today = date.today()
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Netflix Standard',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('299.00'),
+            due_date=today,
+            billing_day=today.day,
+            metadata={'is_itemized': False, 'billing_cycle': 'MONTHLY'}
+        )
+        # Edit obligation title & amount
+        res_edit = self.client.patch(f'/api/finance/obligations/{ob.id}/', {
+            'title': 'Netflix Premium',
+            'amount': '419.00'
+        }, format='json')
+        self.assertEqual(res_edit.status_code, 200)
+        ob.refresh_from_db()
+        self.assertEqual(ob.amount, Decimal('419.00'))
+
+        # Pay obligation
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        ck = SubscriptionStrategy.get_cycle_key(ob.due_date, 'MONTHLY')
+        res_pay = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '419.00',
+            'cycle_key': ck,
+            'account_id': str(self.account.id),
+            'note': 'Auto renewal'
+        }, format='json')
+        self.assertEqual(res_pay.status_code, 200)
+        ob.refresh_from_db()
+
+        # Check PaymentHistory
+        hist = PaymentHistory.objects.filter(obligation=ob).first()
+        self.assertIsNotNone(hist)
+        self.assertEqual(hist.paid_amount, Decimal('419.00'))
+
+        # Check Ledger transaction
+        from apps.ledger.models import Transaction
+        tx = Transaction.objects.filter(user=self.user).first()
+        self.assertIsNotNone(tx)
+        self.assertEqual(tx.gross_amount, Decimal('419.00'))
+
+        # Check rollover due date
+        self.assertGreater(ob.due_date, today)
+
+    def test_02_itemized_creation_and_validation(self):
+        """2. Pure Fixed, Pure Dynamic, Mixed itemized subscriptions created and validated."""
+        # A. Pure Fixed: fixed total set to sum, amount matches
+        item1_id = str(uuid.uuid4())
+        item2_id = str(uuid.uuid4())
+        res_fixed = self.client.post('/api/finance/obligations/', {
+            'title': 'AWS Reserved Instances',
+            'type': ObligationType.SUBSCRIPTION,
+            'amount': '1000.00',
+            'due_date': str(date.today()),
+            'metadata': {
+                'is_itemized': True,
+                'billing_cycle': 'MONTHLY',
+                'line_items': [
+                    {'id': item1_id, 'name': 'EC2', 'type': 'FIXED', 'amount': '300.00'},
+                    {'id': item2_id, 'name': 'RDS', 'type': 'FIXED', 'amount': '700.00'}
+                ]
+            }
+        }, format='json')
+        self.assertEqual(res_fixed.status_code, 201)
+        self.assertEqual(Decimal(str(res_fixed.data['amount'])), Decimal('1000.00'))
+        self.assertEqual(Decimal(str(res_fixed.data['summary']['fixed_total'])), Decimal('1000.00'))
+        self.assertTrue(res_fixed.data['summary']['is_complete'])
+
+        # B. Pure Dynamic: amount is 0.00, pending dynamic count is items length
+        res_dyn = self.client.post('/api/finance/obligations/', {
+            'title': 'GCP Usage Based',
+            'type': ObligationType.SUBSCRIPTION,
+            'amount': '0.00',
+            'due_date': str(date.today()),
+            'metadata': {
+                'is_itemized': True,
+                'billing_cycle': 'MONTHLY',
+                'line_items': [
+                    {'id': str(uuid.uuid4()), 'name': 'Compute Engine', 'type': 'DYNAMIC'},
+                    {'id': str(uuid.uuid4()), 'name': 'Cloud Storage', 'type': 'DYNAMIC'}
+                ]
+            }
+        }, format='json')
+        self.assertEqual(res_dyn.status_code, 201)
+        self.assertEqual(Decimal(str(res_dyn.data['amount'])), Decimal('0.00'))
+        self.assertEqual(res_dyn.data['summary']['pending_dynamic_count'], 2)
+        self.assertTrue(res_dyn.data['summary']['is_pure_dynamic'])
+        self.assertFalse(res_dyn.data['summary']['is_complete'])
+
+        # C. Validation failures
+        # Empty line items
+        res_err1 = self.client.post('/api/finance/obligations/', {
+            'title': 'Bad Sub',
+            'type': ObligationType.SUBSCRIPTION,
+            'amount': '100.00',
+            'metadata': {'is_itemized': True, 'line_items': []}
+        }, format='json')
+        self.assertEqual(res_err1.status_code, 400)
+
+        # Blank item name
+        res_err2 = self.client.post('/api/finance/obligations/', {
+            'title': 'Bad Sub 2',
+            'type': ObligationType.SUBSCRIPTION,
+            'amount': '100.00',
+            'metadata': {'is_itemized': True, 'line_items': [{'name': '   ', 'type': 'FIXED', 'amount': '100.00'}]}
+        }, format='json')
+        self.assertEqual(res_err2.status_code, 400)
+
+    def test_03_prebilling_alerts_fire_with_unfilled_dynamic(self):
+        """3. Pre-billing alerts fire even with unfilled dynamic items."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        from apps.bot.dispatcher import get_due_tomorrow_obligations_for_user
+        target_date = date.today() + timedelta(days=1)
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Cloud Billing Service',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('0.00'),
+            due_date=target_date,
+            billing_day=target_date.day,
+            metadata={
+                'is_itemized': True,
+                'billing_cycle': 'MONTHLY',
+                'alert_days_before': 3,
+                'items': [
+                    {'id': str(uuid.uuid4()), 'name': 'Bandwidth Egress', 'type': 'DYNAMIC'}
+                ]
+            }
+        )
+        from asgiref.sync import async_to_sync
+        ob.metadata['current_cycle'] = SubscriptionStrategy.sync_current_cycle(ob)
+        ob.save()
+
+        # Check pre-billing alert retrieval
+        due_subs = async_to_sync(get_due_tomorrow_obligations_for_user)(self.user, target_date=target_date)
+        matching = [x for x in due_subs if str(x.id) == str(ob.id)]
+        self.assertEqual(len(matching), 1)
+
+        # Ensure summary detects pending dynamic count
+        summary = SubscriptionStrategy().get_summary(ob)
+        self.assertEqual(summary['pending_dynamic_count'], 1)
+
+    def test_04_incomplete_dynamic_items_block_payment(self):
+        """4. Incomplete dynamic items block payment (no payment, no ledger, no cycle advance)."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        from apps.ledger.models import Transaction
+        today = date.today()
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Utility Bill',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('100.00'),
+            due_date=today,
+            billing_day=today.day,
+            metadata={
+                'is_itemized': True,
+                'billing_cycle': 'MONTHLY',
+                'items': [
+                    {'id': str(uuid.uuid4()), 'name': 'Base Fee', 'type': 'FIXED', 'amount': '100.00'},
+                    {'id': str(uuid.uuid4()), 'name': 'Water Units', 'type': 'DYNAMIC'}
+                ]
+            }
+        )
+        ob.metadata['current_cycle'] = SubscriptionStrategy.sync_current_cycle(ob)
+        ob.save()
+
+        # Try to pay without filling dynamic items
+        ck_test4 = SubscriptionStrategy.get_cycle_key(ob.due_date, 'MONTHLY')
+        res = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '100.00',
+            'cycle_key': ck_test4,
+            'account_id': str(self.account.id)
+        }, format='json')
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('dynamic item', str(res.data))
+
+        # Ensure no payment history, no ledger tx, no date rollover
+        self.assertEqual(PaymentHistory.objects.filter(obligation=ob).count(), 0)
+        self.assertEqual(Transaction.objects.filter(user=self.user).count(), 0)
+        ob.refresh_from_db()
+        self.assertEqual(ob.due_date, today)
+
+    def test_05_zero_dollar_payment_closes_cleanly_without_ledger_tx(self):
+        """5. 0.00 is distinct from unfilled (None), and 0.00 bill closes cleanly without 0 Ledger transaction."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        from apps.ledger.models import Transaction
+        today = date.today()
+        dyn_id = str(uuid.uuid4())
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Free Tier Platform',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('0.00'),
+            due_date=today,
+            billing_day=today.day,
+            metadata={
+                'is_itemized': True,
+                'billing_cycle': 'MONTHLY',
+                'line_items': [
+                    {'id': dyn_id, 'name': 'Usage Charge', 'type': 'DYNAMIC'}
+                ]
+            }
+        )
+        ob.metadata['current_cycle'] = SubscriptionStrategy.sync_current_cycle(ob)
+        ob.save()
+
+        # Fill dynamic item as 0.00 in cycle draft
+        res_patch = self.client.patch(f'/api/finance/obligations/{ob.id}/cycle-bill/', {
+            'items': [{'id': dyn_id, 'amount': 0.00}]
+        }, format='json')
+        self.assertEqual(res_patch.status_code, 200)
+
+        # Pay with 0.00
+        ck_test5 = SubscriptionStrategy.get_cycle_key(ob.due_date, 'MONTHLY')
+        res_pay = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '0.00',
+            'cycle_key': ck_test5,
+            'account_id': str(self.account.id),
+            'cycle_items': [{'id': dyn_id, 'name': 'Usage Charge', 'type': 'DYNAMIC', 'amount': '0.00'}]
+        }, format='json')
+        self.assertEqual(res_pay.status_code, 200)
+
+        # PaymentHistory recorded with 0.00
+        hist = PaymentHistory.objects.filter(obligation=ob).first()
+        self.assertIsNotNone(hist)
+        self.assertEqual(hist.paid_amount, Decimal('0.00'))
+
+        # Ledger transaction is skipped for 0.00
+        self.assertEqual(Transaction.objects.filter(user=self.user).count(), 0)
+
+        # Cycle advanced
+        ob.refresh_from_db()
+        self.assertGreater(ob.due_date, today)
+
+    def test_06_draft_preservation_and_new_cycle_reset(self):
+        """6. Closing/reopening preserves draft; new cycle starts with dynamic unfilled."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        today = date.today()
+        dyn_id = str(uuid.uuid4())
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Metered Service',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('0.00'),
+            due_date=today,
+            billing_day=today.day,
+            metadata={
+                'is_itemized': True,
+                'billing_cycle': 'MONTHLY',
+                'items': [
+                    {'id': dyn_id, 'name': 'Server Units', 'type': 'DYNAMIC'}
+                ]
+            }
+        )
+        ob.metadata['current_cycle'] = SubscriptionStrategy.sync_current_cycle(ob)
+        ob.save()
+
+        # Save draft with 250.00
+        self.client.patch(f'/api/finance/obligations/{ob.id}/cycle-bill/', {
+            'items': [{'id': dyn_id, 'amount': 250.00}]
+        }, format='json')
+
+        # Retrieve draft
+        res_get = self.client.get(f'/api/finance/obligations/{ob.id}/cycle-bill/')
+        self.assertEqual(res_get.status_code, 200)
+        self.assertEqual(Decimal(str(res_get.data['items'][0]['amount'])), Decimal('250.00'))
+
+        # Pay cycle
+        ck_test6 = SubscriptionStrategy.get_cycle_key(ob.due_date, 'MONTHLY')
+        res_pay = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '250.00',
+            'cycle_key': ck_test6,
+            'account_id': str(self.account.id)
+        }, format='json')
+        self.assertEqual(res_pay.status_code, 200)
+
+        # In new cycle, dynamic item is reset to None
+        res_new_cycle = self.client.get(f'/api/finance/obligations/{ob.id}/cycle-bill/')
+        self.assertEqual(res_new_cycle.status_code, 200)
+        self.assertIsNone(res_new_cycle.data['items'][0]['amount'])
+        self.assertEqual(res_new_cycle.data['pending_dynamic_count'], 1)
+
+    def test_07_itemized_sum_integrity_matches_history_and_ledger(self):
+        """7. Itemized sum matches PaymentHistory and Ledger."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        from apps.ledger.models import Transaction
+        today = date.today()
+        fix_id = str(uuid.uuid4())
+        dyn_id = str(uuid.uuid4())
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Mixed Plan SaaS',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('200.00'),
+            due_date=today,
+            billing_day=today.day,
+            metadata={
+                'is_itemized': True,
+                'billing_cycle': 'MONTHLY',
+                'items': [
+                    {'id': fix_id, 'name': 'Base Subscription', 'type': 'FIXED', 'amount': '200.00'},
+                    {'id': dyn_id, 'name': 'Extra API Calls', 'type': 'DYNAMIC'}
+                ]
+            }
+        )
+        ob.metadata['current_cycle'] = SubscriptionStrategy.sync_current_cycle(ob)
+        ob.save()
+
+        # Update draft
+        self.client.patch(f'/api/finance/obligations/{ob.id}/cycle-bill/', {
+            'items': [{'id': dyn_id, 'amount': 150.00}]
+        }, format='json')
+
+        # Pay with mismatched amount rejected
+        ck_test7 = SubscriptionStrategy.get_cycle_key(ob.due_date, 'MONTHLY')
+        res_mismatch = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '300.00',
+            'cycle_key': ck_test7,
+            'account_id': str(self.account.id)
+        }, format='json')
+        self.assertEqual(res_mismatch.status_code, 400)
+
+        # Pay with correct 350.00
+        res_pay = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '350.00',
+            'cycle_key': ck_test7,
+            'account_id': str(self.account.id)
+        }, format='json')
+        self.assertEqual(res_pay.status_code, 200)
+
+        # Payment history and Ledger match
+        hist = PaymentHistory.objects.filter(obligation=ob).first()
+        self.assertEqual(hist.paid_amount, Decimal('350.00'))
+        self.assertEqual(len(hist.metadata['cycle_items']), 2)
+
+        tx = Transaction.objects.filter(user=self.user).first()
+        self.assertEqual(tx.gross_amount, Decimal('350.00'))
+
+    def test_08_duplicate_payment_prevention(self):
+        """8. Duplicate payment requests for same cycle are prevented in real flow."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        today = date.today()
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Single Streamer',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('199.00'),
+            due_date=today,
+            billing_day=today.day,
+            metadata={'is_itemized': False, 'billing_cycle': 'MONTHLY'}
+        )
+        ob.metadata['current_cycle'] = SubscriptionStrategy.sync_current_cycle(ob)
+        ob.save()
+
+        cycle_k = SubscriptionStrategy.get_cycle_key(today, 'MONTHLY')
+
+        # Pay first time
+        res1 = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '199.00',
+            'cycle_key': cycle_k,
+            'account_id': str(self.account.id)
+        }, format='json')
+        self.assertEqual(res1.status_code, 200)
+
+        # Immediate repeat payment with exact same request payload fails under lock without DB manipulation
+        res2 = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '199.00',
+            'cycle_key': cycle_k,
+            'account_id': str(self.account.id)
+        }, format='json')
+        self.assertEqual(res2.status_code, 400)
+        self.assertIn('ชำระเรียบร้อยแล้ว', str(res2.data))
+
+        # Even without cycle_key, immediate repeated payment for the just-paid cycle is blocked (rejected for missing cycle_key)
+        res3 = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '199.00',
+            'account_id': str(self.account.id)
+        }, format='json')
+        self.assertEqual(res3.status_code, 400)
+        self.assertTrue('cycle_key' in str(res3.data) or 'ชำระเรียบร้อยแล้ว' in str(res3.data))
+
+    def test_09_plan_edits_preserve_history_and_match_draft_by_id(self):
+        """9. Plan edits do not alter past PaymentHistory; draft dynamic values matched by ID."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        today = date.today()
+        item1_id = str(uuid.uuid4())
+        item2_id = str(uuid.uuid4())
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Dev Cluster',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('500.00'),
+            due_date=today,
+            billing_day=today.day,
+            metadata={
+                'is_itemized': True,
+                'billing_cycle': 'MONTHLY',
+                'items': [
+                    {'id': item1_id, 'name': 'Node 1', 'type': 'FIXED', 'amount': '500.00'},
+                    {'id': item2_id, 'name': 'Ingress Traffic', 'type': 'DYNAMIC'}
+                ]
+            }
+        )
+        ob.metadata['current_cycle'] = SubscriptionStrategy.sync_current_cycle(ob)
+        ob.save()
+
+        # Pay cycle 1
+        self.client.patch(f'/api/finance/obligations/{ob.id}/cycle-bill/', {
+            'items': [{'id': item2_id, 'amount': 80.00}]
+        }, format='json')
+        ck1 = SubscriptionStrategy.get_cycle_key(ob.due_date, 'MONTHLY')
+        self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '580.00',
+            'cycle_key': ck1,
+            'account_id': str(self.account.id)
+        }, format='json')
+
+        hist_before = PaymentHistory.objects.filter(obligation=ob).first()
+        old_snapshot = copy.deepcopy(hist_before.metadata)
+
+        # In cycle 2: fill dynamic draft with 95.00
+        ob.refresh_from_db()
+        self.client.patch(f'/api/finance/obligations/{ob.id}/cycle-bill/', {
+            'items': [{'id': item2_id, 'amount': 95.00}]
+        }, format='json')
+
+        # Now edit the plan: rename Node 1 to Node Alpha, change fixed amount to 600, add Node 2
+        item3_id = str(uuid.uuid4())
+        self.client.patch(f'/api/finance/obligations/{ob.id}/', {
+            'metadata': {
+                'items': [
+                    {'id': item1_id, 'name': 'Node Alpha', 'type': 'FIXED', 'amount': '600.00'},
+                    {'id': item2_id, 'name': 'Ingress Traffic', 'type': 'DYNAMIC'},
+                    {'id': item3_id, 'name': 'Backup Storage', 'type': 'FIXED', 'amount': '100.00'}
+                ]
+            }
+        }, format='json')
+
+        # Past PaymentHistory is unaffected
+        hist_before.refresh_from_db()
+        self.assertEqual(hist_before.metadata, old_snapshot)
+        self.assertEqual(hist_before.metadata['cycle_items'][0]['name'], 'Node 1')
+
+        # Cycle draft dynamic amount 95.00 for item2_id is preserved!
+        res_draft = self.client.get(f'/api/finance/obligations/{ob.id}/cycle-bill/')
+        dyn_item_in_draft = [it for it in res_draft.data['items'] if it['id'] == item2_id][0]
+        self.assertEqual(Decimal(str(dyn_item_in_draft['amount'])), Decimal('95.00'))
+
+    def test_10_immediate_and_scheduled_termination(self):
+        """10. Immediate and scheduled terminations do not produce false due dates."""
+        today = date.today()
+        # A. Immediate termination on paid sub
+        ob_imm = FinancialObligation.objects.create(
+            user=self.user,
+            title='Gym Pass',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('1200.00'),
+            due_date=today,
+            status=ObligationStatus.ACTIVE,
+            metadata={'current_cycle': {'status': 'PAID'}}
+        )
+        res_imm = self.client.post(f'/api/finance/obligations/{ob_imm.id}/terminate/', {
+            'mode': 'IMMEDIATE'
+        }, format='json')
+        self.assertEqual(res_imm.status_code, 200)
+        ob_imm.refresh_from_db()
+        self.assertEqual(ob_imm.status, ObligationStatus.CANCELLED)
+        self.assertEqual(ob_imm.metadata.get('termination', {}).get('status'), 'TERMINATED')
+
+        # B. Scheduled termination
+        ob_sched = FinancialObligation.objects.create(
+            user=self.user,
+            title='Phone Contract',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('899.00'),
+            due_date=today,
+            status=ObligationStatus.ACTIVE
+        )
+        res_sched = self.client.post(f'/api/finance/obligations/{ob_sched.id}/terminate/', {
+            'mode': 'SCHEDULED',
+            'effective_end_date': str(today + timedelta(days=30))
+        }, format='json')
+        self.assertEqual(res_sched.status_code, 200)
+        ob_sched.refresh_from_db()
+        self.assertEqual(ob_sched.status, ObligationStatus.ACTIVE)
+        self.assertEqual(ob_sched.metadata.get('termination', {}).get('status'), 'TERMINATED')
+        self.assertTrue(ob_sched.metadata.get('termination', {}).get('has_unpaid_final_bill'))
+
+    def test_11_paying_final_bill_completes_subscription_without_new_cycle(self):
+        """11. Paying final bill after termination completes subscription without new cycle."""
+        today = date.today()
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Terminating Fiber Internet',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('599.00'),
+            due_date=today,
+            billing_day=today.day,
+            status=ObligationStatus.ACTIVE
+        )
+        # Terminate scheduled with effective_end_date today
+        self.client.post(f'/api/finance/obligations/{ob.id}/terminate/', {
+            'mode': 'SCHEDULED',
+            'effective_end_date': str(today)
+        }, format='json')
+        ob.refresh_from_db()
+
+        # Pay final bill
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        ck_final = SubscriptionStrategy.get_cycle_key(ob.due_date, 'MONTHLY')
+        res_pay = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '599.00',
+            'cycle_key': ck_final,
+            'account_id': str(self.account.id),
+            'note': 'Final bill settlement'
+        }, format='json')
+        self.assertEqual(res_pay.status_code, 200)
+
+        ob.refresh_from_db()
+        self.assertEqual(ob.status, ObligationStatus.CANCELLED)
+        self.assertFalse(ob.metadata.get('termination', {}).get('has_unpaid_final_bill'))
+
+    def test_12_external_telegram_cannot_bypass_dynamic_validation(self):
+        """12. External channels (Telegram bot) cannot bypass dynamic validation."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        from apps.bot.handlers.callbacks import process_pay_callback
+        today = date.today()
+        self.user.telegram_chat_id = '99999'
+        self.user.save()
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Bot Guarded Service',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('0.00'),
+            due_date=today,
+            billing_day=today.day,
+            metadata={
+                'is_itemized': True,
+                'items': [{'id': str(uuid.uuid4()), 'name': 'Dynamic Surcharge', 'type': 'DYNAMIC'}]
+            }
+        )
+        ob.metadata['current_cycle'] = SubscriptionStrategy.sync_current_cycle(ob)
+        ob.save()
+
+        # Simulate telegram pay callback
+        from asgiref.sync import async_to_sync
+        cb_res = async_to_sync(process_pay_callback)(str(ob.id), 99999)
+        self.assertFalse(cb_res['success'])
+        self.assertIn('กรุณากรอกยอดและชำระผ่านเว็บแอป', cb_res['message'])
+        self.assertEqual(PaymentHistory.objects.filter(obligation=ob).count(), 0)
+
+    def test_13_payment_reversal_restores_cycle_draft_and_workspace_ssot(self):
+        """13. Payment reversal (_cascade_delete_tx) restores cycle draft and preserves termination; Workspace SSOT preserved."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        from apps.ledger.models import Transaction
+        from apps.workspace.models import WorkspaceProject
+        today = date.today()
+        dyn_id = str(uuid.uuid4())
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Reversible Itemized Sub',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('100.00'),
+            due_date=today,
+            billing_day=today.day,
+            metadata={
+                'is_itemized': True,
+                'billing_cycle': 'MONTHLY',
+                'items': [
+                    {'id': str(uuid.uuid4()), 'name': 'Base', 'type': 'FIXED', 'amount': '100.00'},
+                    {'id': dyn_id, 'name': 'Usage', 'type': 'DYNAMIC'}
+                ]
+            }
+        )
+        ob.metadata['current_cycle'] = SubscriptionStrategy.sync_current_cycle(ob)
+        ob.save()
+
+        # Draft dynamic value
+        self.client.patch(f'/api/finance/obligations/{ob.id}/cycle-bill/', {
+            'items': [{'id': dyn_id, 'amount': 45.00}]
+        }, format='json')
+
+        # Pay
+        ck_ob = SubscriptionStrategy.get_cycle_key(ob.due_date, 'MONTHLY')
+        self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '145.00',
+            'cycle_key': ck_ob,
+            'account_id': str(self.account.id)
+        }, format='json')
+
+        tx = Transaction.objects.filter(user=self.user).first()
+        self.assertIsNotNone(tx)
+
+        # Reverse payment via API deletion of transaction (invokes _cascade_delete_tx)
+        res_del = self.client.delete(f'/api/ledger/transactions/{tx.id}/')
+        self.assertEqual(res_del.status_code, 204)
+
+        # Verify cycle restored
+        ob.refresh_from_db()
+        self.assertEqual(ob.due_date, today)
+        draft = ob.metadata.get('current_cycle', {})
+        self.assertEqual(draft.get('status'), 'DRAFT')
+        dyn_in_restored = [it for it in draft.get('items', []) if it['id'] == dyn_id][0]
+        self.assertEqual(Decimal(str(dyn_in_restored['amount'])), Decimal('45.00'))
+
+        # Workspace SSOT protection: cannot convert MA contract to itemized via finance API
+        WorkspaceProject.objects.create(user=self.user, name='Alpha Client', ma_obligation=ob)
+        ob.metadata['source_type'] = 'MA_CONTRACT'
+        ob.save(update_fields=['metadata'])
+        res_ssot = self.client.patch(f'/api/finance/obligations/{ob.id}/', {
+            'metadata': {'is_itemized': True}
+        }, format='json')
+        self.assertEqual(res_ssot.status_code, 400)
+        self.assertIn('Itemized breakdown is not supported', str(res_ssot.data))
+
+    def test_14_bola_isolation(self):
+        """14. BOLA isolation (user A cannot fetch or patch user B's cycle bill or terminate user B's subscription)."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        today = date.today()
+        userA_sub = FinancialObligation.objects.create(
+            user=self.user,
+            title='User A Private Sub',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('300.00'),
+            due_date=today,
+            metadata={'is_itemized': True, 'line_items': [{'id': str(uuid.uuid4()), 'name': 'Item', 'type': 'FIXED', 'amount': '300.00'}]}
+        )
+        SubscriptionStrategy.sync_current_cycle(userA_sub)
+        userA_sub.save()
+
+        # Authenticate as user B
+        client_b = APIClient()
+        client_b.force_authenticate(user=self.other_user)
+
+        # GET cycle-bill -> 404
+        res1 = client_b.get(f'/api/finance/obligations/{userA_sub.id}/cycle-bill/')
+        self.assertEqual(res1.status_code, 404)
+
+        # PATCH cycle-bill -> 404
+        res2 = client_b.patch(f'/api/finance/obligations/{userA_sub.id}/cycle-bill/', {'items': []}, format='json')
+        self.assertEqual(res2.status_code, 404)
+
+        # POST terminate -> 404
+        res3 = client_b.post(f'/api/finance/obligations/{userA_sub.id}/terminate/', {'mode': 'IMMEDIATE'}, format='json')
+        self.assertEqual(res3.status_code, 404)
+
+    def test_15_telegram_cannot_pay_cancelled_subscription(self):
+        """15. Telegram callback cannot pay an already cancelled/completed subscription."""
+        from apps.bot.handlers.callbacks import process_pay_callback
+        from asgiref.sync import async_to_sync
+        today = date.today()
+        self.user.telegram_chat_id = '88888'
+        self.user.save()
+
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Cancelled Service',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('200.00'),
+            due_date=today,
+            status=ObligationStatus.CANCELLED,
+            metadata={'termination': {'status': 'TERMINATED', 'has_unpaid_final_bill': False}}
+        )
+
+        cb_res = async_to_sync(process_pay_callback)(str(ob.id), 88888)
+        self.assertFalse(cb_res['success'])
+        self.assertIn('ยกเลิกหรือเสร็จสิ้นแล้ว', cb_res['message'])
+        self.assertEqual(PaymentHistory.objects.filter(obligation=ob).count(), 0)
+
+    def test_16_immediate_termination_after_paying_does_not_create_unpaid_bill(self):
+        """16. Paying cycle advances due date to future; immediate cancellation on today cancels without unpaid bill."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        today = date.today()
+        cycle_k = SubscriptionStrategy.get_cycle_key(today, 'MONTHLY')
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Streaming Pass',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('299.00'),
+            due_date=today,
+            status=ObligationStatus.ACTIVE,
+            metadata={'billing_cycle': 'MONTHLY'}
+        )
+        self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '299.00',
+            'cycle_key': cycle_k,
+            'account_id': str(self.account.id)
+        }, format='json')
+        ob.refresh_from_db()
+        self.assertTrue(ob.due_date > today)
+
+        res = self.client.post(f'/api/finance/obligations/{ob.id}/terminate/', {
+            'mode': 'IMMEDIATE'
+        }, format='json')
+        self.assertEqual(res.status_code, 200)
+
+        ob.refresh_from_db()
+        self.assertEqual(ob.status, ObligationStatus.CANCELLED)
+        term = ob.metadata.get('termination', {})
+        self.assertFalse(term.get('has_unpaid_final_bill'))
+        self.assertEqual(term.get('effective_end_date'), today.isoformat())
+
+    def test_17_scheduled_termination_before_due_date_blocks_payment(self):
+        """17. Scheduled end date earlier than due date immediately cancels and rejects payment."""
+        today = date.today()
+        future_due = today + timedelta(days=365) # Dec 2027
+        sched_end = today + timedelta(days=90)   # Jan 2027
+
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Future Far Due Sub',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('500.00'),
+            due_date=future_due,
+            status=ObligationStatus.ACTIVE,
+            metadata={'billing_cycle': 'MONTHLY'}
+        )
+
+        res_term = self.client.post(f'/api/finance/obligations/{ob.id}/terminate/', {
+            'mode': 'SCHEDULED',
+            'effective_end_date': str(sched_end)
+        }, format='json')
+        self.assertEqual(res_term.status_code, 200)
+
+        ob.refresh_from_db()
+        self.assertEqual(ob.status, ObligationStatus.CANCELLED)
+        self.assertFalse(ob.metadata.get('termination', {}).get('has_unpaid_final_bill'))
+
+        # Payment attempt must be rejected
+        res_pay = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '500.00',
+            'account_id': str(self.account.id)
+        }, format='json')
+        self.assertEqual(res_pay.status_code, 400)
+
+    def test_18_autosave_cycle_bill_guards_against_stale_or_paid_cycles(self):
+        """18. cycle-bill PATCH blocks modifying paid bills and rejects mismatched cycle_keys."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        today = date.today()
+        dyn_id = str(uuid.uuid4())
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Draft Guard Sub',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('100.00'),
+            due_date=today,
+            metadata={
+                'is_itemized': True,
+                'billing_cycle': 'MONTHLY',
+                'items': [
+                    {'id': str(uuid.uuid4()), 'name': 'Fixed Server', 'type': 'FIXED', 'amount': '100.00'},
+                    {'id': dyn_id, 'name': 'Bandwidth', 'type': 'DYNAMIC'}
+                ]
+            }
+        )
+        SubscriptionStrategy.sync_current_cycle(ob)
+        ob.save()
+
+        # Reject mismatched cycle_key
+        res_bad_key = self.client.patch(f'/api/finance/obligations/{ob.id}/cycle-bill/', {
+            'cycle_key': '2020-01',
+            'items': [{'id': dyn_id, 'amount': 50.00}]
+        }, format='json')
+        self.assertEqual(res_bad_key.status_code, 400)
+
+        # Pay the bill
+        self.client.patch(f'/api/finance/obligations/{ob.id}/cycle-bill/', {
+            'items': [{'id': dyn_id, 'amount': 25.00}]
+        }, format='json')
+        ck_draft = SubscriptionStrategy.get_cycle_key(ob.due_date, 'MONTHLY')
+        self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '125.00',
+            'cycle_key': ck_draft,
+            'account_id': str(self.account.id)
+        }, format='json')
+
+        # Now mark current cycle status as PAID to test guard against editing paid cycle
+        ob.refresh_from_db()
+        ob.metadata['current_cycle']['status'] = 'PAID'
+        ob.save(update_fields=['metadata'])
+
+        res_edit_paid = self.client.patch(f'/api/finance/obligations/{ob.id}/cycle-bill/', {
+            'items': [{'id': dyn_id, 'amount': 999.00}]
+        }, format='json')
+        self.assertEqual(res_edit_paid.status_code, 400)
+        self.assertIn('ชำระเรียบร้อยแล้ว', str(res_edit_paid.data))
+
+    def test_19_reversal_preserves_subsequent_termination(self):
+        """19. Deleting payment tx via reversal preserves a subsequent termination order."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        from apps.ledger.models import Transaction
+        today = date.today()
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Order of Events Sub',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('200.00'),
+            due_date=today,
+            status=ObligationStatus.ACTIVE
+        )
+
+        # 1. Pay
+        ck_rev = SubscriptionStrategy.get_cycle_key(ob.due_date, 'MONTHLY')
+        self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '200.00',
+            'cycle_key': ck_rev,
+            'account_id': str(self.account.id)
+        }, format='json')
+        tx = Transaction.objects.filter(user=self.user).first()
+        self.assertIsNotNone(tx)
+
+        # 2. Terminate immediately afterwards
+        self.client.post(f'/api/finance/obligations/{ob.id}/terminate/', {
+            'mode': 'IMMEDIATE'
+        }, format='json')
+        ob.refresh_from_db()
+        self.assertEqual(ob.status, ObligationStatus.CANCELLED)
+        self.assertEqual(ob.metadata.get('termination', {}).get('status'), 'TERMINATED')
+
+        # 3. Revert payment (delete ledger tx)
+        res_del = self.client.delete(f'/api/ledger/transactions/{tx.id}/')
+        self.assertEqual(res_del.status_code, 204)
+
+        # Reversal must NOT wipe termination; it must restore due date and keep termination with unpaid bill
+        ob.refresh_from_db()
+        self.assertEqual(ob.metadata.get('termination', {}).get('status'), 'TERMINATED')
+        self.assertTrue(ob.metadata.get('termination', {}).get('has_unpaid_final_bill'))
+        self.assertEqual(ob.status, ObligationStatus.ACTIVE)
+
+    def test_20_amount_validation_rejects_negative_infinity_nan_and_blank_fixed(self):
+        """20. Rejects negative numbers, >2 decimals, non-finite values, and blank fixed line items."""
+        today = date.today()
+        dyn_id = str(uuid.uuid4())
+        fix_id = str(uuid.uuid4())
+
+        # A. Fixed item with blank amount rejected at creation
+        res_blank = self.client.post('/api/finance/obligations/', {
+            'title': 'Bad Plan',
+            'type': ObligationType.SUBSCRIPTION,
+            'amount': '0.00',
+            'currency': 'THB',
+            'due_date': str(today),
+            'metadata': {
+                'is_itemized': True,
+                'items': [{'id': fix_id, 'name': 'Empty Fixed', 'type': 'FIXED', 'amount': ''}]
+            }
+        }, format='json')
+        self.assertEqual(res_blank.status_code, 400)
+
+        # B. Fixed item with negative amount rejected
+        res_neg_fix = self.client.post('/api/finance/obligations/', {
+            'title': 'Bad Plan',
+            'type': ObligationType.SUBSCRIPTION,
+            'amount': '0.00',
+            'currency': 'THB',
+            'due_date': str(today),
+            'metadata': {
+                'is_itemized': True,
+                'items': [{'id': fix_id, 'name': 'Neg Fixed', 'type': 'FIXED', 'amount': '-50.00'}]
+            }
+        }, format='json')
+        self.assertEqual(res_neg_fix.status_code, 400)
+
+        # C. Create valid itemized sub, then test dynamic inputs
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Valid Sub',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('100.00'),
+            due_date=today,
+            metadata={
+                'is_itemized': True,
+                'items': [
+                    {'id': fix_id, 'name': 'Server', 'type': 'FIXED', 'amount': '100.00'},
+                    {'id': dyn_id, 'name': 'Bandwidth', 'type': 'DYNAMIC'}
+                ]
+            }
+        )
+
+        # Dynamic negative -50 must return 400
+        res_dyn_neg = self.client.patch(f'/api/finance/obligations/{ob.id}/cycle-bill/', {
+            'items': [{'id': dyn_id, 'amount': -50.00}]
+        }, format='json')
+        self.assertEqual(res_dyn_neg.status_code, 400)
+
+        # Dynamic > 2 decimal places (0.001) must return 400
+        res_dyn_dec = self.client.patch(f'/api/finance/obligations/{ob.id}/cycle-bill/', {
+            'items': [{'id': dyn_id, 'amount': '0.001'}]
+        }, format='json')
+        self.assertEqual(res_dyn_dec.status_code, 400)
+
+        # Dynamic Infinity must return 400
+        res_dyn_inf = self.client.patch(f'/api/finance/obligations/{ob.id}/cycle-bill/', {
+            'items': [{'id': dyn_id, 'amount': 'Infinity'}]
+        }, format='json')
+        self.assertEqual(res_dyn_inf.status_code, 400)
+
+    def test_21_past_due_subscription_requires_cycle_key_and_blocks_repeat(self):
+        """21. Past due subscription requires cycle_key and blocks duplicate replay deduction."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        sept_due = date(2026, 9, 15)
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Overdue Cloud Sub',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('100.00'),
+            due_date=sept_due,
+            metadata={'billing_cycle': 'MONTHLY'}
+        )
+        SubscriptionStrategy.sync_current_cycle(ob)
+        ob.save()
+
+        # A. Paying without cycle_key must be rejected
+        res_no_ck = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '100.00',
+            'account_id': str(self.account.id)
+        }, format='json')
+        self.assertEqual(res_no_ck.status_code, 400)
+        self.assertIn('cycle_key', str(res_no_ck.data))
+        self.assertEqual(PaymentHistory.objects.filter(obligation=ob).count(), 0)
+
+        # B. Paying with valid cycle_key for September succeeds
+        sept_ck = SubscriptionStrategy.get_cycle_key(sept_due, 'MONTHLY')
+        res_pay1 = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '100.00',
+            'cycle_key': sept_ck,
+            'account_id': str(self.account.id)
+        }, format='json')
+        self.assertEqual(res_pay1.status_code, 200)
+        self.assertEqual(PaymentHistory.objects.filter(obligation=ob).count(), 1)
+
+        # C. Replay exact same request payload must be rejected, not deduct another 100
+        res_pay2 = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '100.00',
+            'cycle_key': sept_ck,
+            'account_id': str(self.account.id)
+        }, format='json')
+        self.assertEqual(res_pay2.status_code, 400)
+        self.assertIn('ชำระเรียบร้อยแล้ว', str(res_pay2.data))
+        self.assertEqual(PaymentHistory.objects.filter(obligation=ob).count(), 1)
+
+    def test_22_telegram_callback_preserves_cycle_key_and_blocks_repeat(self):
+        """22. Telegram callback preserves cycle key in data and rejects repeated button clicks."""
+        from apps.bot.handlers.callbacks import process_pay_callback
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        from asgiref.sync import async_to_sync
+        today = date.today()
+        self.user.telegram_chat_id = '99999'
+        self.user.save()
+
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Telegram Sub',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('150.00'),
+            due_date=today,
+            status=ObligationStatus.ACTIVE,
+            metadata={'billing_cycle': 'MONTHLY'}
+        )
+        SubscriptionStrategy.sync_current_cycle(ob)
+        ob.save()
+
+        ck = SubscriptionStrategy.get_cycle_key(today, 'MONTHLY')
+        # Simulate Telegram callback data: pay:<ob_id>:<cycle_key>
+        cb_res1 = async_to_sync(process_pay_callback)(f"{ob.id}:{ck}", 99999)
+        self.assertTrue(cb_res1['success'])
+        self.assertEqual(PaymentHistory.objects.filter(obligation=ob).count(), 1)
+
+        # Simulate repeat tap on same message with the same callback payload
+        cb_res2 = async_to_sync(process_pay_callback)(f"{ob.id}:{ck}", 99999)
+        self.assertFalse(cb_res2['success'])
+        self.assertTrue('ชำระเรียบร้อยแล้ว' in cb_res2['message'] or 'already settled' in cb_res2['message'].lower())
+        self.assertEqual(PaymentHistory.objects.filter(obligation=ob).count(), 1)
+
+    def test_23_early_payment_before_due_date_allowed(self):
+        """23. Early payment of upcoming bill before due_date succeeds and is not blocked."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+        dyn_id = str(uuid.uuid4())
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Tomorrow Due Sub',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('50.00'),
+            due_date=tomorrow,
+            metadata={
+                'is_itemized': True,
+                'billing_cycle': 'MONTHLY',
+                'items': [
+                    {'id': str(uuid.uuid4()), 'name': 'Base Fixed', 'type': 'FIXED', 'amount': '50.00'},
+                    {'id': dyn_id, 'name': 'Usage Dynamic', 'type': 'DYNAMIC'}
+                ]
+            }
+        )
+        SubscriptionStrategy.sync_current_cycle(ob)
+        ob.save()
+
+        # Fill dynamic item
+        self.client.patch(f'/api/finance/obligations/{ob.id}/cycle-bill/', {
+            'items': [{'id': dyn_id, 'amount': 20.00}]
+        }, format='json')
+
+        # Pay today (before due date tomorrow)
+        ck_tomorrow = SubscriptionStrategy.get_cycle_key(tomorrow, 'MONTHLY')
+        res_early = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '70.00',
+            'cycle_key': ck_tomorrow,
+            'account_id': str(self.account.id)
+        }, format='json')
+        self.assertEqual(res_early.status_code, 200)
+        self.assertEqual(PaymentHistory.objects.filter(obligation=ob).count(), 1)
+
+    def test_24_immediate_termination_with_future_due_preserves_unpaid_final_bill(self):
+        """24. Immediate termination with bill due tomorrow preserves unpaid final bill and drafted dynamic items."""
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+        dyn_id = str(uuid.uuid4())
+        ob = FinancialObligation.objects.create(
+            user=self.user,
+            title='Tomorrow Cancel Sub',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('80.00'),
+            due_date=tomorrow,
+            metadata={
+                'is_itemized': True,
+                'billing_cycle': 'MONTHLY',
+                'items': [
+                    {'id': str(uuid.uuid4()), 'name': 'Fixed Part', 'type': 'FIXED', 'amount': '80.00'},
+                    {'id': dyn_id, 'name': 'Dynamic Part', 'type': 'DYNAMIC'}
+                ]
+            }
+        )
+        SubscriptionStrategy.sync_current_cycle(ob)
+        ob.save()
+
+        # Fill dynamic draft
+        self.client.patch(f'/api/finance/obligations/{ob.id}/cycle-bill/', {
+            'items': [{'id': dyn_id, 'amount': 30.00}]
+        }, format='json')
+
+        # Terminate immediately
+        res_term = self.client.post(f'/api/finance/obligations/{ob.id}/terminate/', {
+            'mode': 'IMMEDIATE'
+        }, format='json')
+        self.assertEqual(res_term.status_code, 200)
+
+        ob.refresh_from_db()
+        # Must retain unpaid final bill flag and status ACTIVE so user can settle it
+        self.assertEqual(ob.status, ObligationStatus.ACTIVE)
+        term = ob.metadata.get('termination', {})
+        self.assertTrue(term.get('has_unpaid_final_bill'))
+        self.assertEqual(term.get('effective_end_date'), today.isoformat())
+
+        # User pays the preserved final bill
+        ck_final = SubscriptionStrategy.get_cycle_key(tomorrow, 'MONTHLY')
+        res_pay_final = self.client.post(f'/api/finance/obligations/{ob.id}/pay/', {
+            'paid_amount': '110.00',
+            'cycle_key': ck_final,
+            'account_id': str(self.account.id)
+        }, format='json')
+        self.assertEqual(res_pay_final.status_code, 200)
+
+        ob.refresh_from_db()
+        self.assertEqual(ob.status, ObligationStatus.CANCELLED)
+        self.assertFalse(ob.metadata.get('termination', {}).get('has_unpaid_final_bill'))
+
+

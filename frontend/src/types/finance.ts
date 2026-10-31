@@ -24,6 +24,7 @@ export interface PaymentHistoryItem {
   paid_at: string
   term_number: number | null
   note: string
+  metadata?: Record<string, any>
   attachments?: ObligationAttachmentItem[]
 }
 
@@ -130,6 +131,8 @@ export interface ExpectedInflowBreakdown {
 export interface FinancialOverview {
   target_month: string
   confirmed_burn_rate: string | number
+  has_pending_dynamic?: boolean
+  pending_dynamic_count?: number
   potential_risk_amount: string | number
   expected_inflow_amount?: string | number
   expected_inflow_breakdown?: ExpectedInflowBreakdown

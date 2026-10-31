@@ -42,9 +42,12 @@
           </div>
         </div>
         <div class="text-xl font-bold font-mono text-zinc-100 mt-2 tabular-nums">
-          ฿{{ formatNumber(totalMonthlyBurnTHB) }}
+          {{ hasOnlyPureDynamicPendingTHB ? 'ยังไม่ทราบยอด' : `฿${formatNumber(totalMonthlyBurnTHB)}` }}
         </div>
-        <p class="text-[11px] text-zinc-500 mt-1 font-mono">
+        <p v-if="hasPendingDynamicItems" class="text-[10px] text-amber-400 mt-1 font-mono leading-tight">
+          * คิดจากส่วนคงที่ (ยังไม่รวมรายการรอกรอก)
+        </p>
+        <p v-else class="text-[11px] text-zinc-500 mt-1 font-mono">
           USD: ${{ formatNumber(totalMonthlyBurnUSD) }}/mo
         </p>
       </div>
@@ -58,9 +61,12 @@
           </div>
         </div>
         <div class="text-xl font-bold font-mono text-zinc-200 mt-2 tabular-nums">
-          ฿{{ formatNumber(totalMonthlyBurnTHB * 12) }}
+          {{ hasOnlyPureDynamicPendingTHB ? 'ยังไม่ทราบยอด' : `฿${formatNumber(totalMonthlyBurnTHB * 12)}` }}
         </div>
-        <p class="text-[11px] text-zinc-500 mt-1 font-mono">
+        <p v-if="hasPendingDynamicItems" class="text-[10px] text-amber-400 mt-1 font-mono leading-tight">
+          * ไม่รวมรายการที่ต้องกรอกยอดแต่ละรอบ
+        </p>
+        <p v-else class="text-[11px] text-zinc-500 mt-1 font-mono">
           USD: ${{ formatNumber(totalMonthlyBurnUSD * 12) }}/yr
         </p>
       </div>
@@ -304,6 +310,14 @@
               <!-- 4. Status -->
               <td class="py-3 px-4">
                 <span
+                  v-if="sub.summary?.is_terminated || sub.metadata?.termination?.status === 'TERMINATED'"
+                  class="text-[9px] font-mono px-1.5 py-0.5 rounded border font-semibold"
+                  :class="sub.status === 'ACTIVE' ? 'border-amber-800/60 text-amber-400 bg-amber-950/40' : 'border-zinc-700 text-zinc-500 bg-zinc-900'"
+                >
+                  {{ sub.summary?.termination_label || (sub.status === 'ACTIVE' ? 'สิ้นสุดแล้ว · มีบิลค้าง' : 'สิ้นสุดแล้ว') }}
+                </span>
+                <span
+                  v-else
                   class="text-[9px] font-mono px-1.5 py-0.5 rounded border font-semibold uppercase"
                   :class="{
                     'border-emerald-800/60 text-emerald-400 bg-emerald-950/40': sub.status === 'ACTIVE',
@@ -318,12 +332,34 @@
 
               <!-- 5. Fee -->
               <td class="py-3 px-4 text-right font-mono tabular-nums text-zinc-100 font-medium">
-                {{ sub.currency === 'USD' ? '$' : '฿' }}{{ formatNumber(sub.amount) }}
+                <div v-if="sub.metadata?.is_itemized || sub.summary?.is_itemized" class="leading-tight">
+                  <template v-if="sub.summary?.is_pure_dynamic && sub.summary?.pending_dynamic_count > 0">
+                    <span class="text-amber-400 text-[11px] font-medium">รอกรอก {{ sub.summary?.pending_dynamic_count }} รายการ</span>
+                  </template>
+                  <template v-else-if="sub.summary?.pending_dynamic_count > 0">
+                    <span class="text-zinc-200">คงที่ {{ sub.currency === 'USD' ? '$' : '฿' }}{{ formatNumber(sub.summary?.fixed_total ?? sub.amount) }}</span>
+                    <span class="block text-[9px] text-amber-400">รอกรอก {{ sub.summary?.pending_dynamic_count }} รายการ</span>
+                  </template>
+                  <template v-else>
+                    <span>{{ sub.currency === 'USD' ? '$' : '฿' }}{{ formatNumber(sub.summary?.total_bill_amount ?? sub.amount) }}</span>
+                  </template>
+                </div>
+                <div v-else>
+                  {{ sub.currency === 'USD' ? '$' : '฿' }}{{ formatNumber(sub.amount) }}
+                </div>
               </td>
 
               <!-- 5. Monthly Burn -->
               <td class="py-3 px-4 text-right font-mono tabular-nums text-zinc-300">
-                {{ sub.currency === 'USD' ? '$' : '฿' }}{{ formatNumber(getMonthlyEquivalent(sub)) }}
+                <div v-if="sub.summary?.is_pure_dynamic && sub.summary?.pending_dynamic_count > 0" class="text-zinc-500 text-[11px] italic">
+                  ไม่ทราบยอด
+                </div>
+                <div v-else class="leading-tight">
+                  <span>{{ sub.currency === 'USD' ? '$' : '฿' }}{{ formatNumber(getMonthlyEquivalent(sub)) }}</span>
+                  <span v-if="sub.summary?.pending_dynamic_count > 0" class="block text-[9px] text-zinc-500">
+                    (เฉพาะคงที่)
+                  </span>
+                </div>
               </td>
 
               <!-- 6. Linked Account -->
@@ -348,6 +384,21 @@
               <!-- 8. Actions -->
               <td class="py-3 px-4 text-right">
                 <div class="flex items-center justify-end gap-1.5">
+                  <!-- Pay / Settle Button -->
+                  <button
+                    v-if="sub.status === 'ACTIVE'"
+                    @click="openPayModal(sub)"
+                    type="button"
+                    class="px-2 py-1 rounded text-[10px] font-medium transition-colors"
+                    :class="sub.summary?.is_terminated
+                      ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30'
+                      : (sub.metadata?.is_itemized && sub.summary?.pending_dynamic_count > 0
+                        ? 'bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-zinc-700'
+                        : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700')"
+                  >
+                    {{ getRowPayButtonLabel(sub) }}
+                  </button>
+
                   <button
                     @click="openEditModal(sub)"
                     type="button"
@@ -356,21 +407,48 @@
                   >
                     <Edit2 class="w-3.5 h-3.5" />
                   </button>
-                  <RouterLink
-                    :to="`/finance/subscriptions/${sub.id}`"
-                    class="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
-                    title="View Dossier"
-                  >
-                    <ArrowRight class="w-3.5 h-3.5" />
-                  </RouterLink>
-                  <button
-                    @click="confirmDelete(sub.id)"
-                    type="button"
-                    class="p-1.5 rounded hover:bg-zinc-800 text-zinc-500 hover:text-rose-400 transition-colors"
-                    title="Delete Subscription"
-                  >
-                    <Trash2 class="w-3.5 h-3.5" />
-                  </button>
+
+                  <!-- More ⋯ Actions Menu -->
+                  <div class="relative inline-block text-left">
+                    <button
+                      @click="toggleRowMenu(sub.id)"
+                      type="button"
+                      class="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors"
+                      title="More Options"
+                    >
+                      <MoreVertical class="w-3.5 h-3.5" />
+                    </button>
+
+                    <div
+                      v-if="activeMenuId === sub.id"
+                      class="absolute right-0 mt-1 w-44 rounded-md bg-zinc-950 border border-zinc-800 shadow-xl py-1 z-30 font-sans text-xs"
+                    >
+                      <RouterLink
+                        :to="`/finance/subscriptions/${sub.id}`"
+                        class="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-900 flex items-center gap-2"
+                      >
+                        <ArrowRight class="w-3.5 h-3.5 text-zinc-400" />
+                        <span>ดูรายละเอียด</span>
+                      </RouterLink>
+                      <button
+                        v-if="sub.type === 'SUBSCRIPTION' && sub.status === 'ACTIVE' && !sub.summary?.is_terminated && !isWorkspace(sub)"
+                        @click="activeMenuId = null; openTerminateModal(sub)"
+                        type="button"
+                        class="w-full text-left px-3 py-1.5 text-amber-400 hover:bg-zinc-900 flex items-center gap-2"
+                      >
+                        <XCircle class="w-3.5 h-3.5" />
+                        <span>ยุติรายการประจำ</span>
+                      </button>
+                      <button
+                        @click="activeMenuId = null; confirmDelete(sub.id)"
+                        type="button"
+                        class="w-full text-left px-3 py-1.5 text-rose-400 hover:bg-zinc-900 flex items-center gap-2 border-t border-zinc-800/80 mt-1 pt-1"
+                      >
+                        <Trash2 class="w-3.5 h-3.5" />
+                        <span>ลบรายการ</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </td>
             </tr>
@@ -404,6 +482,22 @@
       @updated="handleSubscriptionUpdated"
     />
 
+    <!-- Pay Modal -->
+    <PayModal
+      :is-open="showPayModal"
+      :obligation="selectedSubscriptionForPay"
+      @close="showPayModal = false; selectedSubscriptionForPay = null"
+      @paid="handlePaySuccess"
+    />
+
+    <!-- Terminate Modal -->
+    <TerminateSubscriptionModal
+      :is-open="showTerminateModal"
+      :obligation="selectedSubscriptionForTerminate"
+      @close="showTerminateModal = false; selectedSubscriptionForTerminate = null"
+      @terminated="handleTerminateSuccess"
+    />
+
     <!-- Confirm Modal -->
     <ConfirmModal
       :is-open="confirmModal.isOpen"
@@ -427,6 +521,8 @@ import { useToastStore } from '../../stores/toast'
 import type { FinancialObligation } from '../../types/finance'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import EditObligationModal from '../../components/finance/EditObligationModal.vue'
+import PayModal from '../../components/finance/PayModal.vue'
+import TerminateSubscriptionModal from '../../components/finance/TerminateSubscriptionModal.vue'
 import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import {
   Plus,
@@ -438,7 +534,9 @@ import {
   ExternalLink,
   ArrowRight,
   Trash2,
-  Edit2
+  Edit2,
+  MoreVertical,
+  XCircle
 } from 'lucide-vue-next'
 
 const { subscriptions, isLoading, fetchSubscriptions, cancelTrial, deleteSubscription } = useSubscriptions()
@@ -448,15 +546,58 @@ const searchQuery = ref('')
 const selectedTypeFilter = ref<'ALL' | 'ACTIVE' | 'TRIAL' | 'CANCELLED'>('ALL')
 const showEditModal = ref(false)
 const selectedSubscriptionForEdit = ref<FinancialObligation | null>(null)
+const showPayModal = ref(false)
+const selectedSubscriptionForPay = ref<FinancialObligation | null>(null)
+const showTerminateModal = ref(false)
+const selectedSubscriptionForTerminate = ref<FinancialObligation | null>(null)
+const activeMenuId = ref<string | null>(null)
+
+function toggleRowMenu(id: string) {
+  activeMenuId.value = activeMenuId.value === id ? null : id
+}
 
 function openEditModal(sub: FinancialObligation) {
   selectedSubscriptionForEdit.value = sub
   showEditModal.value = true
 }
 
+function openPayModal(sub: FinancialObligation) {
+  selectedSubscriptionForPay.value = sub
+  showPayModal.value = true
+}
+
+function openTerminateModal(sub: FinancialObligation) {
+  selectedSubscriptionForTerminate.value = sub
+  showTerminateModal.value = true
+}
+
 async function handleSubscriptionUpdated() {
   await fetchSubscriptions()
   toast.success('Subscription dossier updated')
+}
+
+async function handlePaySuccess() {
+  await fetchSubscriptions()
+  toast.success('บันทึกการชำระเงินเรียบร้อยแล้ว')
+}
+
+async function handleTerminateSuccess() {
+  await fetchSubscriptions()
+  toast.success('ยุติรายการประจำเรียบร้อยแล้ว')
+}
+
+function isWorkspace(sub: FinancialObligation): boolean {
+  return !!sub.metadata?.workspace_managed
+}
+
+function getRowPayButtonLabel(sub: FinancialObligation): string {
+  if (sub.summary?.is_terminated || sub.metadata?.termination?.status === 'TERMINATED') {
+    return 'ชำระบิลสุดท้าย'
+  }
+  if (sub.metadata?.is_itemized && (sub.summary?.pending_dynamic_count ?? 0) > 0) {
+    return 'กรอกยอดและชำระ'
+  }
+  return 'บันทึกการชำระ'
 }
 
 const typeFilters = [
@@ -477,7 +618,7 @@ const confirmModal = reactive({
   action: async () => {}
 })
 
-useBodyScrollLock(() => showEditModal.value || confirmModal.isOpen)
+useBodyScrollLock(() => showEditModal.value || showPayModal.value || showTerminateModal.value || confirmModal.isOpen)
 
 async function handleConfirmAction() {
   confirmModal.isLoading = true
@@ -533,7 +674,17 @@ const filteredSubscriptions = computed(() => {
 })
 
 function getMonthlyEquivalent(sub: FinancialObligation): number {
-  const amt = Number(sub.amount || 0)
+  if (sub.summary?.monthly_equivalent !== undefined && sub.summary?.monthly_equivalent !== null) {
+    return Number(sub.summary.monthly_equivalent)
+  }
+  let amt = Number(sub.amount || 0)
+  if (sub.summary?.is_itemized) {
+    if (sub.summary?.total_bill_amount !== undefined && sub.summary?.total_bill_amount !== null) {
+      amt = Number(sub.summary.total_bill_amount)
+    } else if (sub.summary?.fixed_total !== undefined && sub.summary?.fixed_total !== null) {
+      amt = Number(sub.summary.fixed_total)
+    }
+  }
   const cycle = (sub.metadata?.billing_cycle || 'MONTHLY').toUpperCase()
   if (cycle === 'YEARLY') return amt / 12
   if (cycle === 'QUARTERLY') return amt / 3
@@ -551,6 +702,16 @@ const totalMonthlyBurnUSD = computed(() => {
   return activeSubscriptionsList.value
     .filter(s => (s.currency || 'THB').toUpperCase() === 'USD')
     .reduce((sum, s) => sum + getMonthlyEquivalent(s), 0)
+})
+
+const hasPendingDynamicItems = computed(() => {
+  return activeSubscriptionsList.value.some(s => (s.summary?.pending_dynamic_count ?? 0) > 0)
+})
+
+const hasOnlyPureDynamicPendingTHB = computed(() => {
+  const thbSubs = activeSubscriptionsList.value.filter(s => (s.currency || 'THB').toUpperCase() === 'THB')
+  if (thbSubs.length === 0) return false
+  return thbSubs.every(s => s.summary?.is_pure_dynamic && (s.summary?.pending_dynamic_count ?? 0) > 0)
 })
 
 const totalTrialLiabilityTHB = computed(() => {

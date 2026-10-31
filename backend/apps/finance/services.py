@@ -79,6 +79,8 @@ def get_financial_overview(user, target_date: date = None) -> Dict[str, Any]:
 
     active_trials_count = 0
     critical_trials_count = 0
+    has_pending_dynamic = False
+    total_pending_dynamic_count = 0
 
     for ob in active_obligations:
         rate = get_exchange_rate_to_thb(ob.currency)
@@ -235,20 +237,34 @@ def get_financial_overview(user, target_date: date = None) -> Dict[str, Any]:
                         confirmed_burn_rate += amount_thb
 
             elif ob.type == ObligationType.SUBSCRIPTION:
+                is_itemized = summary.get('is_itemized', False)
+                pending_count = summary.get('pending_dynamic_count', 0)
+                if is_itemized and pending_count > 0:
+                    has_pending_dynamic = True
+                    total_pending_dynamic_count += pending_count
+
+                sub_amount = summary.get('amount_per_period')
+                if sub_amount is not None:
+                    sub_amt = Decimal(str(sub_amount))
+                    sub_thb = (sub_amt * rate).quantize(Decimal('0.01'))
+                else:
+                    sub_amt = Decimal('0.00')
+                    sub_thb = Decimal('0.00')
+
                 billing_cycle = (ob.metadata or {}).get('billing_cycle', 'MONTHLY').upper()
                 if billing_cycle == 'YEARLY':
                     if ob.due_date and ob.due_date.year == target_year and ob.due_date.month == target_month:
-                        confirmed_burn_rate += amount_thb
+                        confirmed_burn_rate += sub_thb
                 elif billing_cycle == 'QUARTERLY':
                     if ob.due_date and ob.due_date.year == target_year and ob.due_date.month == target_month:
-                        confirmed_burn_rate += amount_thb
+                        confirmed_burn_rate += sub_thb
                 elif billing_cycle == 'WEEKLY':
                     # Approximately 4.3333 weeks in a month
-                    weekly_norm = (amount_thb * Decimal('4.3333')).quantize(Decimal('0.01'))
+                    weekly_norm = (sub_thb * Decimal('4.3333')).quantize(Decimal('0.01'))
                     confirmed_burn_rate += weekly_norm
                 else:
                     # Monthly: charged every month
-                    confirmed_burn_rate += amount_thb
+                    confirmed_burn_rate += sub_thb
 
             elif ob.type == ObligationType.DEBT:
                 # Debt repayment due this month
@@ -276,8 +292,14 @@ def get_financial_overview(user, target_date: date = None) -> Dict[str, Any]:
             if ob.subtype == 'BNPL_ACCOUNT':
                 bill_amount = Decimal(str(summary.get('current_bill_amount', 0)))
                 bill_amount_thb = bill_amount
+            elif ob.type == ObligationType.SUBSCRIPTION and summary.get('is_itemized'):
+                if summary.get('is_bill_complete') and summary.get('total_bill_amount') is not None:
+                    bill_amount = Decimal(str(summary['total_bill_amount']))
+                else:
+                    bill_amount = Decimal(str(summary.get('fixed_total', '0.00')))
+                bill_amount_thb = (bill_amount * rate).quantize(Decimal('0.01'))
 
-            if bill_amount > Decimal('0.00') or ob.type == ObligationType.FREE_TRIAL:
+            if bill_amount > Decimal('0.00') or ob.type == ObligationType.FREE_TRIAL or (ob.type == ObligationType.SUBSCRIPTION and summary.get('is_itemized')):
                 upcoming_7_days.append({
                     'id': str(ob.id),
                     'title': ob.title,
@@ -307,6 +329,8 @@ def get_financial_overview(user, target_date: date = None) -> Dict[str, Any]:
     return {
         'target_month': f"{target_year}-{target_month:02d}",
         'confirmed_burn_rate': confirmed_burn_rate,
+        'has_pending_dynamic': has_pending_dynamic,
+        'pending_dynamic_count': total_pending_dynamic_count,
         'potential_risk_amount': potential_risk_amount,
         'expected_inflow_amount': expected_inflow_amount,
         'expected_inflow_breakdown': {

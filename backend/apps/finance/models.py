@@ -172,7 +172,7 @@ class PaymentHistory(models.Model):
         verbose_name = 'Payment History'
         verbose_name_plural = 'Payment Histories'
         constraints = [
-            models.CheckConstraint(condition=models.Q(paid_amount__gt=0), name='payment_hist_positive_amount'),
+            models.CheckConstraint(condition=models.Q(paid_amount__gte=0), name='payment_hist_non_negative_amount'),
         ]
 
     def __str__(self):

@@ -14,6 +14,9 @@
           </span>
           <span class="text-[11px] text-zinc-500">/ mo</span>
         </div>
+        <p v-if="financeStore.overview?.has_pending_dynamic" class="text-[10px] text-amber-400 mt-1 font-mono">
+          * มี {{ financeStore.overview?.pending_dynamic_count }} รายการรอกรอกยอด
+        </p>
         <div class="mt-3 text-[11px] text-zinc-500 flex items-center justify-between border-t border-zinc-800/50 pt-2.5">
           <span>Monthly recurring burn</span>
           <button @click="emit('switchTab', 'SUBSCRIPTION')" class="text-zinc-400 hover:text-zinc-200 active:scale-95 transition-all font-mono text-[10px]">
@@ -133,7 +136,18 @@
               class="font-semibold tabular-nums"
               :class="item.direction === 'INFLOW' ? 'text-emerald-400' : 'text-zinc-100'"
             >
-              {{ item.direction === 'INFLOW' ? '+' : '' }}{{ item.currency === 'USD' ? `$${Number(item.amount).toFixed(2)}` : `฿${Number(item.amount).toLocaleString('th-TH')}` }}
+              <template v-if="item.type === 'SUBSCRIPTION' && item.summary?.is_itemized && (item.summary?.pending_dynamic_count ?? 0) > 0">
+                <template v-if="item.summary?.is_pure_dynamic">
+                  <span class="text-amber-400 text-xs">รอระบุยอด</span>
+                </template>
+                <template v-else>
+                  <span>{{ item.currency === 'USD' ? `$${Number(item.summary.fixed_total).toFixed(2)}` : `฿${Number(item.summary.fixed_total).toLocaleString('th-TH', { minimumFractionDigits: 2 })}` }}</span>
+                  <span class="text-[10px] text-amber-400 font-normal ml-1">+รอกรอก</span>
+                </template>
+              </template>
+              <template v-else>
+                {{ item.direction === 'INFLOW' ? '+' : '' }}{{ item.currency === 'USD' ? `$${Number(item.amount).toFixed(2)}` : `฿${Number(item.amount).toLocaleString('th-TH')}` }}
+              </template>
             </div>
             <button
               @click="handlePayItem(item)"

@@ -11,7 +11,7 @@ User = get_user_model()
 
 
 @sync_to_async
-def process_pay_callback(obligation_id: str, chat_id: int):
+def process_pay_callback(obligation_id: str, chat_id: int, target_cycle_key: str = None):
     """Safely process [Pay] button click from Telegram.
 
     Locks the obligation row and refuses duplicate settlement for the same
@@ -25,11 +25,30 @@ def process_pay_callback(obligation_id: str, chat_id: int):
     except User.DoesNotExist:
         return {'success': False, 'message': 'User account not found or bot not connected.'}
 
+    clean_ob_id = str(obligation_id).strip()
+    if not target_cycle_key and ':' in clean_ob_id:
+        parts = clean_ob_id.split(':', 1)
+        clean_ob_id = parts[0]
+        target_cycle_key = parts[1]
+
     try:
         with transaction.atomic():
             obligation = FinancialObligation.objects.select_for_update().get(
-                id=obligation_id, user=user
+                id=clean_ob_id, user=user
             )
+
+            # Check if obligation is cancelled or completed
+            meta = obligation.metadata or {}
+            termination = meta.get('termination') or {}
+            is_term = (termination.get('status') == 'TERMINATED')
+            has_unpaid = termination.get('has_unpaid_final_bill', False)
+
+            if obligation.status in (ObligationStatus.CANCELLED, ObligationStatus.COMPLETED):
+                if not (obligation.type == 'SUBSCRIPTION' and is_term and has_unpaid):
+                    return {
+                        'success': False,
+                        'message': 'รายการนี้ถูกยกเลิกหรือเสร็จสิ้นแล้ว'
+                    }
 
             already_paid_today = PaymentHistory.objects.filter(
                 obligation=obligation,
@@ -43,8 +62,40 @@ def process_pay_callback(obligation_id: str, chat_id: int):
                 }
 
             strategy = ObligationStrategyFactory.get_strategy(obligation.type)
+            if obligation.type == ObligationType.SUBSCRIPTION or obligation.type == 'SUBSCRIPTION':
+                if meta.get('current_cycle', {}).get('status') in ('PAID', 'COMPLETED'):
+                    return {
+                        'success': False,
+                        'message': 'บิลรอบนี้ชำระเรียบร้อยแล้ว'
+                    }
+
+                sub_summary = strategy.get_summary(obligation)
+                if sub_summary.get('is_itemized') and sub_summary.get('pending_dynamic_count', 0) > 0:
+                    return {
+                        'success': False,
+                        'message': 'บิลนี้มีรายการที่ต้องกรอกยอดก่อนชำระ กรุณากรอกยอดและชำระผ่านเว็บแอป'
+                    }
+
+                expected_ck = strategy.get_cycle_key(obligation.due_date, meta.get('billing_cycle', 'MONTHLY')) if obligation.due_date else None
+                if not target_cycle_key:
+                    return {
+                        'success': False,
+                        'message': 'ไม่พบข้อมูลรอบบิล กรุณาชำระผ่านเว็บแอป'
+                    }
+                if expected_ck and target_cycle_key != expected_ck:
+                    return {
+                        'success': False,
+                        'message': 'บิลรอบนี้ชำระเรียบร้อยแล้ว'
+                    }
+                if PaymentHistory.objects.filter(obligation=obligation, metadata__cycle_key=target_cycle_key).exists():
+                    return {
+                        'success': False,
+                        'message': 'บิลรอบนี้ชำระเรียบร้อยแล้ว'
+                    }
+
             summary = strategy.on_paid(
                 obligation,
+                cycle_key=target_cycle_key,
                 note='Settled via Telegram Bot action button'
             )
             obligation.refresh_from_db()
@@ -225,8 +276,10 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     # 1. Action Pay / Settle Term
     if data.startswith('pay:'):
-        ob_id = data.split(':')[1]
-        result = await process_pay_callback(ob_id, chat_id)
+        parts = data.split(':', 2)
+        ob_id = parts[1]
+        target_ck = parts[2] if len(parts) > 2 else None
+        result = await process_pay_callback(ob_id, chat_id, target_cycle_key=target_ck)
 
         if result['success']:
             await query.edit_message_text(result['new_text'], parse_mode='Markdown')

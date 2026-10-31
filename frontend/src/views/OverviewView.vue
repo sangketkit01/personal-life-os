@@ -51,6 +51,9 @@
           </span>
           <span class="text-[11px] text-zinc-500 font-mono">{{ t('ov.perMonth') }}</span>
         </div>
+        <p v-if="financeStore.overview?.has_pending_dynamic" class="text-[10px] text-amber-400 font-mono mt-0.5">
+          * มี {{ financeStore.overview?.pending_dynamic_count }} รายการรอกรอกยอด
+        </p>
         <div class="mt-3 text-[11px] text-zinc-500 flex items-center gap-1.5 border-t border-zinc-800/50 pt-2.5">
           <span class="w-1.5 h-1.5 rounded-full bg-zinc-400"></span>
           <span>{{ t('ov.totalFixed') }}</span>

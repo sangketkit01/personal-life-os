@@ -59,4 +59,22 @@ describe('Update Operations Remediation Verification', () => {
     assert.match(txModal, /isDateLocked/)
     assert.match(txModal, /Transfer date is locked to keep both accounts in sync/)
   })
+
+  test('Issue 3: PayModal guards draft load against race condition overwriting active typing and clearing', () => {
+    const payModal = readComponent('src/components/finance/PayModal.vue')
+    assert.match(payModal, /activeDraftSessionId/)
+    assert.match(payModal, /userEditedItemIds/)
+    assert.match(payModal, /res\.cycle_key !== targetCk/)
+    // Must preserve user's edited item even if cleared to empty string
+    assert.match(payModal, /userEditedItemIds\.value\.has\(it\.id\) && currentItem/)
+    assert.doesNotMatch(payModal, /userEditedItemIds\.value\.has\(it\.id\) && currentItem && currentItem\.amount !== ''/)
+  })
+
+  test('Issue 4: Fixed items check empty string before Number conversion in Create & Edit', () => {
+    const createView = readComponent('src/views/finance/SubscriptionCreateView.vue')
+    assert.match(createView, /String\(it\.amount\)\.trim\(\) === ''/)
+
+    const editModal = readComponent('src/components/finance/EditObligationModal.vue')
+    assert.match(editModal, /String\(it\.amount\)\.trim\(\) === ''/)
+  })
 })

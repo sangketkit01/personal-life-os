@@ -1,3 +1,4 @@
+import datetime
 from decimal import Decimal
 from django.db import models, transaction as db_transaction
 from django.utils import timezone
@@ -132,199 +133,267 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
         # Resolve exact payment amount based on obligation type and domain strategy
         strategy = ObligationStrategyFactory.get_strategy(obligation.type)
         statement_month = serializer.validated_data.get('statement_month')
-
-        if obligation.subtype == 'BNPL_ACCOUNT':
-            summary_before = strategy.get_summary(obligation)
-            timeline = summary_before.get('statement_timeline', [])
-            current_statement = summary_before.get('current_statement')
-
-            target_statement = None
-            if statement_month:
-                target_statement = next((s for s in timeline if s.get('statement_month') == statement_month), None)
-                if not target_statement:
-                    return response.Response({
-                        'detail': f"No billing statement found for month {statement_month}."
-                    }, status=status.HTTP_400_BAD_REQUEST)
-            else:
-                target_statement = current_statement
-
-            if not target_statement:
-                return response.Response({
-                    'detail': 'There is no outstanding statement bill to pay.'
-                }, status=status.HTTP_400_BAD_REQUEST)
-
-            statement_due = Decimal(str(target_statement.get('total_due', '0.00')))
-            target_month_key = target_statement.get('statement_month')
-
-            if statement_due <= Decimal('0.00'):
-                return response.Response({'detail': 'There is no outstanding statement bill to pay.'}, status=status.HTTP_400_BAD_REQUEST)
-
-            if paid_amount is None:
-                actual_paid = statement_due
-            else:
-                actual_paid = Decimal(str(paid_amount))
-                if actual_paid != statement_due:
-                    return response.Response({
-                        'detail': f"Partial payment is not supported. Full statement amount of \u0e3f{statement_due:,.2f} is required for {target_month_key}."
-                    }, status=status.HTTP_400_BAD_REQUEST)
-
-            statement_month = target_month_key
-
-        elif obligation.type == ObligationType.INSTALLMENT:
-            if obligation.status == ObligationStatus.COMPLETED:
-                return response.Response({'detail': 'This installment contract is already fully completed.'}, status=status.HTTP_400_BAD_REQUEST)
-            scheduled_amount = obligation.amount
-            if paid_amount is None:
-                actual_paid = scheduled_amount
-            else:
-                actual_paid = Decimal(str(paid_amount))
-                if actual_paid != scheduled_amount:
-                    return response.Response({
-                        'detail': f"Partial payment is not supported. Scheduled installment amount of \u0e3f{scheduled_amount:,.2f} is required."
-                    }, status=status.HTTP_400_BAD_REQUEST)
-
-        elif obligation.type == ObligationType.SUBSCRIPTION:
-            scheduled_amount = obligation.amount
-            if paid_amount is None:
-                actual_paid = scheduled_amount
-            else:
-                actual_paid = Decimal(str(paid_amount))
-                if actual_paid != scheduled_amount:
-                    return response.Response({
-                        'detail': f"Full subscription payment of \u0e3f{scheduled_amount:,.2f} is required."
-                    }, status=status.HTTP_400_BAD_REQUEST)
-
-        elif obligation.type == ObligationType.DEBT:
-            meta = obligation.metadata or {}
-            remaining_balance_raw = meta.get('remaining_balance')
-            cur_rem = Decimal(str(remaining_balance_raw)) if remaining_balance_raw is not None else obligation.amount
-            if cur_rem <= Decimal('0.00') or obligation.status == ObligationStatus.COMPLETED:
-                return response.Response({'detail': 'This debt obligation is already fully settled.'}, status=status.HTTP_400_BAD_REQUEST)
-            if paid_amount is None:
-                actual_paid = cur_rem
-            else:
-                actual_paid = Decimal(str(paid_amount))
-                if actual_paid <= Decimal('0.00'):
-                    return response.Response({'detail': 'Payment amount must be greater than 0.'}, status=status.HTTP_400_BAD_REQUEST)
-                if actual_paid > cur_rem:
-                    return response.Response({
-                        'detail': f"Payment amount of \u0e3f{actual_paid:,.2f} exceeds remaining debt balance of \u0e3f{cur_rem:,.2f}."
-                    }, status=status.HTTP_400_BAD_REQUEST)
-        else:
-            actual_paid = Decimal(str(paid_amount if paid_amount is not None else obligation.amount))
-
-        # Pre-flight check on Ledger account balance
-        account_id = serializer.validated_data.get('account_id')
-        account = None
-
-        if account_id:
-            from apps.ledger.models import Account, AccountType
-            try:
-                account = Account.objects.select_for_update().get(id=account_id, user=request.user)
-            except Account.DoesNotExist:
-                return response.Response({'detail': 'Target cash flow account not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-            if account.currency != obligation.currency:
-                return response.Response({
-                    'detail': f"Currency mismatch: Account currency ({account.currency}) does not match obligation currency ({obligation.currency})."
-                }, status=status.HTTP_400_BAD_REQUEST)
-
-            if obligation.direction != 'INFLOW':
-                if account.account_type != AccountType.CREDIT_CARD:
-                    if account.current_balance < actual_paid:
-                        return response.Response({
-                            'detail': f"Insufficient funds: {account.name} has balance \u0e3f{account.current_balance:,.2f}, but payment requires \u0e3f{actual_paid:,.2f}."
-                        }, status=status.HTTP_400_BAD_REQUEST)
+        cycle_key = serializer.validated_data.get('cycle_key')
 
         try:
             with db_transaction.atomic():
-                obligation = FinancialObligation.objects.select_for_update().get(id=obligation.id, user=request.user)
-                summary = strategy.on_paid(
-                    obligation=obligation,
-                    paid_amount=actual_paid,
-                    term_number=term_number,
-                    note=note,
-                    statement_month=statement_month
+                locked_ob = FinancialObligation.objects.select_for_update().get(id=obligation.id, user=request.user)
+
+            if locked_ob.subtype == 'BNPL_ACCOUNT':
+                summary_before = strategy.get_summary(locked_ob)
+                timeline = summary_before.get('statement_timeline', [])
+                current_statement = summary_before.get('current_statement')
+
+                target_statement = None
+                if statement_month:
+                    target_statement = next((s for s in timeline if s.get('statement_month') == statement_month), None)
+                    if not target_statement:
+                        return response.Response({
+                            'detail': f"No billing statement found for month {statement_month}."
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    target_statement = current_statement
+
+                if not target_statement:
+                    return response.Response({
+                        'detail': 'There is no outstanding statement bill to pay.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                statement_due = Decimal(str(target_statement.get('total_due', '0.00')))
+                target_month_key = target_statement.get('statement_month')
+
+                if statement_due <= Decimal('0.00'):
+                    return response.Response({'detail': 'There is no outstanding statement bill to pay.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                if paid_amount is None:
+                    actual_paid = statement_due
+                else:
+                    actual_paid = Decimal(str(paid_amount))
+                    if actual_paid != statement_due:
+                        return response.Response({
+                            'detail': f"Partial payment is not supported. Full statement amount of ฿{statement_due:,.2f} is required for {target_month_key}."
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                statement_month = target_month_key
+
+            elif locked_ob.type == ObligationType.INSTALLMENT:
+                if locked_ob.status == ObligationStatus.COMPLETED:
+                    return response.Response({'detail': 'This installment contract is already fully completed.'}, status=status.HTTP_400_BAD_REQUEST)
+                scheduled_amount = locked_ob.amount
+                if paid_amount is None:
+                    actual_paid = scheduled_amount
+                else:
+                    actual_paid = Decimal(str(paid_amount))
+                    if actual_paid != scheduled_amount:
+                        return response.Response({
+                            'detail': f"Partial payment is not supported. Scheduled installment amount of ฿{scheduled_amount:,.2f} is required."
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+            elif locked_ob.type == ObligationType.SUBSCRIPTION:
+                meta = locked_ob.metadata or {}
+                termination = meta.get('termination') or {}
+                is_term = (termination.get('status') == 'TERMINATED')
+                has_unpaid = termination.get('has_unpaid_final_bill', False)
+
+                if locked_ob.status in (ObligationStatus.COMPLETED, ObligationStatus.CANCELLED) and not (is_term and has_unpaid):
+                    return response.Response({'detail': 'This subscription is already completed or cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                if is_term and termination.get('effective_end_date') and not has_unpaid:
+                    try:
+                        eff_end = datetime.date.fromisoformat(termination['effective_end_date'])
+                        if locked_ob.due_date and locked_ob.due_date > eff_end:
+                            return response.Response({'detail': 'This subscription has ended and no further billing cycles can be paid.'}, status=status.HTTP_400_BAD_REQUEST)
+                    except (ValueError, TypeError):
+                        pass
+
+                current_cycle_stat = meta.get('current_cycle', {}).get('status')
+                if current_cycle_stat in ('PAID', 'COMPLETED'):
+                    return response.Response({'detail': 'บิลรอบนี้ชำระเรียบร้อยแล้ว'}, status=status.HTTP_400_BAD_REQUEST)
+
+                expected_cycle_key = strategy.get_cycle_key(locked_ob.due_date, meta.get('billing_cycle', 'MONTHLY')) if locked_ob.due_date else None
+                if not cycle_key:
+                    return response.Response({'detail': 'กรุณาระบุรอบบิล (cycle_key) ที่ต้องการชำระ'}, status=status.HTTP_400_BAD_REQUEST)
+                if expected_cycle_key and cycle_key != expected_cycle_key:
+                    return response.Response({'detail': 'บิลรอบนี้ชำระเรียบร้อยแล้ว'}, status=status.HTTP_400_BAD_REQUEST)
+                if PaymentHistory.objects.filter(obligation=locked_ob, metadata__cycle_key=cycle_key).exists():
+                    return response.Response({'detail': 'บิลรอบนี้ชำระเรียบร้อยแล้ว'}, status=status.HTTP_400_BAD_REQUEST)
+
+                # Prevent duplicate repeat submissions if cycle was already paid
+                if not (is_term and has_unpaid):
+                    if expected_cycle_key and PaymentHistory.objects.filter(obligation=locked_ob, metadata__cycle_key=expected_cycle_key).exists():
+                        return response.Response({'detail': 'บิลรอบนี้ชำระเรียบร้อยแล้ว'}, status=status.HTTP_400_BAD_REQUEST)
+
+                summary_before = strategy.get_summary(locked_ob)
+                is_itemized = summary_before.get('is_itemized', False)
+                if is_itemized:
+                    cycle_items_data = serializer.validated_data.get('cycle_items')
+                    if cycle_items_data:
+                        current_cycle = meta.get('current_cycle', {})
+                        try:
+                            current_cycle = strategy.update_cycle_draft(current_cycle, cycle_items_data)
+                        except ValueError as val_err:
+                            return response.Response({'detail': str(val_err)}, status=status.HTTP_400_BAD_REQUEST)
+                        locked_ob.metadata['current_cycle'] = current_cycle
+                        locked_ob.save(update_fields=['metadata'])
+                        summary_before = strategy.get_summary(locked_ob)
+
+                    if summary_before.get('current_cycle', {}).get('status') in ('PAID', 'COMPLETED'):
+                        return response.Response({'detail': 'บิลรอบนี้ชำระเรียบร้อยแล้ว'}, status=status.HTTP_400_BAD_REQUEST)
+
+                    pending_count = summary_before.get('pending_dynamic_count', 0)
+                    if pending_count > 0:
+                        return response.Response({
+                            'detail': f"Cannot pay subscription bill: {pending_count} dynamic item(s) are pending amount."
+                        }, status=status.HTTP_400_BAD_REQUEST)
+
+                    expected_total = Decimal(str(summary_before.get('total_bill_amount') if summary_before.get('total_bill_amount') is not None else summary_before.get('fixed_total', '0.00'))).quantize(Decimal('0.01'))
+                    if paid_amount is None:
+                        actual_paid = expected_total
+                    else:
+                        actual_paid = Decimal(str(paid_amount)).quantize(Decimal('0.01'))
+                        if actual_paid != expected_total:
+                            return response.Response({
+                                'detail': f"Full subscription payment of ฿{expected_total:,.2f} is required."
+                            }, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    scheduled_amount = locked_ob.amount.quantize(Decimal('0.01'))
+                    if paid_amount is None:
+                        actual_paid = scheduled_amount
+                    else:
+                        actual_paid = Decimal(str(paid_amount)).quantize(Decimal('0.01'))
+                        if actual_paid != scheduled_amount:
+                            return response.Response({
+                                'detail': f"Full subscription payment of ฿{scheduled_amount:,.2f} is required."
+                            }, status=status.HTTP_400_BAD_REQUEST)
+
+            elif locked_ob.type == ObligationType.DEBT:
+                meta = locked_ob.metadata or {}
+                remaining_balance_raw = meta.get('remaining_balance')
+                cur_rem = Decimal(str(remaining_balance_raw)) if remaining_balance_raw is not None else locked_ob.amount
+                if cur_rem <= Decimal('0.00') or locked_ob.status == ObligationStatus.COMPLETED:
+                    return response.Response({'detail': 'This debt obligation is already fully settled.'}, status=status.HTTP_400_BAD_REQUEST)
+                if paid_amount is None:
+                    actual_paid = cur_rem
+                else:
+                    actual_paid = Decimal(str(paid_amount))
+                    if actual_paid <= Decimal('0.00'):
+                        return response.Response({'detail': 'Payment amount must be greater than 0.'}, status=status.HTTP_400_BAD_REQUEST)
+                    if actual_paid > cur_rem:
+                        return response.Response({
+                            'detail': f"Payment amount of ฿{actual_paid:,.2f} exceeds remaining debt balance of ฿{cur_rem:,.2f}."
+                        }, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                actual_paid = Decimal(str(paid_amount if paid_amount is not None else locked_ob.amount))
+
+            # Pre-flight check on Ledger account balance
+            account_id = serializer.validated_data.get('account_id')
+            account = None
+
+            if account_id:
+                from apps.ledger.models import Account, AccountType
+                try:
+                    account = Account.objects.select_for_update().get(id=account_id, user=request.user)
+                except Account.DoesNotExist:
+                    return response.Response({'detail': 'Target cash flow account not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+                if account.currency != locked_ob.currency:
+                    return response.Response({
+                        'detail': f"Currency mismatch: Account currency ({account.currency}) does not match obligation currency ({locked_ob.currency})."
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+                if locked_ob.direction != 'INFLOW':
+                    if account.account_type != AccountType.CREDIT_CARD:
+                        if account.current_balance < actual_paid:
+                            return response.Response({
+                                'detail': f"Insufficient funds: {account.name} has balance ฿{account.current_balance:,.2f}, but payment requires ฿{actual_paid:,.2f}."
+                            }, status=status.HTTP_400_BAD_REQUEST)
+
+            summary = strategy.on_paid(
+                obligation=locked_ob,
+                paid_amount=actual_paid,
+                term_number=term_number,
+                note=note,
+                statement_month=statement_month,
+                cycle_key=cycle_key,
+                cycle_items=serializer.validated_data.get('cycle_items')
+            )
+
+            payment_record = None
+            if summary.get('payment_id'):
+                payment_record = PaymentHistory.objects.filter(id=summary['payment_id']).first()
+
+            # Link Google Drive or legacy slip attachment to payment record
+            if payment_record and (drive_file_id or slip_file):
+                ObligationAttachment.objects.create(
+                    user=request.user,
+                    obligation=locked_ob,
+                    payment_history=payment_record,
+                    file=slip_file if slip_file else None,
+                    drive_file_id=drive_file_id,
+                    drive_view_link=drive_view_link,
+                    drive_download_link=drive_download_link,
+                    file_name=serializer.validated_data.get('file_name') or getattr(slip_file, 'name', 'payment_slip.jpg'),
+                    file_type='SLIP',
+                    file_size=serializer.validated_data.get('file_size') or getattr(slip_file, 'size', 0)
                 )
 
-                payment_record = None
-                if summary.get('payment_id'):
-                    payment_record = PaymentHistory.objects.filter(id=summary['payment_id']).first()
+            # Sync to Cash Flow Ledger if account was selected and actual_paid > 0
+            ledger_tx = None
+            if account and actual_paid > Decimal('0.00'):
+                from apps.ledger.models import Transaction, TransactionType
 
-                # Link Google Drive or legacy slip attachment to payment record
-                if payment_record and (drive_file_id or slip_file):
-                    ObligationAttachment.objects.create(
-                        user=request.user,
-                        obligation=obligation,
-                        payment_history=payment_record,
-                        file=slip_file if slip_file else None,
-                        drive_file_id=drive_file_id,
-                        drive_view_link=drive_view_link,
-                        drive_download_link=drive_download_link,
-                        file_name=serializer.validated_data.get('file_name') or getattr(slip_file, 'name', 'payment_slip.jpg'),
-                        file_type='SLIP',
-                        file_size=serializer.validated_data.get('file_size') or getattr(slip_file, 'size', 0)
-                    )
-
-                # Sync to Cash Flow Ledger if account was selected
-                ledger_tx = None
-                if account:
-                    from apps.ledger.models import Transaction, TransactionType
-
-                    if obligation.direction == 'INFLOW':
-                        tx_type = TransactionType.INFLOW
-                        if obligation.project_id or (obligation.metadata or {}).get('source_type') == 'MA_CONTRACT':
-                            tx_title = f"MA / Project Income: {obligation.title}"
-                        else:
-                            tx_title = f"Debt Repayment: {obligation.title}"
-                        Account.objects.filter(id=account.id).update(
-                            current_balance=models.F('current_balance') + actual_paid,
-                            updated_at=timezone.now()
-                        )
+                if locked_ob.direction == 'INFLOW':
+                    tx_type = TransactionType.INFLOW
+                    if locked_ob.project_id or (locked_ob.metadata or {}).get('source_type') == 'MA_CONTRACT':
+                        tx_title = f"MA / Project Income: {locked_ob.title}"
                     else:
-                        tx_type = TransactionType.OUTFLOW
-                        tx_title = f"Settlement: {obligation.title}"
-                        Account.objects.filter(id=account.id).update(
-                            current_balance=models.F('current_balance') - actual_paid,
-                            updated_at=timezone.now()
-                        )
-
-                    account.refresh_from_db(fields=['current_balance', 'updated_at'])
-
-                    ledger_tx = Transaction.objects.create(
-                        user=request.user,
-                        account=account,
-                        transaction_type=tx_type,
-                        gross_amount=actual_paid,
-                        net_amount=actual_paid,
-                        title=tx_title,
-                        notes=note or f"Auto-settled from Financial Radar ({obligation.get_type_display()})",
-                        transaction_date=timezone.now().date(),
-                        obligation=obligation,
-                        payment_history=payment_record
+                        tx_title = f"Debt Repayment: {locked_ob.title}"
+                    Account.objects.filter(id=account.id).update(
+                        current_balance=models.F('current_balance') + actual_paid,
+                        updated_at=timezone.now()
+                    )
+                else:
+                    tx_type = TransactionType.OUTFLOW
+                    tx_title = f"Settlement: {locked_ob.title}"
+                    Account.objects.filter(id=account.id).update(
+                        current_balance=models.F('current_balance') - actual_paid,
+                        updated_at=timezone.now()
                     )
 
-                # Sync with linked Split Bill ONLY if obligation is COMPLETED
-                obligation.refresh_from_db()
+                account.refresh_from_db(fields=['current_balance', 'updated_at'])
 
-                # Keep workspace billing mirrors (MA contract / infra asset) in
-                # step with the freshly advanced obligation due date.
-                from apps.workspace.services import sync_billing_dates_from_obligation
-                sync_billing_dates_from_obligation(obligation)
+                ledger_tx = Transaction.objects.create(
+                    user=request.user,
+                    account=account,
+                    transaction_type=tx_type,
+                    gross_amount=actual_paid,
+                    net_amount=actual_paid,
+                    title=tx_title,
+                    notes=note or f"Auto-settled from Financial Radar ({locked_ob.get_type_display()})",
+                    transaction_date=timezone.now().date(),
+                    obligation=locked_ob,
+                    payment_history=payment_record
+                )
 
-                if obligation.status == ObligationStatus.COMPLETED:
-                    unsettled_splits = obligation.origin_split.filter(is_settled=False)
-                    for s in unsettled_splits:
-                        s.is_settled = True
-                        s.settled_at = timezone.now()
-                        s.settlement_transaction = ledger_tx
-                        s.save(update_fields=['is_settled', 'settled_at', 'settlement_transaction'])
+            # Keep workspace billing mirrors in step with freshly advanced obligation
+            from apps.workspace.services import sync_billing_dates_from_obligation
+            sync_billing_dates_from_obligation(locked_ob)
 
+            # Sync with linked Split Bill ONLY if obligation is COMPLETED
+            if locked_ob.status == ObligationStatus.COMPLETED:
+                unsettled_splits = locked_ob.origin_split.filter(is_settled=False)
+                for s in unsettled_splits:
+                    s.is_settled = True
+                    s.settled_at = timezone.now()
+                    s.settlement_transaction = ledger_tx
+                    s.save(update_fields=['is_settled', 'settled_at', 'settlement_transaction'])
+
+            obligation.refresh_from_db()
+        except ValueError as ve:
+            return response.Response({'detail': str(ve)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return response.Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Refresh obligation data to return
-        obligation.refresh_from_db()
         try:
             log_activity(obligation.user, 'FINANCE', 'PAY_BILL', f'Payment of {actual_paid} {obligation.currency} recorded for {obligation.title}', request=request)
         except Exception:
@@ -455,6 +524,98 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
             'obligation': FinancialObligationSerializer(obligation, context={'request': request}).data,
             'summary': summary
         }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get', 'patch'], url_path='cycle-bill')
+    def cycle_bill(self, request, pk=None):
+        """
+        Manage current billing cycle draft for itemized subscription.
+        GET: retrieve current cycle bill details (fixed, dynamic, status, completeness)
+        PATCH: save draft dynamic item amounts without advancing due date or posting to ledger
+        """
+        obligation = self.get_object()
+        if obligation.type != ObligationType.SUBSCRIPTION:
+            return response.Response({'detail': 'Only subscriptions support cycle bills.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        strategy = ObligationStrategyFactory.get_strategy(obligation.type)
+
+        if request.method == 'GET':
+            summary = strategy.get_summary(obligation)
+            current_cycle = summary.get('current_cycle')
+            return response.Response(current_cycle or {})
+
+        elif request.method == 'PATCH':
+            with db_transaction.atomic():
+                locked_ob = FinancialObligation.objects.select_for_update().get(id=obligation.id, user=request.user)
+                meta = locked_ob.metadata or {}
+                if not meta.get('is_itemized'):
+                    return response.Response({'detail': 'Only itemized subscriptions support cycle bill drafts.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                termination = meta.get('termination') or {}
+                if locked_ob.status in (ObligationStatus.CANCELLED, ObligationStatus.COMPLETED) and not termination.get('has_unpaid_final_bill', False):
+                    return response.Response({'detail': 'This subscription is completed or cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                current_cycle = meta.get('current_cycle') or strategy.sync_current_cycle(
+                    meta.get('items', []), None, locked_ob.due_date, meta.get('billing_cycle', 'MONTHLY')
+                )
+
+                if current_cycle and current_cycle.get('status') in ('PAID', 'COMPLETED'):
+                    return response.Response({'detail': 'บิลรอบนี้ชำระเรียบร้อยแล้ว ไม่สามารถแก้ไขได้'}, status=status.HTTP_400_BAD_REQUEST)
+
+                req_cycle_key = request.data.get('cycle_key')
+                expected_cycle_key = current_cycle.get('cycle_key') or strategy.get_cycle_key(locked_ob.due_date, meta.get('billing_cycle', 'MONTHLY'))
+                if req_cycle_key and expected_cycle_key and req_cycle_key != expected_cycle_key:
+                    return response.Response({'detail': f'รอบบิลไม่ถูกต้องหรือบิลรอบ {req_cycle_key} ชำระแล้ว'}, status=status.HTTP_400_BAD_REQUEST)
+
+                items_update = request.data.get('items', [])
+                try:
+                    updated_cycle = strategy.update_cycle_draft(current_cycle, items_update)
+                except ValueError as val_err:
+                    return response.Response({'detail': str(val_err)}, status=status.HTTP_400_BAD_REQUEST)
+
+                meta['current_cycle'] = updated_cycle
+                locked_ob.metadata = meta
+                locked_ob.save(update_fields=['metadata'])
+                return response.Response(updated_cycle, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='terminate')
+    def terminate(self, request, pk=None):
+        """
+        Terminate subscription lifecycle (Immediate or Scheduled End Date).
+        Preserves past history and permits final unpaid bill payment.
+        """
+        with db_transaction.atomic():
+            obligation = FinancialObligation.objects.select_for_update().get(id=self.get_object().id, user=request.user)
+            if obligation.type != ObligationType.SUBSCRIPTION:
+                return response.Response({'detail': 'Only subscriptions can be terminated.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Workspace SSOT protection
+            orig_meta = obligation.metadata or {}
+            orig_source = orig_meta.get('source_type')
+            is_ma = (orig_source == 'MA_CONTRACT') or (hasattr(obligation, 'ma_projects') and obligation.ma_projects.exists())
+            is_infra = (orig_source == 'INFRA_ASSET') or (hasattr(obligation, 'linked_infra_assets') and obligation.linked_infra_assets.exists())
+            if is_ma or is_infra:
+                source_label = "Maintenance Agreement" if is_ma else "Infrastructure Asset"
+                return response.Response({
+                    'detail': f"This obligation is managed by Workspace ({source_label}). Terminate from the corresponding Workspace project or asset."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            mode = request.data.get('mode', 'IMMEDIATE')
+            effective_end_date = request.data.get('effective_end_date')
+
+            strategy = ObligationStrategyFactory.get_strategy(obligation.type)
+            try:
+                summary = strategy.terminate(obligation, mode=mode, effective_end_date=effective_end_date)
+            except ValueError as ve:
+                return response.Response({'detail': str(ve)}, status=status.HTTP_400_BAD_REQUEST)
+
+            obligation.refresh_from_db()
+            log_activity(request.user, 'FINANCE', 'TERMINATE_SUBSCRIPTION', f"Terminated subscription {obligation.title} ({mode})", request=request)
+
+            return response.Response({
+                'message': 'Subscription terminated successfully.',
+                'obligation': FinancialObligationSerializer(obligation, context={'request': request}).data,
+                'summary': summary
+            }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'])
     def payments(self, request, pk=None):

@@ -307,9 +307,52 @@ class TransactionViewSet(viewsets.ModelViewSet):
                     ob.save(update_fields=['metadata', 'status'])
 
                 elif ob.type == ObligationType.SUBSCRIPTION:
+                    update_fields = []
                     if h_meta.get('prev_due_date'):
                         ob.due_date = datetime.date.fromisoformat(h_meta['prev_due_date'])
-                        ob.save(update_fields=['due_date'])
+                        update_fields.append('due_date')
+
+                    # Revert itemized cycle bill draft and status
+                    if h_meta.get('prev_cycle'):
+                        ob_meta = ob.metadata or {}
+                        ob_meta['current_cycle'] = h_meta['prev_cycle']
+                        ob.metadata = ob_meta
+                        if 'metadata' not in update_fields:
+                            update_fields.append('metadata')
+
+                    ob_meta = ob.metadata or {}
+                    current_term = ob_meta.get('termination')
+
+                    if current_term and current_term.get('status') == 'TERMINATED':
+                        # The obligation has an active termination (initiated before or after this payment).
+                        # Reverting this payment re-opens the bill for this cycle as an unpaid final bill!
+                        # Preserve termination and mark has_unpaid_final_bill = True.
+                        current_term['has_unpaid_final_bill'] = True
+                        ob_meta['termination'] = current_term
+                        ob.metadata = ob_meta
+                        ob.status = ObligationStatus.ACTIVE
+                        if 'status' not in update_fields:
+                            update_fields.append('status')
+                        if 'metadata' not in update_fields:
+                            update_fields.append('metadata')
+                    else:
+                        # No subsequent termination exists. Restore historical termination snapshot.
+                        if 'prev_termination' in h_meta:
+                            if h_meta['prev_termination']:
+                                ob_meta['termination'] = h_meta['prev_termination']
+                            else:
+                                ob_meta.pop('termination', None)
+                            ob.metadata = ob_meta
+                            if 'metadata' not in update_fields:
+                                update_fields.append('metadata')
+
+                        if h_meta.get('prev_status'):
+                            ob.status = h_meta['prev_status']
+                            if 'status' not in update_fields:
+                                update_fields.append('status')
+
+                    if update_fields:
+                        ob.save(update_fields=update_fields)
 
             if hist:
                 hist.delete()

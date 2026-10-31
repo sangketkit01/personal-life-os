@@ -258,6 +258,8 @@ class FinancialObligationSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({'billing_day': f"This obligation is managed by Workspace ({source_label}). Edit billing day from the corresponding Workspace project or asset."})
                 if 'billing_cycle' in metadata and str(metadata.get('billing_cycle')).upper() != str(inst_meta.get('billing_cycle', '')).upper():
                     raise serializers.ValidationError({'billing_cycle': f"This obligation is managed by Workspace ({source_label}). Edit billing cycle from the corresponding Workspace project or asset."})
+                if metadata.get('is_itemized'):
+                    raise serializers.ValidationError({'metadata': f"This obligation is managed by Workspace ({source_label}). Itemized breakdown is not supported for Workspace-managed obligations."})
 
             has_payment_history = inst_current_term > 0 or self.instance.payment_histories.exists()
 
@@ -355,6 +357,21 @@ class FinancialObligationSerializer(serializers.ModelSerializer):
         elif not self.instance and obligation_type == ObligationType.DEBT:
             if 'amount' in attrs:
                 metadata['remaining_balance'] = float(Decimal(str(attrs['amount'])))
+
+        if obligation_type == ObligationType.SUBSCRIPTION and metadata.get('is_itemized'):
+            items = metadata.get('items')
+            if items is None:
+                items = metadata.get('line_items', [])
+            fixed_total = Decimal('0.00')
+            for it in (items or []):
+                if isinstance(it, dict) and str(it.get('type', 'FIXED')).upper() == 'FIXED':
+                    try:
+                        fixed_total += Decimal(str(it.get('amount') or '0.00'))
+                    except Exception:
+                        pass
+            attrs['amount'] = fixed_total
+            target_due = attrs.get('due_date') or (self.instance.due_date if self.instance else None)
+            metadata['due_date'] = target_due
 
         if obligation_type:
             try:
@@ -503,9 +520,32 @@ class PayObligationSerializer(serializers.Serializer):
         max_digits=12,
         decimal_places=2,
         required=False,
-        min_value=Decimal('0.01'),
+        min_value=Decimal('0.00'),
         help_text="Payment amount (defaults to regular installment amount if not specified)"
     )
+    cycle_items = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        default=list,
+        help_text="Line items and amounts for itemized subscription cycle draft"
+    )
+    cycle_key = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default='',
+        help_text="Target cycle key being settled (e.g. '2026-10')"
+    )
+
+    def to_internal_value(self, data):
+        if hasattr(data, 'copy'):
+            data = data.copy()
+        if isinstance(data.get('cycle_items'), str):
+            import json
+            try:
+                data['cycle_items'] = json.loads(data['cycle_items'])
+            except Exception:
+                pass
+        return super().to_internal_value(data)
     statement_month = serializers.CharField(
         required=False,
         allow_blank=True,

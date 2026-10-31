@@ -1,5 +1,5 @@
 <template>
-  <div v-if="isOpen && obligation" @click.self="emit('close')" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 font-sans overflow-hidden">
+  <div v-if="isOpen && obligation" @click.self="handleClose" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 font-sans overflow-hidden">
     <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl relative flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-hidden">
       <!-- Fixed Header -->
       <div class="px-5 py-3.5 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
@@ -10,7 +10,7 @@
           <h3 class="text-sm font-semibold text-zinc-100">{{ obligation.title }}</h3>
         </div>
         <button
-          @click="emit('close')"
+          @click="handleClose"
           type="button"
           class="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
         >
@@ -64,8 +64,87 @@
           </div>
         </div>
 
-        <!-- Amount to pay -->
-        <div>
+        <!-- Itemized Subscription Context -->
+        <div v-if="isItemizedSubscription" class="space-y-3">
+          <div class="text-[11px] font-mono text-zinc-400 bg-zinc-900/60 p-2.5 rounded border border-zinc-800 flex items-center justify-between">
+            <span>{{ obligation.title }} · {{ obligation.summary?.billing_cycle || obligation.metadata?.billing_cycle || 'Monthly' }}</span>
+            <span class="text-zinc-300 font-semibold">ครบกำหนด: {{ formatDate(obligation.due_date) }}</span>
+          </div>
+
+          <!-- 1. Fixed Items (Read-only) -->
+          <div v-if="cycleFixedItems.length > 0" class="space-y-1.5 p-3 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
+            <div class="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider mb-1">ราคาคงที่</div>
+            <div v-for="it in cycleFixedItems" :key="it.id" class="flex items-center justify-between text-zinc-300 py-0.5">
+              <span>{{ it.name }}</span>
+              <span class="font-semibold text-zinc-100 font-mono">{{ currencySymbol(obligation.currency) }}{{ Number(it.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) }}</span>
+            </div>
+          </div>
+
+          <!-- 2. Dynamic Items (Per-cycle Inputs) -->
+          <div v-if="cycleDynamicItems.length > 0" class="space-y-2 p-3 rounded-md bg-zinc-900/60 border border-zinc-800 text-xs font-mono">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">กรอกยอดรอบนี้</span>
+              <div class="flex items-center gap-2">
+                <span v-if="draftStatus === 'saving'" class="text-[10px] text-zinc-400 font-mono flex items-center gap-1">
+                  <LoaderCircle class="w-3 h-3 animate-spin text-zinc-400" /> กำลังบันทึก...
+                </span>
+                <span v-else-if="draftStatus === 'saved'" class="text-[10px] text-emerald-400 font-mono">
+                  ✓ บันทึกแบบร่างแล้ว
+                </span>
+                <span v-else-if="draftStatus === 'error'" class="text-[10px] text-rose-400 font-mono" :title="draftError">
+                  ⚠️ บันทึกไม่สำเร็จ
+                </span>
+                <span v-if="itemizedPendingCount > 0" class="text-[10px] text-amber-400 font-medium">
+                  รอกรอก {{ itemizedPendingCount }} รายการ
+                </span>
+                <span v-else class="text-[10px] text-emerald-400 font-medium">
+                  กรอกครบแล้ว
+                </span>
+              </div>
+            </div>
+
+            <div v-for="it in cycleDynamicItems" :key="it.id" class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 py-1 border-b border-zinc-800/40 last:border-b-0">
+              <span class="text-zinc-200 text-xs">{{ it.name }}</span>
+              <div class="relative w-full sm:w-36">
+                <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 font-mono">
+                  {{ currencySymbol(obligation.currency) }}
+                </span>
+                <input
+                  v-model="it.amount"
+                  @input="onDynamicAmountChange(it.id)"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="ยังไม่กรอก"
+                  class="w-full bg-zinc-950 border border-zinc-800 rounded pl-6 pr-2.5 py-1 text-xs text-zinc-100 font-mono text-right focus:border-zinc-600 outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Real-time Summary Card -->
+          <div class="p-3 rounded-md bg-zinc-900/80 border border-zinc-800 flex items-center justify-between text-xs font-mono">
+            <div>
+              <span class="text-[10px] text-zinc-400 uppercase tracking-wider block">
+                {{ itemizedPendingCount === 0 ? 'ยอดชำระทั้งหมด' : 'ยอดที่ทราบ (ส่วนคงที่)' }}
+              </span>
+              <span class="text-base font-bold tabular-nums" :class="itemizedPendingCount === 0 ? 'text-zinc-100' : 'text-amber-400'">
+                {{ currencySymbol(obligation.currency) }}{{ itemizedPendingCount === 0 ? (itemizedTotalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 }) : itemizedFixedTotal.toLocaleString('en-US', { minimumFractionDigits: 2 }) }}
+              </span>
+            </div>
+            <div v-if="itemizedPendingCount > 0" class="text-right text-[10px] text-amber-400 leading-tight">
+              <span>ยังรอกรอกยอดอีก</span><br/>
+              <span class="font-bold">{{ itemizedPendingCount }} รายการ</span>
+            </div>
+            <div v-else class="text-right text-[10px] text-emerald-400 leading-tight">
+              <span>ยอดครบถ้วน</span><br/>
+              <span class="font-bold">พร้อมบันทึกชำระ</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Standard Amount to pay -->
+        <div v-else>
           <label class="block text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-1">
             {{ obligation.direction === 'INFLOW' ? 'Repayment Amount Received' : (obligation.subtype === 'BNPL_ACCOUNT' ? 'Bill Amount to Settle' : (obligation.type === 'DEBT' ? 'Settlement Amount (Partial Allowed)' : 'Payment Amount')) }}
           </label>
@@ -184,17 +263,17 @@
         <div class="flex items-center justify-end gap-2.5 p-4 border-t border-zinc-800/80 shrink-0 bg-zinc-950/90">
           <button
             type="button"
-            @click="emit('close')"
+            @click="handleClose"
             class="px-3.5 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-medium text-zinc-300 transition-all active:scale-[0.98]"
           >
             Cancel
           </button>
           <button
             type="submit"
-            :disabled="isSubmitting || isInsufficientBalance"
+            :disabled="isSubmitting || isInsufficientBalance || (isItemizedSubscription && itemizedPendingCount > 0)"
             class="px-4 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
           >
-            {{ isSubmitting ? 'Posting...' : (obligation.direction === 'INFLOW' ? 'Confirm Receipt' : 'Confirm Payment') }}
+            {{ isSubmitting ? 'Posting...' : submitButtonText }}
           </button>
         </div>
       </form>
@@ -204,16 +283,21 @@
 
 <script setup lang="ts">
 import { currencySymbol } from '../../utils/currency'
-import {
- ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useFinanceStore } from '../../stores/finance'
 import { useLedgerStore } from '../../stores/ledger'
 import { useStorageStore } from '../../stores/storage'
+import { useToastStore } from '../../stores/toast'
 import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { FinancialObligation } from '../../types/finance'
 import {
   AlertTriangle,
- X, Upload, Trash2, HardDrive } from 'lucide-vue-next'
+  X,
+  Upload,
+  Trash2,
+  HardDrive,
+  LoaderCircle
+} from 'lucide-vue-next'
 
 const props = defineProps<{
   isOpen: boolean
@@ -233,6 +317,7 @@ useBodyScrollLock(() => props.isOpen)
 const financeStore = useFinanceStore()
 const ledgerStore = useLedgerStore()
 const storageStore = useStorageStore()
+const toast = useToastStore()
 
 const paidAmount = ref('')
 const selectedAccountId = ref('')
@@ -240,6 +325,146 @@ const note = ref('')
 const selectedFile = ref<File | null>(null)
 const isSubmitting = ref(false)
 const errorMessage = ref('')
+
+const draftStatus = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+const draftError = ref('')
+
+interface CycleItemDraft {
+  id: string
+  name: string
+  type: 'FIXED' | 'DYNAMIC'
+  amount: number | string | null
+}
+
+const isItemizedSubscription = computed(() => {
+  return props.obligation?.type === 'SUBSCRIPTION' && !!props.obligation?.metadata?.is_itemized
+})
+
+const cycleKey = computed(() => {
+  return props.obligation?.summary?.cycle_key ||
+    props.obligation?.summary?.current_cycle?.cycle_key ||
+    props.obligation?.metadata?.current_cycle?.cycle_key ||
+    undefined
+})
+
+const cycleDraftItems = ref<CycleItemDraft[]>([])
+
+const cycleFixedItems = computed(() => {
+  return cycleDraftItems.value.filter(it => it.type === 'FIXED')
+})
+
+const cycleDynamicItems = computed(() => {
+  return cycleDraftItems.value.filter(it => it.type === 'DYNAMIC')
+})
+
+const itemizedFixedTotal = computed(() => {
+  const sum = cycleFixedItems.value.reduce((acc, it) => acc + (Number(it.amount) || 0), 0)
+  return Math.round((sum + Number.EPSILON) * 100) / 100
+})
+
+const itemizedDynamicTotal = computed(() => {
+  const sum = cycleDynamicItems.value.reduce((acc, it) => {
+    if (it.amount === '' || it.amount === null || it.amount === undefined) return acc
+    return acc + Number(it.amount)
+  }, 0)
+  return Math.round((sum + Number.EPSILON) * 100) / 100
+})
+
+const itemizedPendingCount = computed(() => {
+  return cycleDynamicItems.value.filter(it => it.amount === '' || it.amount === null || it.amount === undefined).length
+})
+
+const itemizedTotalAmount = computed(() => {
+  if (itemizedPendingCount.value > 0) return null
+  const total = itemizedFixedTotal.value + itemizedDynamicTotal.value
+  return Math.round((total + Number.EPSILON) * 100) / 100
+})
+
+let draftDebounceTimer: any = null
+
+async function saveDraftNow() {
+  if (!props.obligation || !isItemizedSubscription.value) return
+  draftStatus.value = 'saving'
+  draftError.value = ''
+  try {
+    const itemsPayload = cycleDraftItems.value.map(it => {
+      let amt: number | null = null
+      if (it.amount !== '' && it.amount !== null && it.amount !== undefined) {
+        amt = Math.round((parseFloat(String(it.amount)) + Number.EPSILON) * 100) / 100
+      }
+      return { id: it.id, amount: amt }
+    })
+    await financeStore.saveCycleBillDraft(props.obligation.id, itemsPayload, cycleKey.value)
+    draftStatus.value = 'saved'
+  } catch (err: any) {
+    draftStatus.value = 'error'
+    draftError.value = err.response?.data?.detail || err.message || 'Failed to save draft'
+    toast.error(`ไม่สามารถบันทึกแบบร่างบิลได้: ${draftError.value}`)
+  }
+}
+
+async function flushDraft() {
+  if (draftDebounceTimer) {
+    clearTimeout(draftDebounceTimer)
+    draftDebounceTimer = null
+    await saveDraftNow()
+  }
+}
+
+async function handleClose() {
+  await flushDraft()
+  emit('close')
+}
+
+onBeforeUnmount(() => {
+  if (draftDebounceTimer) {
+    clearTimeout(draftDebounceTimer)
+    draftDebounceTimer = null
+  }
+})
+
+let activeDraftSessionId = 0
+const userEditedItemIds = ref<Set<string>>(new Set())
+
+function onDynamicAmountChange(itemId?: string) {
+  if (itemId) {
+    userEditedItemIds.value.add(itemId)
+  }
+  if (itemizedPendingCount.value === 0 && itemizedTotalAmount.value !== null) {
+    paidAmount.value = itemizedTotalAmount.value.toFixed(2)
+  } else {
+    paidAmount.value = ''
+  }
+
+  draftStatus.value = 'idle'
+  clearTimeout(draftDebounceTimer)
+  draftDebounceTimer = setTimeout(async () => {
+    await saveDraftNow()
+  }, 500)
+}
+
+function formatDate(dateStr?: string | null): string {
+  if (!dateStr) return '-'
+  try {
+    const d = new Date(dateStr)
+    return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
+  } catch {
+    return dateStr
+  }
+}
+
+const submitButtonText = computed(() => {
+  if (props.obligation?.type === 'SUBSCRIPTION') {
+    if (props.obligation.summary?.is_terminated) {
+      return 'ชำระบิลสุดท้าย'
+    }
+    if (isItemizedSubscription.value && Number(paidAmount.value || 0) === 0 && itemizedPendingCount.value === 0) {
+      return 'บันทึกการชำระ (฿0.00)'
+    }
+    return 'บันทึกการชำระ'
+  }
+  return props.obligation?.direction === 'INFLOW' ? 'Confirm Receipt' : 'Confirm Payment'
+})
 
 const selectedAccountInfo = computed(() => {
   return ledgerStore.accounts.find(a => a.id === selectedAccountId.value) || null
@@ -258,22 +483,83 @@ onMounted(() => {
   storageStore.fetchStatus().catch(() => {})
 })
 
-watch(() => [props.obligation, props.initialAmount, props.statementMonth, props.initialNote], () => {
+// When modal opens or target changes, initialize form and fetch freshest draft if itemized
+watch(() => [props.isOpen, props.obligation, props.initialAmount, props.statementMonth, props.initialNote], async ([isOpen, ob]) => {
+  if (!isOpen) {
+    activeDraftSessionId++
+    userEditedItemIds.value.clear()
+    return
+  }
+
+  const sessionId = ++activeDraftSessionId
+  userEditedItemIds.value.clear()
   errorMessage.value = ''
   note.value = props.initialNote || ''
   selectedAccountId.value = ''
   selectedFile.value = null
-  const ob = props.obligation
+
   if (!ob) return
 
-  if (props.initialAmount !== undefined && props.initialAmount !== '') {
+  if (isItemizedSubscription.value) {
+    const rawCycle = (ob as any).summary?.current_cycle || (ob as any).metadata?.current_cycle
+    const rawItems = (rawCycle && Array.isArray(rawCycle.items))
+      ? rawCycle.items
+      : (((ob as any).metadata?.items && Array.isArray((ob as any).metadata.items)) ? (ob as any).metadata.items : [])
+    cycleDraftItems.value = rawItems.map((it: any) => ({
+      id: it.id,
+      name: it.name,
+      type: it.type || 'FIXED',
+      amount: (it.amount !== null && it.amount !== undefined) ? String(it.amount) : ''
+    }))
+    if (itemizedPendingCount.value === 0 && itemizedTotalAmount.value !== null) {
+      paidAmount.value = itemizedTotalAmount.value.toFixed(2)
+    } else {
+      paidAmount.value = ''
+    }
+
+    const targetObId = (ob as any).id
+    const targetCk = cycleKey.value
+    try {
+      const res = await financeStore.fetchCycleBill(targetObId)
+      // Guard against stale responses: modal closed, obligation switched, or session changed
+      if (!props.isOpen || activeDraftSessionId !== sessionId || props.obligation?.id !== targetObId) {
+        return
+      }
+      // Guard against mismatched cycle: verify cycle_key still matches the current active cycle
+      if (res && res.cycle_key && targetCk && res.cycle_key !== targetCk) {
+        return
+      }
+      if (res && Array.isArray(res.items)) {
+        // Merge without overwriting values that the user has already typed or cleared during load
+        cycleDraftItems.value = res.items.map((it: any) => {
+          const currentItem = cycleDraftItems.value.find(c => c.id === it.id)
+          if (userEditedItemIds.value.has(it.id) && currentItem) {
+            return currentItem
+          }
+          return {
+            id: it.id,
+            name: it.name,
+            type: it.type || 'FIXED',
+            amount: (it.amount !== null && it.amount !== undefined) ? String(it.amount) : ''
+          }
+        })
+        if (itemizedPendingCount.value === 0 && itemizedTotalAmount.value !== null) {
+          paidAmount.value = itemizedTotalAmount.value.toFixed(2)
+        } else {
+          paidAmount.value = ''
+        }
+      }
+    } catch {
+      // Retain initialized values
+    }
+  } else if (props.initialAmount !== undefined && props.initialAmount !== '') {
     paidAmount.value = String(props.initialAmount)
-  } else if (ob.direction === 'INFLOW' || ob.type === 'DEBT') {
-    paidAmount.value = String(ob.summary?.remaining_balance || ob.amount)
-  } else if (ob.subtype === 'BNPL_ACCOUNT') {
-    paidAmount.value = String(ob.summary?.current_bill_amount || ob.amount)
+  } else if ((ob as any).direction === 'INFLOW' || (ob as any).type === 'DEBT') {
+    paidAmount.value = String((ob as any).summary?.remaining_balance || (ob as any).amount)
+  } else if ((ob as any).subtype === 'BNPL_ACCOUNT') {
+    paidAmount.value = String((ob as any).summary?.current_bill_amount || (ob as any).amount)
   } else {
-    paidAmount.value = String(ob.amount)
+    paidAmount.value = String((ob as any).amount)
   }
 }, { immediate: true })
 
@@ -288,6 +574,11 @@ async function handlePay() {
   if (!props.obligation) return
   errorMessage.value = ''
   isSubmitting.value = true
+
+  // Ensure any pending debounce timer is cleared so it won't fire after payment!
+  clearTimeout(draftDebounceTimer)
+  draftDebounceTimer = null
+
   try {
     let driveFileId = ''
     let driveViewLink = ''
@@ -305,8 +596,17 @@ async function handlePay() {
       fileSize = uploaded.file_size
     }
 
+    const finalAmount = Math.round((parseFloat(paidAmount.value || '0') + Number.EPSILON) * 100) / 100
+    const cycleItemsPayload = isItemizedSubscription.value ? cycleDraftItems.value.map(it => {
+      let amt: number | null = null
+      if (it.amount !== '' && it.amount !== null && it.amount !== undefined) {
+        amt = Math.round((parseFloat(String(it.amount)) + Number.EPSILON) * 100) / 100
+      }
+      return { id: it.id, amount: amt }
+    }) : undefined
+
     await financeStore.payObligation(props.obligation.id, {
-      paid_amount: parseFloat(paidAmount.value),
+      paid_amount: finalAmount,
       statement_month: props.statementMonth || undefined,
       note: note.value,
       drive_file_id: driveFileId || undefined,
@@ -314,7 +614,9 @@ async function handlePay() {
       drive_download_link: driveDownloadLink || undefined,
       file_name: fileName || undefined,
       file_size: fileSize || undefined,
-      account_id: selectedAccountId.value || undefined
+      account_id: selectedAccountId.value || undefined,
+      cycle_key: cycleKey.value,
+      cycle_items: cycleItemsPayload
     })
     if (selectedAccountId.value) {
       ledgerStore.fetchAccounts().catch(() => {})

@@ -481,6 +481,138 @@
               </div>
             </div>
 
+            <!-- Subscription Expense Structure Mode Switcher -->
+            <div v-if="obligation.type === 'SUBSCRIPTION' && !isWorkspaceMirroredObligation" class="pt-2 border-t border-zinc-800/80 space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] text-zinc-400 font-semibold uppercase tracking-wider">โครงสร้างราคา / Expense Structure</span>
+                <div class="inline-flex rounded-lg border border-zinc-800 bg-zinc-900/80 p-0.5 text-xs font-mono">
+                  <button
+                    type="button"
+                    @click="setSubPricingMode(false)"
+                    class="px-2 py-0.5 rounded transition-colors text-[10px]"
+                    :class="!isItemizedSub ? 'bg-zinc-800 text-zinc-100 font-medium shadow-sm' : 'text-zinc-400 hover:text-zinc-200'"
+                  >
+                    ยอดเดียว
+                  </button>
+                  <button
+                    type="button"
+                    @click="setSubPricingMode(true)"
+                    class="px-2 py-0.5 rounded transition-colors text-[10px]"
+                    :class="isItemizedSub ? 'bg-zinc-800 text-zinc-100 font-medium shadow-sm' : 'text-zinc-400 hover:text-zinc-200'"
+                  >
+                    แยกรายการ
+                  </button>
+                </div>
+              </div>
+
+              <!-- Itemized Breakdown Editor -->
+              <div v-if="isItemizedSub" class="space-y-3.5 p-3 rounded bg-zinc-950/70 border border-zinc-800/80">
+                <!-- 1. Fixed Items -->
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[10px] font-semibold text-zinc-300 uppercase">ราคาคงที่</span>
+                    <span class="text-[9px] text-zinc-500">ระบุราคาล่วงหน้า</span>
+                  </div>
+
+                  <div v-if="subFixedItems.length === 0" class="text-[10px] text-zinc-500 italic">
+                    ไม่มีรายการราคาคงที่
+                  </div>
+
+                  <div v-for="(it, idx) in subFixedItems" :key="it.id" class="flex items-center gap-2">
+                    <input
+                      v-model="it.name"
+                      type="text"
+                      placeholder="ชื่อรายการ"
+                      class="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1 text-xs text-zinc-100"
+                    />
+                    <div class="relative w-28">
+                      <span class="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500">
+                        {{ form.currency === 'USD' ? '$' : '฿' }}
+                      </span>
+                      <input
+                        v-model.number="it.amount"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        class="w-full bg-zinc-900 border border-zinc-800 rounded pl-5 pr-2 py-1 text-xs text-zinc-100 font-mono text-right"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      @click="removeSubFixedItem(idx)"
+                      class="p-1 rounded text-zinc-500 hover:text-rose-400 hover:bg-zinc-800/80 transition-colors"
+                      title="ลบรายการ"
+                    >
+                      <Trash2 class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    @click="addSubFixedItem"
+                    class="text-[10px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors pt-0.5"
+                  >
+                    <Plus class="w-3 h-3" />
+                    <span>+ เพิ่มรายการราคาคงที่</span>
+                  </button>
+                </div>
+
+                <div class="border-t border-zinc-800/60"></div>
+
+                <!-- 2. Dynamic Items -->
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[10px] font-semibold text-zinc-300 uppercase">กรอกยอดแต่ละรอบ</span>
+                    <span class="text-[9px] text-zinc-500">กรอกราคาตอนชำระ</span>
+                  </div>
+
+                  <div v-if="subDynamicItems.length === 0" class="text-[10px] text-zinc-500 italic">
+                    ไม่มีรายการที่ต้องกรอกยอดแต่ละรอบ
+                  </div>
+
+                  <div v-for="(it, idx) in subDynamicItems" :key="it.id" class="flex items-center gap-2">
+                    <input
+                      v-model="it.name"
+                      type="text"
+                      placeholder="ชื่อรายการ"
+                      class="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1 text-xs text-zinc-100"
+                    />
+                    <span class="text-[10px] text-zinc-500 px-2 py-0.5 bg-zinc-900 rounded border border-zinc-800/60 whitespace-nowrap">
+                      กรอกตอนชำระ
+                    </span>
+                    <button
+                      type="button"
+                      @click="removeSubDynamicItem(idx)"
+                      class="p-1 rounded text-zinc-500 hover:text-rose-400 hover:bg-zinc-800/80 transition-colors"
+                      title="ลบรายการ"
+                    >
+                      <Trash2 class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    @click="addSubDynamicItem"
+                    class="text-[10px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors pt-0.5"
+                  >
+                    <Plus class="w-3 h-3" />
+                    <span>+ เพิ่มรายการที่กรอกยอดแต่ละรอบ</span>
+                  </button>
+                </div>
+
+                <!-- 3. Summary -->
+                <div class="p-2 rounded bg-zinc-900/80 border border-zinc-800/80 flex items-center justify-between text-[10px]">
+                  <span class="text-zinc-300">
+                    รวมราคาคงที่: <strong class="text-zinc-100 font-mono">{{ form.currency === 'USD' ? '$' : '฿' }}{{ itemizedFixedTotal.toFixed(2) }}</strong>
+                  </span>
+                  <span class="text-zinc-400">
+                    มี <strong class="text-amber-400">{{ subDynamicItems.length }}</strong> รายการที่กรอกยอดตอนชำระ
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <div>
               <label class="block text-[10px] text-zinc-500 mb-1">Website / Direct URL</label>
               <input
@@ -642,7 +774,7 @@ import { ref, computed, watch } from 'vue'
 import { useFinanceStore } from '../../stores/finance'
 import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import type { FinancialObligation } from '../../types/finance'
-import { X } from 'lucide-vue-next'
+import { X, Plus, Trash2 } from 'lucide-vue-next'
 
 const props = defineProps<{
   isOpen: boolean
@@ -726,6 +858,72 @@ const debtLockReason = computed(() => {
   return 'Principal is locked because payment history already exists.'
 })
 
+interface LineItemDraft {
+  id: string
+  name: string
+  type: 'FIXED' | 'DYNAMIC'
+  amount: number | null
+}
+
+const isItemizedSub = ref(false)
+const subFixedItems = ref<LineItemDraft[]>([])
+const subDynamicItems = ref<LineItemDraft[]>([])
+
+function setSubPricingMode(itemized: boolean) {
+  if (itemized === isItemizedSub.value) return
+  if (!itemized && (subFixedItems.value.length > 0 || subDynamicItems.value.length > 0)) {
+    if (!confirm('สลับเป็นแบบยอดเดียว? รายการย่อยที่กรอกไว้จะถูกซ่อน')) {
+      return
+    }
+  }
+  isItemizedSub.value = itemized
+  if (itemized && subFixedItems.value.length === 0 && subDynamicItems.value.length === 0) {
+    subFixedItems.value.push({
+      id: crypto.randomUUID(),
+      name: form.value.metadata?.plan_name || form.value.title || 'ค่าบริการหลัก',
+      type: 'FIXED',
+      amount: Number(form.value.amount || 0)
+    })
+  }
+}
+
+function addSubFixedItem() {
+  subFixedItems.value.push({
+    id: crypto.randomUUID(),
+    name: '',
+    type: 'FIXED',
+    amount: null
+  })
+}
+
+function removeSubFixedItem(idx: number) {
+  subFixedItems.value.splice(idx, 1)
+}
+
+function addSubDynamicItem() {
+  subDynamicItems.value.push({
+    id: crypto.randomUUID(),
+    name: '',
+    type: 'DYNAMIC',
+    amount: null
+  })
+}
+
+function removeSubDynamicItem(idx: number) {
+  subDynamicItems.value.splice(idx, 1)
+}
+
+const itemizedFixedTotal = computed(() => {
+  const sum = subFixedItems.value.reduce((acc, it) => acc + (Number(it.amount) || 0), 0)
+  return Math.round((sum + Number.EPSILON) * 100) / 100
+})
+
+watch(itemizedFixedTotal, (newTot) => {
+  if (isItemizedSub.value && props.obligation?.type === 'SUBSCRIPTION') {
+    form.value.amount = String(newTot)
+  }
+})
+
 const isOrderDateLocked = computed(() => {
   if (!isBNPLOrder.value) return false
   const currentTerm = Number(props.obligation?.metadata?.current_term || 0)
@@ -735,10 +933,14 @@ const isOrderDateLocked = computed(() => {
 
 const isFinancialAmountLocked = computed(() => {
   if (!props.obligation) return false
+  if (isItemizedSub.value && props.obligation.type === 'SUBSCRIPTION') return true
   return isBNPLOrder.value || isDebtWithPaymentsOrSplit.value || isWorkspaceMirroredObligation.value
 })
 
 const financialAmountLockReason = computed(() => {
+  if (isItemizedSub.value && props.obligation?.type === 'SUBSCRIPTION') {
+    return 'คำนวณอัตโนมัติจากรายการราคาคงที่'
+  }
   if (isWorkspaceMirroredObligation.value) {
     return `Managed by Workspace (${isMA.value ? 'Maintenance Agreement' : 'Infrastructure Asset'}). Read-only.`
   }
@@ -804,6 +1006,30 @@ function initForm(ob: FinancialObligation | null) {
       interest_rate_pa: meta.interest_rate_pa ?? 0
     }
   }
+
+  if (ob.type === 'SUBSCRIPTION') {
+    isItemizedSub.value = !!meta.is_itemized
+    const rawItems = (meta.items && Array.isArray(meta.items)) ? meta.items : []
+    subFixedItems.value = rawItems.filter((it: any) => it.type === 'FIXED').map((it: any) => ({
+      id: it.id || crypto.randomUUID(),
+      name: it.name || '',
+      type: 'FIXED',
+      amount: it.amount !== null && it.amount !== undefined ? Number(it.amount) : null
+    }))
+    subDynamicItems.value = rawItems.filter((it: any) => it.type === 'DYNAMIC').map((it: any) => ({
+      id: it.id || crypto.randomUUID(),
+      name: it.name || '',
+      type: 'DYNAMIC',
+      amount: null
+    }))
+    if (isItemizedSub.value) {
+      form.value.amount = String(itemizedFixedTotal.value)
+    }
+  } else {
+    isItemizedSub.value = false
+    subFixedItems.value = []
+    subDynamicItems.value = []
+  }
 }
 
 watch(
@@ -848,10 +1074,56 @@ async function handleSubmit() {
       delete updatedMeta.is_settled
     }
 
-    if (props.obligation.type === 'FREE_TRIAL' || props.obligation.type === 'SUBSCRIPTION') {
+    if (props.obligation.type === 'FREE_TRIAL') {
       const pm = (form.value.metadata.payment_method || '').trim()
       updatedMeta.payment_method = pm
       updatedMeta.linked_card = pm
+    } else if (props.obligation.type === 'SUBSCRIPTION') {
+      const pm = (form.value.metadata.payment_method || '').trim()
+      updatedMeta.payment_method = pm
+      updatedMeta.linked_card = pm
+
+      if (!isWorkspaceMirroredObligation.value) {
+        updatedMeta.is_itemized = isItemizedSub.value
+        if (isItemizedSub.value) {
+          const totalCount = subFixedItems.value.length + subDynamicItems.value.length
+          if (totalCount === 0) {
+            errorMessage.value = 'กรุณาเพิ่มรายการค่าใช้จ่ายอย่างน้อย 1 รายการ'
+            isSubmitting.value = false
+            return
+          }
+          for (const it of [...subFixedItems.value, ...subDynamicItems.value]) {
+            if (!it.name.trim()) {
+              errorMessage.value = 'กรุณาระบุชื่อรายการให้ครบทุกรายการ'
+              isSubmitting.value = false
+              return
+            }
+          }
+          for (const it of subFixedItems.value) {
+            if (it.amount === null || it.amount === undefined || String(it.amount).trim() === '' || isNaN(Number(it.amount))) {
+              errorMessage.value = `กรุณาระบุราคาสำหรับรายการ '${it.name || 'คงที่'}' (ห้ามเว้นว่าง)`
+              isSubmitting.value = false
+              return
+            }
+            const num = Number(it.amount)
+            if (!isFinite(num) || num < 0) {
+              errorMessage.value = `ราคาสำหรับรายการ '${it.name}' ต้องเป็นตัวเลขที่ถูกต้องและไม่ติดลบ`
+              isSubmitting.value = false
+              return
+            }
+          }
+          updatedMeta.items = [
+            ...subFixedItems.value.map(it => ({
+              id: it.id,
+              name: it.name.trim(),
+              type: 'FIXED',
+              amount: Math.round((Number(it.amount) + Number.EPSILON) * 100) / 100
+            })),
+            ...subDynamicItems.value.map(it => ({ id: it.id, name: it.name.trim(), type: 'DYNAMIC', amount: null }))
+          ]
+          form.value.amount = String(itemizedFixedTotal.value)
+        }
+      }
     }
 
     // Clean optional fields to ensure empty strings or nulls are properly sanitized

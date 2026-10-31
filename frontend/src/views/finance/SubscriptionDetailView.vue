@@ -26,6 +26,14 @@
             {{ subscription.metadata.plan_name }}
           </span>
           <span
+            v-if="subscription?.summary?.is_terminated || subscription?.metadata?.termination?.status === 'TERMINATED'"
+            class="text-[10px] font-mono px-2 py-0.5 rounded border font-semibold"
+            :class="subscription.status === 'ACTIVE' ? 'border-amber-800/60 text-amber-400 bg-amber-950/40' : 'border-zinc-700 text-zinc-500 bg-zinc-900'"
+          >
+            {{ subscription?.summary?.termination_label || (subscription?.status === 'ACTIVE' ? 'สิ้นสุดแล้ว · มีบิลค้าง' : 'สิ้นสุดแล้ว') }}
+          </span>
+          <span
+            v-else
             class="text-[10px] font-mono uppercase px-2 py-0.5 rounded border font-semibold"
             :class="getStatusBadgeClass(subscription?.status)"
           >
@@ -85,10 +93,26 @@
           v-if="subscription?.status === 'ACTIVE'"
           @click="showPayModal = true"
           type="button"
-          class="px-3.5 py-1.5 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+          class="px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
+          :class="subscription?.summary?.is_terminated
+            ? 'bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold'
+            : (subscription?.metadata?.is_itemized && (subscription?.summary?.pending_dynamic_count ?? 0) > 0
+              ? 'bg-zinc-100 hover:bg-white text-zinc-950 border border-amber-300/40'
+              : 'bg-zinc-100 hover:bg-white text-zinc-950')"
         >
-          <Receipt class="w-3.5 h-3.5 text-zinc-950" />
-          <span>Record Renewal</span>
+          <Receipt class="w-3.5 h-3.5" />
+          <span>{{ payButtonLabel }}</span>
+        </button>
+
+        <!-- Terminate Subscription -->
+        <button
+          v-if="subscription?.type === 'SUBSCRIPTION' && subscription?.status === 'ACTIVE' && !subscription?.summary?.is_terminated && !isWorkspace"
+          @click="showTerminateModal = true"
+          type="button"
+          class="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-amber-900/50 text-amber-400 hover:text-amber-300 text-xs font-medium transition-colors flex items-center gap-1.5"
+        >
+          <XCircle class="w-3.5 h-3.5" />
+          <span>ยุติรายการประจำ</span>
         </button>
 
         <!-- Edit Subscription / Free Trial -->
@@ -172,7 +196,9 @@
       <!-- 1. Next Renewal / Due Date -->
       <div class="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800/80">
         <div class="flex items-center justify-between">
-          <span class="text-[10px] font-mono uppercase text-zinc-500">Next Billing Date</span>
+          <span class="text-[10px] font-mono uppercase text-zinc-500">
+            {{ subscription?.summary?.is_terminated ? 'Final Billing Date' : 'Next Billing Date' }}
+          </span>
           <div class="w-7 h-7 rounded-lg bg-zinc-800/60 border border-zinc-700/60 text-zinc-400 flex items-center justify-center">
             <Calendar class="w-3.5 h-3.5" />
           </div>
@@ -180,8 +206,8 @@
         <div class="text-xl font-bold font-mono text-zinc-100 mt-2">
           {{ formatDate(subscription?.due_date) || `Day ${subscription?.billing_day || '-'}` }}
         </div>
-        <p class="text-[11px] font-mono mt-1" :class="daysRemaining !== null && daysRemaining <= 3 ? 'text-rose-400' : 'text-zinc-500'">
-          {{ daysRemaining !== null ? (daysRemaining < 0 ? `${Math.abs(daysRemaining)} days ago` : `${daysRemaining} days remaining`) : 'Not scheduled' }}
+        <p class="text-[11px] font-mono mt-1" :class="subscription?.summary?.is_terminated ? 'text-amber-400' : (daysRemaining !== null && daysRemaining <= 3 ? 'text-rose-400' : 'text-zinc-500')">
+          {{ subscription?.summary?.is_terminated ? 'สิ้นสุดสัญญาแล้ว (บิลสุดท้าย)' : (daysRemaining !== null ? (daysRemaining < 0 ? `${Math.abs(daysRemaining)} days ago` : `${daysRemaining} days remaining`) : 'Not scheduled') }}
         </p>
       </div>
 
@@ -196,9 +222,20 @@
           </div>
         </div>
         <div class="text-xl font-bold font-mono text-zinc-100 mt-2">
-          {{ subscriptionCurrencySymbol }}{{ formatNumber(subscription?.amount) }}
+          <template v-if="subscription?.summary?.is_pure_dynamic && (subscription?.summary?.pending_dynamic_count ?? 0) > 0">
+            <span class="text-amber-400 text-base">รอกรอก {{ subscription.summary.pending_dynamic_count }} รายการ</span>
+          </template>
+          <template v-else-if="subscription?.metadata?.is_itemized && (subscription?.summary?.pending_dynamic_count ?? 0) > 0">
+            <span>{{ subscriptionCurrencySymbol }}{{ formatNumber(subscription?.summary?.fixed_total ?? subscription?.amount) }}</span>
+          </template>
+          <template v-else>
+            {{ subscriptionCurrencySymbol }}{{ formatNumber(subscription?.summary?.total_bill_amount ?? subscription?.amount) }}
+          </template>
         </div>
-        <p class="text-[11px] text-zinc-500 mt-1 font-mono uppercase">
+        <p v-if="subscription?.metadata?.is_itemized && (subscription?.summary?.pending_dynamic_count ?? 0) > 0" class="text-[10px] text-amber-400 mt-1 font-mono leading-tight">
+          + รอกรอก {{ subscription.summary?.pending_dynamic_count }} รายการ
+        </p>
+        <p v-else class="text-[11px] text-zinc-500 mt-1 font-mono uppercase">
           Billed {{ subscription?.metadata?.billing_cycle || 'Monthly' }}
         </p>
       </div>
@@ -212,9 +249,17 @@
           </div>
         </div>
         <div class="text-xl font-bold font-mono text-zinc-200 mt-2">
-          {{ subscriptionCurrencySymbol }}{{ formatNumber(monthlyEquivalent) }}
+          <span v-if="subscription?.summary?.is_pure_dynamic && (subscription?.summary?.pending_dynamic_count ?? 0) > 0" class="text-amber-400 text-base font-medium">
+            ยังไม่ทราบยอด
+          </span>
+          <span v-else>
+            {{ subscriptionCurrencySymbol }}{{ formatNumber(monthlyEquivalent) }}
+          </span>
         </div>
-        <p class="text-[11px] text-zinc-500 mt-1 font-mono">
+        <p v-if="subscription?.metadata?.is_itemized && (subscription?.summary?.pending_dynamic_count ?? 0) > 0" class="text-[10px] text-amber-400 mt-1 font-mono leading-tight">
+          * คิดจากส่วนคงที่ (ยังไม่รวมรายการรอกรอก)
+        </p>
+        <p v-else class="text-[11px] text-zinc-500 mt-1 font-mono">
           Monthly normalized cost
         </p>
       </div>
@@ -228,11 +273,169 @@
           </div>
         </div>
         <div class="text-xl font-bold font-mono text-zinc-100 mt-2">
-          {{ subscriptionCurrencySymbol }}{{ formatNumber(monthlyEquivalent * 12) }}
+          <span v-if="subscription?.summary?.is_pure_dynamic && (subscription?.summary?.pending_dynamic_count ?? 0) > 0" class="text-amber-400 text-base font-medium">
+            ยังไม่ทราบยอด
+          </span>
+          <span v-else>
+            {{ subscriptionCurrencySymbol }}{{ formatNumber(monthlyEquivalent * 12) }}
+          </span>
         </div>
-        <p class="text-[11px] text-zinc-500 mt-1 font-mono">
+        <p v-if="subscription?.metadata?.is_itemized && (subscription?.summary?.pending_dynamic_count ?? 0) > 0" class="text-[10px] text-amber-400 mt-1 font-mono leading-tight">
+          * ไม่รวมรายการที่ต้องกรอกยอดแต่ละรอบ
+        </p>
+        <p v-else class="text-[11px] text-zinc-500 mt-1 font-mono">
           Projected 12-month spend
         </p>
+      </div>
+    </div>
+
+    <!-- Itemized Breakdown Card (If is_itemized) -->
+    <div v-if="subscription?.metadata?.is_itemized" class="rounded-xl bg-zinc-900/30 border border-zinc-800/80 p-5 space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-zinc-800/80 gap-3">
+        <div class="flex items-center gap-2">
+          <Layers class="w-4 h-4 text-zinc-400" />
+          <h2 class="text-xs font-semibold text-zinc-200 uppercase tracking-wider font-mono">
+            รายการค่าใช้จ่าย (Line Items Breakdown)
+          </h2>
+        </div>
+
+        <!-- Tabs switcher -->
+        <div class="flex items-center bg-zinc-950 p-0.5 rounded-lg border border-zinc-800 text-[11px] font-mono">
+          <button
+            type="button"
+            @click="itemizedViewTab = 'current'"
+            class="px-2.5 py-1 rounded transition-colors"
+            :class="itemizedViewTab === 'current' ? 'bg-zinc-800 text-zinc-100 font-semibold shadow-sm' : 'text-zinc-400 hover:text-zinc-200'"
+          >
+            บิลรอบปัจจุบัน (Current Cycle Draft)
+          </button>
+          <button
+            type="button"
+            @click="itemizedViewTab = 'plan'"
+            class="px-2.5 py-1 rounded transition-colors"
+            :class="itemizedViewTab === 'plan' ? 'bg-zinc-800 text-zinc-100 font-semibold shadow-sm' : 'text-zinc-400 hover:text-zinc-200'"
+          >
+            รายการแผน (Plan Spec)
+          </button>
+        </div>
+      </div>
+
+      <!-- Tab 1: Current Billing Cycle Draft -->
+      <div v-if="itemizedViewTab === 'current'" class="space-y-4">
+        <div class="flex items-center justify-between text-xs font-mono text-zinc-400">
+          <span>รอบบิล: <strong class="text-zinc-200">{{ subscription?.summary?.current_cycle_key || subscription?.metadata?.current_cycle?.cycle_key || 'Current Cycle' }}</strong></span>
+          <span v-if="(subscription?.summary?.pending_dynamic_count ?? 0) > 0" class="text-amber-400">
+            รอกรอก {{ subscription.summary?.pending_dynamic_count }} รายการ
+          </span>
+          <span v-else class="text-emerald-400">
+            กรอกยอดครบถ้วนแล้ว
+          </span>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs font-mono">
+            <thead>
+              <tr class="border-b border-zinc-800/80 bg-zinc-950/40 text-[10px] text-zinc-500 uppercase">
+                <th class="py-2 px-3 font-semibold">ชื่อรายการ</th>
+                <th class="py-2 px-3 font-semibold">ชนิด</th>
+                <th class="py-2 px-3 font-semibold text-right">ยอดรอบนี้</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-zinc-800/50">
+              <tr
+                v-for="item in currentCycleItems"
+                :key="item.id"
+                class="hover:bg-zinc-900/50 transition-colors"
+              >
+                <td class="py-2.5 px-3 text-zinc-200 font-medium">
+                  {{ item.name }}
+                </td>
+                <td class="py-2.5 px-3">
+                  <span
+                    class="text-[9px] font-mono px-1.5 py-0.5 rounded border"
+                    :class="item.type === 'DYNAMIC' ? 'border-amber-900/60 text-amber-400 bg-amber-950/30' : 'border-zinc-800 text-zinc-400 bg-zinc-900'"
+                  >
+                    {{ item.type === 'DYNAMIC' ? 'DYNAMIC (แปรผัน)' : 'FIXED (คงที่)' }}
+                  </span>
+                </td>
+                <td class="py-2.5 px-3 text-right tabular-nums">
+                  <template v-if="item.type === 'DYNAMIC' && (item.amount === null || item.amount === undefined || item.amount === '')">
+                    <span class="text-amber-400 font-mono text-[11px]">รอกรอก</span>
+                  </template>
+                  <template v-else>
+                    <span class="text-zinc-100 font-mono">{{ subscriptionCurrencySymbol }}{{ formatNumber(item.amount) }}</span>
+                  </template>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Summary footer -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-zinc-950/60 rounded-lg border border-zinc-800/80 text-xs font-mono">
+          <div>
+            <span class="text-[10px] text-zinc-500 block">ยอดรวมคงที่ (Fixed Total)</span>
+            <span class="text-zinc-200 font-semibold">{{ subscriptionCurrencySymbol }}{{ formatNumber(subscription?.summary?.fixed_total ?? 0) }}</span>
+          </div>
+          <div>
+            <span class="text-[10px] text-zinc-500 block">ยอดรวมแปรผัน (Dynamic Total)</span>
+            <span class="text-zinc-200 font-semibold">
+              {{ (subscription?.summary?.current_cycle?.dynamic_total !== null && subscription?.summary?.current_cycle?.dynamic_total !== undefined)
+                ? `${subscriptionCurrencySymbol}${formatNumber(subscription?.summary?.current_cycle?.dynamic_total)}`
+                : ((subscription?.summary?.dynamic_total !== null && subscription?.summary?.dynamic_total !== undefined)
+                  ? `${subscriptionCurrencySymbol}${formatNumber(subscription?.summary?.dynamic_total)}`
+                  : 'ยังไม่ครบ') }}
+            </span>
+          </div>
+          <div>
+            <span class="text-[10px] text-zinc-500 block">ยอดรวมทั้งบิล (Total Bill)</span>
+            <span class="font-bold" :class="(subscription?.summary?.pending_dynamic_count ?? 0) > 0 ? 'text-amber-400' : 'text-emerald-400'">
+              {{ (subscription?.summary?.pending_dynamic_count ?? 0) > 0 ? 'รอระบุยอดแปรผัน' : `${subscriptionCurrencySymbol}${formatNumber(subscription?.summary?.total_bill_amount ?? 0)}` }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Plan Specification -->
+      <div v-else class="space-y-4">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs font-mono">
+            <thead>
+              <tr class="border-b border-zinc-800/80 bg-zinc-950/40 text-[10px] text-zinc-500 uppercase">
+                <th class="py-2 px-3 font-semibold">ชื่อรายการในแผน</th>
+                <th class="py-2 px-3 font-semibold">ประเภท</th>
+                <th class="py-2 px-3 font-semibold text-right">ยอดในแผน</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-zinc-800/50">
+              <tr
+                v-for="item in planLineItems"
+                :key="item.id"
+                class="hover:bg-zinc-900/50 transition-colors"
+              >
+                <td class="py-2.5 px-3 text-zinc-200 font-medium">
+                  {{ item.name }}
+                </td>
+                <td class="py-2.5 px-3">
+                  <span
+                    class="text-[9px] font-mono px-1.5 py-0.5 rounded border"
+                    :class="item.type === 'DYNAMIC' ? 'border-amber-900/60 text-amber-400 bg-amber-950/30' : 'border-zinc-800 text-zinc-400 bg-zinc-900'"
+                  >
+                    {{ item.type === 'DYNAMIC' ? 'DYNAMIC (กรอกแต่ละรอบ)' : 'FIXED (ยอดคงที่)' }}
+                  </span>
+                </td>
+                <td class="py-2.5 px-3 text-right tabular-nums">
+                  <span v-if="item.type === 'DYNAMIC'" class="text-zinc-500 italic text-[11px]">กรอกตามบิลจริง</span>
+                  <span v-else class="text-zinc-100">{{ subscriptionCurrencySymbol }}{{ formatNumber(item.amount) }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="p-3 bg-zinc-950/60 rounded-lg border border-zinc-800/80 flex items-center justify-between text-xs font-mono">
+          <span class="text-zinc-400">ยอดคงที่รวมในสัญญา (Base Fixed Total):</span>
+          <span class="text-zinc-100 font-bold">{{ subscriptionCurrencySymbol }}{{ formatNumber(subscription?.summary?.fixed_total ?? subscription?.amount) }}</span>
+        </div>
       </div>
     </div>
 
@@ -322,27 +525,66 @@
                   <th class="py-2.5 px-4 font-semibold">Payment Date</th>
                   <th class="py-2.5 px-4 font-semibold text-right">Amount Paid</th>
                   <th class="py-2.5 px-4 font-semibold">Note / Remarks</th>
+                  <th class="py-2.5 px-4 font-semibold text-right">Details</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-zinc-800/50">
-                <tr
-                  v-for="p in paymentHistories"
-                  :key="p.id"
-                  class="hover:bg-zinc-900/50 transition-colors"
-                >
-                  <td class="py-3 px-4 text-zinc-300">
-                    {{ formatDate(p.paid_at) }}
-                  </td>
-                  <td class="py-3 px-4 text-right font-semibold text-emerald-400 tabular-nums">
-                    {{ subscriptionCurrencySymbol }}{{ formatNumber(p.paid_amount) }}
-                  </td>
-                  <td class="py-3 px-4 text-zinc-400 text-[11px]">
-                    {{ p.note || 'Subscription renewal payment' }}
-                  </td>
-                </tr>
+                <template v-for="p in paymentHistories" :key="p.id">
+                  <tr class="hover:bg-zinc-900/50 transition-colors">
+                    <td class="py-3 px-4 text-zinc-300">
+                      {{ formatDate(p.paid_at) }}
+                    </td>
+                    <td class="py-3 px-4 text-right font-semibold text-emerald-400 tabular-nums">
+                      {{ subscriptionCurrencySymbol }}{{ formatNumber(p.paid_amount) }}
+                    </td>
+                    <td class="py-3 px-4 text-zinc-400 text-[11px]">
+                      {{ p.note || 'Subscription renewal payment' }}
+                    </td>
+                    <td class="py-3 px-4 text-right">
+                      <button
+                        v-if="p.metadata?.cycle_items && p.metadata.cycle_items.length > 0"
+                        @click="togglePaymentExpanded(p.id)"
+                        type="button"
+                        class="inline-flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 transition-colors"
+                      >
+                        <span>{{ expandedPaymentIds.has(p.id) ? 'ซ่อน' : 'ดูรายละเอียด' }}</span>
+                        <ChevronDown class="w-3 h-3 transition-transform" :class="{ 'rotate-180': expandedPaymentIds.has(p.id) }" />
+                      </button>
+                      <span v-else class="text-[10px] text-zinc-600">-</span>
+                    </td>
+                  </tr>
+
+                  <!-- Expanded Cycle Items Sub-row -->
+                  <tr v-if="expandedPaymentIds.has(p.id)" class="bg-zinc-950/70 border-b border-zinc-800/60">
+                    <td colspan="4" class="p-3 pl-8">
+                      <div class="text-[11px] font-mono text-zinc-400 mb-1.5 font-semibold flex items-center justify-between max-w-lg">
+                        <span>รอบบิล: {{ p.metadata?.cycle_key || 'Billing Cycle' }}</span>
+                        <span class="text-zinc-500 font-normal">{{ p.metadata?.cycle_items?.length ?? 0 }} รายการ</span>
+                      </div>
+                      <table class="w-full max-w-lg text-left text-xs font-mono bg-zinc-900/40 rounded border border-zinc-800/60">
+                        <thead>
+                          <tr class="border-b border-zinc-800/60 text-[9px] text-zinc-500 uppercase bg-zinc-950/40">
+                            <th class="py-1.5 px-3">รายการ</th>
+                            <th class="py-1.5 px-3">ประเภท</th>
+                            <th class="py-1.5 px-3 text-right">ยอดเงิน</th>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-zinc-800/40">
+                          <tr v-for="(item, idx) in p.metadata?.cycle_items" :key="idx">
+                            <td class="py-1.5 px-3 text-zinc-300">{{ item.name }}</td>
+                            <td class="py-1.5 px-3 text-zinc-500 text-[10px]">{{ item.type }}</td>
+                            <td class="py-1.5 px-3 text-right text-zinc-200 tabular-nums">
+                              {{ subscriptionCurrencySymbol }}{{ formatNumber(item.amount) }}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                </template>
 
                 <tr v-if="paymentHistories.length === 0">
-                  <td colspan="3" class="py-8 text-center text-xs text-zinc-500">
+                  <td colspan="4" class="py-8 text-center text-xs text-zinc-500">
                     No payment history recorded yet for this service
                   </td>
                 </tr>
@@ -437,109 +679,21 @@
     </div>
 
     <!-- Modals -->
-    <!-- Pay / Renewal Modal -->
-    <div v-if="showPayModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden">
-      <div class="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-md shadow-2xl relative flex flex-col max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-hidden">
-        <!-- Header -->
-        <div class="p-4 sm:p-5 pb-3 border-b border-zinc-800/80 flex items-center justify-between shrink-0">
-          <div>
-            <h3 class="text-sm font-semibold text-zinc-100">Record Subscription Renewal</h3>
-            <p class="text-xs text-zinc-400 mt-0.5">
-              Advances due date according to cycle ({{ subscription?.metadata?.billing_cycle || 'Monthly' }})
-            </p>
-          </div>
-          <button
-            type="button"
-            @click="showPayModal = false"
-            class="text-zinc-500 hover:text-zinc-300 transition-colors p-1"
-          >
-            <X class="w-4 h-4" />
-          </button>
-        </div>
+    <!-- Pay Modal -->
+    <PayModal
+      :is-open="showPayModal"
+      :obligation="subscription"
+      @close="showPayModal = false"
+      @paid="handlePaySuccess"
+    />
 
-        <form @submit.prevent="submitRenewal" class="flex flex-col flex-1 min-h-0 overflow-hidden text-xs font-mono">
-          <div class="p-4 sm:p-5 space-y-4 overflow-y-auto overscroll-contain flex-1 min-h-0">
-            <div>
-              <label class="block text-zinc-400 mb-1">Amount Paid</label>
-              <input
-                v-model.number="payAmount"
-                type="number"
-                step="0.01"
-                required
-                class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-zinc-700 outline-none"
-              />
-            </div>
-
-            <div>
-              <label class="block text-zinc-400 mb-1">Notes / Invoice Ref</label>
-              <input
-                v-model="payNote"
-                type="text"
-                placeholder="e.g. Auto-debited on KBank Card"
-                class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-zinc-700 outline-none"
-              />
-            </div>
-
-            <div>
-              <div class="flex items-center justify-between mb-1">
-                <label class="block text-zinc-400">Deduct from Account / Card</label>
-                <span class="text-[10px] text-zinc-500">Ledger 2-Way Sync</span>
-              </div>
-              <select
-                v-model="payAccountId"
-                class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100 focus:border-zinc-700 outline-none"
-              >
-                <option value="">-- No Account Link --</option>
-                <option
-                  v-for="acc in ledgerStore.activeAccounts"
-                  :key="acc.id"
-                  :value="acc.id"
-                >
-                  {{ acc.name }} ({{ acc.currency }} {{ Number(acc.current_balance).toLocaleString('en-US', { minimumFractionDigits: 2 }) }})
-                </option>
-              </select>
-            </div>
-
-            <div>
-              <div class="flex items-center justify-between mb-1">
-                <label class="block text-zinc-400 text-xs">Upload Receipt Slip (Optional)</label>
-                <span v-if="storageStore.isConnected" class="text-[10px] text-zinc-500 font-mono">Direct GDrive</span>
-              </div>
-              <div
-                v-if="!storageStore.isConnected"
-                class="p-2 rounded bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between"
-              >
-                <span>Connect Drive to attach slips</span>
-                <router-link to="/settings" class="text-zinc-200 underline font-mono">Settings &rarr;</router-link>
-              </div>
-              <input
-                v-else
-                type="file"
-                @change="(e: any) => paySlipFile = e.target.files[0]"
-                class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-400 text-xs file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:bg-zinc-800 file:text-zinc-200"
-              />
-            </div>
-          </div>
-
-          <div class="flex items-center justify-end gap-2 p-4 border-t border-zinc-800/80 shrink-0 bg-zinc-950/90">
-            <button
-              type="button"
-              @click="showPayModal = false"
-              class="px-3 py-1.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              :disabled="isSubmittingPay"
-              class="px-4 py-1.5 rounded bg-zinc-100 hover:bg-white text-zinc-950 font-semibold transition-colors disabled:opacity-50"
-            >
-              {{ isSubmittingPay ? 'Processing...' : 'Confirm Payment' }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <!-- Terminate Modal -->
+    <TerminateSubscriptionModal
+      :is-open="showTerminateModal"
+      :obligation="subscription"
+      @close="showTerminateModal = false"
+      @terminated="handleTerminateSuccess"
+    />
 
     <!-- Convert Trial Modal -->
     <div v-if="showConvertModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-hidden">
@@ -634,12 +788,13 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSubscriptions } from '../../composables/finance/useSubscriptions'
-import { useLedgerStore } from '../../stores/ledger'
 import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
 import { useBodyScrollLock } from '../../composables/useBodyScrollLock'
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import EditObligationModal from '../../components/finance/EditObligationModal.vue'
+import PayModal from '../../components/finance/PayModal.vue'
+import TerminateSubscriptionModal from '../../components/finance/TerminateSubscriptionModal.vue'
 import {
   ArrowLeft,
   ExternalLink,
@@ -655,7 +810,10 @@ import {
   History,
   FolderArchive,
   Download,
-  Edit2
+  Edit2,
+  Layers,
+  ChevronDown,
+  XCircle
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -666,24 +824,30 @@ const {
   attachments,
   isActionLoading,
   fetchSubscription,
-  renewSubscription,
   cancelTrial,
   convertToSubscription,
   deleteSubscription
 } = useSubscriptions()
 
 const toast = useToastStore()
-const ledgerStore = useLedgerStore()
 const storageStore = useStorageStore()
 const subscriptionId = computed(() => route.params.id as string)
 const subscription = computed(() => currentSubscription.value)
 
 const showPayModal = ref(false)
-const payAmount = ref(0)
-const payNote = ref('')
-const payAccountId = ref('')
-const paySlipFile = ref<File | null>(null)
-const isSubmittingPay = ref(false)
+const showTerminateModal = ref(false)
+const itemizedViewTab = ref<'current' | 'plan'>('current')
+const expandedPaymentIds = ref<Set<string>>(new Set())
+
+function togglePaymentExpanded(id: string) {
+  const next = new Set(expandedPaymentIds.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  expandedPaymentIds.value = next
+}
 
 const showConvertModal = ref(false)
 const convertCycle = ref('MONTHLY')
@@ -700,6 +864,36 @@ async function handleSubscriptionUpdated() {
   }
 }
 
+async function handlePaySuccess() {
+  await fetchSubscription(subscriptionId.value)
+  toast.success('บันทึกการชำระเงินเรียบร้อยแล้ว')
+}
+
+async function handleTerminateSuccess() {
+  await fetchSubscription(subscriptionId.value)
+  toast.success('ยุติรายการประจำเรียบร้อยแล้ว')
+}
+
+const isWorkspace = computed(() => !!subscription.value?.metadata?.workspace_managed)
+
+const payButtonLabel = computed(() => {
+  if (subscription.value?.summary?.is_terminated || subscription.value?.metadata?.termination?.status === 'TERMINATED') {
+    return 'ชำระบิลสุดท้าย'
+  }
+  if (subscription.value?.metadata?.is_itemized && (subscription.value?.summary?.pending_dynamic_count ?? 0) > 0) {
+    return 'กรอกยอดและชำระ'
+  }
+  return 'บันทึกการชำระ'
+})
+
+const currentCycleItems = computed(() => {
+  return subscription.value?.metadata?.current_cycle?.items || []
+})
+
+const planLineItems = computed(() => {
+  return subscription.value?.metadata?.line_items || []
+})
+
 const isUploading = ref(false)
 
 const confirmModal = reactive({
@@ -713,7 +907,7 @@ const confirmModal = reactive({
   action: async () => {}
 })
 
-useBodyScrollLock(() => showPayModal.value || showConvertModal.value || showEditModal.value || confirmModal.isOpen)
+useBodyScrollLock(() => showPayModal.value || showTerminateModal.value || showConvertModal.value || showEditModal.value || confirmModal.isOpen)
 
 async function handleConfirmAction() {
   confirmModal.isLoading = true
@@ -740,7 +934,17 @@ const daysRemaining = computed(() => {
 })
 
 const monthlyEquivalent = computed(() => {
-  const amt = Number(subscription.value?.amount || 0)
+  if (subscription.value?.summary?.monthly_equivalent !== undefined && subscription.value?.summary?.monthly_equivalent !== null) {
+    return Number(subscription.value.summary.monthly_equivalent)
+  }
+  let amt = Number(subscription.value?.amount || 0)
+  if (subscription.value?.summary?.is_itemized) {
+    if (subscription.value?.summary?.total_bill_amount !== undefined && subscription.value?.summary?.total_bill_amount !== null) {
+      amt = Number(subscription.value.summary.total_bill_amount)
+    } else if (subscription.value?.summary?.fixed_total !== undefined && subscription.value?.summary?.fixed_total !== null) {
+      amt = Number(subscription.value.summary.fixed_total)
+    }
+  }
   const cycle = subscription.value?.metadata?.billing_cycle || 'MONTHLY'
   if (cycle === 'YEARLY') return amt / 12
   if (cycle === 'QUARTERLY') return amt / 3
@@ -789,49 +993,6 @@ async function handleCancelTrial() {
     toast.success('Free trial marked as cancelled')
   } catch {
     toast.error('Failed to cancel trial')
-  }
-}
-
-async function submitRenewal() {
-  isSubmittingPay.value = true
-  try {
-    let driveData = undefined
-    if (paySlipFile.value) {
-      if (!storageStore.isConnected) {
-        toast.error('Google Drive connection is required to attach slips')
-        return
-      }
-      const uploaded = await storageStore.uploadDirect(paySlipFile.value, 'finance')
-      driveData = {
-        drive_file_id: uploaded.drive_file_id,
-        drive_view_link: uploaded.web_view_link,
-        drive_download_link: uploaded.web_content_link,
-        file_name: uploaded.file_name,
-        file_size: uploaded.file_size
-      }
-    }
-
-    await renewSubscription(
-      subscriptionId.value,
-      payAmount.value,
-      payNote.value,
-      undefined,
-      payAccountId.value || undefined,
-      driveData
-    )
-    if (payAccountId.value) {
-      ledgerStore.fetchAccounts().catch(() => {})
-      ledgerStore.fetchSummary().catch(() => {})
-    }
-    toast.success('Subscription renewal recorded successfully')
-    showPayModal.value = false
-    paySlipFile.value = null
-    payNote.value = ''
-    payAccountId.value = ''
-  } catch (err: any) {
-    toast.error(err?.message || 'Failed to record subscription payment')
-  } finally {
-    isSubmittingPay.value = false
   }
 }
 
@@ -891,7 +1052,6 @@ onMounted(async () => {
   try {
     const data = await fetchSubscription(subscriptionId.value)
     if (data) {
-      payAmount.value = Number(data.amount || 0)
       convertAmount.value = Number(data.amount || 0)
     }
   } catch {

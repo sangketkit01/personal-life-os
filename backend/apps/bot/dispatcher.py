@@ -178,7 +178,9 @@ async def send_alert_for_obligation(bot: Bot, chat_id: str, ob: FinancialObligat
             text += bot_msg(user, 'alert.ma.client_line', client=escape_md(client_label))
         text += bot_msg(user, 'alert.ma.body', amount=f'{cur}{float(ob.amount):,.2f}', due=formatted_due)
         text += bot_msg(user, 'alert.ma.footer')
-        keyboard = [[InlineKeyboardButton(bot_msg(user, 'billing.ma_button'), callback_data=f"pay:{ob.id}")]]
+        cur_ck = summary.get('cycle_key') or (meta.get('current_cycle') or {}).get('cycle_key') or (strategy.get_cycle_key(ob.due_date, meta.get('billing_cycle', 'MONTHLY')) if ob.due_date else '')
+        cb_data = f"pay:{ob.id}:{cur_ck}" if cur_ck else f"pay:{ob.id}"
+        keyboard = [[InlineKeyboardButton(bot_msg(user, 'billing.ma_button'), callback_data=cb_data)]]
         await bot.send_message(
             chat_id=chat_id,
             text=text,
@@ -193,7 +195,9 @@ async def send_alert_for_obligation(bot: Bot, chat_id: str, ob: FinancialObligat
             f"{bot_msg(user, 'alert.infra.body', item=escape_md(ob.title), amount=f'{cur}{float(ob.amount):,.2f}', due=formatted_due)}"
             f"{bot_msg(user, 'alert.infra.footer')}"
         )
-        keyboard = [[InlineKeyboardButton(bot_msg(user, 'billing.infra_button'), callback_data=f"pay:{ob.id}")]]
+        cur_ck = summary.get('cycle_key') or (meta.get('current_cycle') or {}).get('cycle_key') or (strategy.get_cycle_key(ob.due_date, meta.get('billing_cycle', 'MONTHLY')) if ob.due_date else '')
+        cb_data = f"pay:{ob.id}:{cur_ck}" if cur_ck else f"pay:{ob.id}"
+        keyboard = [[InlineKeyboardButton(bot_msg(user, 'billing.infra_button'), callback_data=cb_data)]]
         await bot.send_message(
             chat_id=chat_id,
             text=text,
@@ -222,16 +226,41 @@ async def send_alert_for_obligation(bot: Bot, chat_id: str, ob: FinancialObligat
     # 4. Regular Subscriptions
     elif ob.type == ObligationType.SUBSCRIPTION:
         cycle = bot_msg(user, 'alert.sub.yearly') if summary.get('is_yearly') else bot_msg(user, 'alert.sub.monthly')
+        is_itemized = summary.get('is_itemized', False)
+        pending_dynamic_count = summary.get('pending_dynamic_count', 0)
+        is_terminated = summary.get('is_terminated', False)
+
+        if is_itemized:
+            fixed_tot = summary.get('fixed_total', 0)
+            if pending_dynamic_count > 0:
+                amount_str = f"คงที่ {cur}{float(fixed_tot):,.2f} (รอกรอก {pending_dynamic_count} รายการ)"
+            else:
+                total_amt = summary.get('total_bill_amount', fixed_tot)
+                amount_str = f"{cur}{float(total_amt):,.2f}"
+        else:
+            amount_str = f"{cur}{float(ob.amount):,.2f}"
+
+        title_suffix = " (บิลสุดท้าย)" if is_terminated else ""
         text = (
-            f"{bot_msg(user, 'alert.sub.title', day=day_label)}\n\n"
-            f"{bot_msg(user, 'alert.sub.body', service=escape_md(ob.title), cycle=cycle, amount=f'{cur}{float(ob.amount):,.2f}', due=formatted_due)}"
+            f"{bot_msg(user, 'alert.sub.title', day=day_label)}{title_suffix}\n\n"
+            f"{bot_msg(user, 'alert.sub.body', service=escape_md(ob.title), cycle=cycle, amount=escape_md(amount_str), due=formatted_due)}"
         )
-        keyboard = [[InlineKeyboardButton(bot_msg(user, 'alert.sub.pay_btn'), callback_data=f"pay:{ob.id}")]]
+
+        if is_itemized and pending_dynamic_count > 0:
+            text += f"\n\n⚠️ มี {pending_dynamic_count} รายการที่ต้องกรอกยอดในเว็บแอปก่อนชำระ"
+            keyboard = []
+        else:
+            pay_btn_label = "ชำระบิลสุดท้าย" if is_terminated else bot_msg(user, 'alert.sub.pay_btn')
+            cur_ck = summary.get('cycle_key') or (meta.get('current_cycle') or {}).get('cycle_key') or ''
+            cb_data = f"pay:{ob.id}:{cur_ck}" if cur_ck else f"pay:{ob.id}"
+            keyboard = [[InlineKeyboardButton(pay_btn_label, callback_data=cb_data)]]
+
+        reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
         await bot.send_message(
             chat_id=chat_id,
             text=text,
             parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            reply_markup=reply_markup
         )
 
     # 5. Debt

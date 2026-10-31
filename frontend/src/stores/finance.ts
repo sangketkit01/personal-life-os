@@ -86,6 +86,8 @@ export const useFinanceStore = defineStore('finance', () => {
     drive_download_link?: string
     file_name?: string
     file_size?: number
+    cycle_items?: Array<{ id: string; amount: number | null }>
+    cycle_key?: string
   } = {}) {
     let requestData: any = data
     let headers: Record<string, string> = {}
@@ -96,8 +98,10 @@ export const useFinanceStore = defineStore('finance', () => {
       if (data.paid_amount !== undefined) formData.append('paid_amount', String(data.paid_amount))
       if (data.term_number !== undefined) formData.append('term_number', String(data.term_number))
       if (data.statement_month) formData.append('statement_month', data.statement_month)
+      if (data.cycle_key) formData.append('cycle_key', data.cycle_key)
       if (data.note) formData.append('note', data.note)
       if (data.account_id) formData.append('account_id', data.account_id)
+      if (data.cycle_items) formData.append('cycle_items', JSON.stringify(data.cycle_items))
       formData.append('slip_file', data.slip_file)
       requestData = formData
       headers = { 'Content-Type': 'multipart/form-data' }
@@ -226,6 +230,63 @@ export const useFinanceStore = defineStore('finance', () => {
     }
   }
 
+  async function saveCycleBillDraft(id: string, items: Array<{ id: string; amount: number | null }>, cycleKey?: string) {
+    const res = await apiClient.patch(`/finance/obligations/${id}/cycle-bill/`, { items, cycle_key: cycleKey })
+    const idx = obligations.value.findIndex(o => o.id === id)
+    if (idx !== -1 && res.data) {
+      const ob = obligations.value[idx]
+      if (ob.metadata) {
+        ob.metadata.current_cycle = res.data
+      }
+      if (ob.summary) {
+        ob.summary.current_cycle = res.data
+        ob.summary.dynamic_total = res.data.dynamic_total
+        ob.summary.total_bill_amount = res.data.total_amount
+        ob.summary.pending_dynamic_count = res.data.pending_dynamic_count
+        ob.summary.is_bill_complete = res.data.is_complete
+        ob.summary.is_complete = res.data.is_complete
+      }
+    }
+    return res.data
+  }
+
+  async function fetchCycleBill(id: string) {
+    const res = await apiClient.get(`/finance/obligations/${id}/cycle-bill/`)
+    const idx = obligations.value.findIndex(o => o.id === id)
+    if (idx !== -1 && res.data) {
+      const ob = obligations.value[idx]
+      if (ob.metadata) {
+        ob.metadata.current_cycle = res.data
+      }
+      if (ob.summary) {
+        ob.summary.current_cycle = res.data
+        ob.summary.dynamic_total = res.data.dynamic_total
+        ob.summary.total_bill_amount = res.data.total_amount
+        ob.summary.pending_dynamic_count = res.data.pending_dynamic_count
+        ob.summary.is_bill_complete = res.data.is_complete
+        ob.summary.is_complete = res.data.is_complete
+      }
+    }
+    return res.data
+  }
+
+  async function terminateSubscription(id: string, data: { mode: string; effective_end_date?: string }) {
+    const res = await apiClient.post<{ message: string; obligation: FinancialObligation; summary: any }>(
+      `/finance/obligations/${id}/terminate/`,
+      data
+    )
+    const idx = obligations.value.findIndex(o => o.id === id)
+    if (idx !== -1) {
+      obligations.value[idx] = res.data.obligation
+    }
+    try {
+      await fetchOverview()
+    } catch (refreshErr) {
+      console.warn('Overview refresh failed after termination:', refreshErr)
+    }
+    return res.data
+  }
+
   return {
     overview,
     obligations,
@@ -236,6 +297,9 @@ export const useFinanceStore = defineStore('finance', () => {
     createObligation,
     updateObligation,
     payObligation,
+    saveCycleBillDraft,
+    fetchCycleBill,
+    terminateSubscription,
     uploadAttachment,
     deleteAttachment,
     cancelTrial,

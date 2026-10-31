@@ -109,11 +109,50 @@
         </div>
       </div>
 
-      <!-- Amount & Currency -->
+      <!-- Currency -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
+          <label class="block text-xs font-mono text-zinc-400 mb-1.5">Currency <span class="text-rose-400">*</span></label>
+          <select
+            v-model="form.currency"
+            required
+            class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
+          >
+            <option value="" disabled>Select currency</option>
+            <option value="THB">THB (฿)</option>
+            <option value="USD">USD ($)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Amount Section with Single Amount / Itemized Switcher -->
+      <div v-if="form.type === 'SUBSCRIPTION'" class="space-y-3 pt-1">
+        <div class="flex items-center justify-between pb-1">
+          <label class="block text-xs font-mono text-zinc-400">โครงสร้างราคา / Expense Structure</label>
+          <div class="inline-flex rounded-lg border border-zinc-800 bg-zinc-900/80 p-0.5 text-xs font-mono">
+            <button
+              type="button"
+              @click="setPricingMode(false)"
+              class="px-2.5 py-1 rounded transition-colors text-[11px]"
+              :class="!isItemized ? 'bg-zinc-800 text-zinc-100 font-medium shadow-sm' : 'text-zinc-400 hover:text-zinc-200'"
+            >
+              ยอดเดียว
+            </button>
+            <button
+              type="button"
+              @click="setPricingMode(true)"
+              class="px-2.5 py-1 rounded transition-colors text-[11px]"
+              :class="isItemized ? 'bg-zinc-800 text-zinc-100 font-medium shadow-sm' : 'text-zinc-400 hover:text-zinc-200'"
+            >
+              แยกรายการ
+            </button>
+          </div>
+        </div>
+
+        <!-- Mode A: Single Amount -->
+        <div v-if="!isItemized">
           <label class="block text-xs font-mono text-zinc-400 mb-1.5">
-            {{ form.type === 'FREE_TRIAL' ? 'Auto-Renew Cost' : 'Recurring Amount' }} <span class="text-rose-400">*</span>
+            Recurring Amount <span class="text-rose-400">*</span>
           </label>
           <div class="relative">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono text-zinc-500">
@@ -130,17 +169,131 @@
           </div>
         </div>
 
-        <div>
-          <label class="block text-xs font-mono text-zinc-400 mb-1.5">Currency <span class="text-rose-400">*</span></label>
-          <select
-            v-model="form.currency"
+        <!-- Mode B: Itemized Breakdown -->
+        <div v-else class="space-y-4 p-3.5 rounded-lg bg-zinc-900/40 border border-zinc-800 text-xs font-mono">
+          <!-- 1. Fixed Items -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">ราคาคงที่</span>
+              <span class="text-[10px] text-zinc-500">ระบุราคาล่วงหน้า</span>
+            </div>
+
+            <div v-if="fixedItems.length === 0" class="text-[11px] text-zinc-500 italic py-1">
+              ไม่มีรายการราคาคงที่ (สามารถเพิ่มหรือใช้แบบกรอกยอดแต่ละรอบล้วนได้)
+            </div>
+
+            <div v-for="(it, idx) in fixedItems" :key="it.id" class="flex items-center gap-2">
+              <input
+                v-model="it.name"
+                type="text"
+                placeholder="ชื่อรายการ"
+                class="flex-1 bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 focus:border-zinc-600 outline-none"
+              />
+              <div class="relative w-32">
+                <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-zinc-500 font-mono">
+                  {{ form.currency === 'USD' ? '$' : '฿' }}
+                </span>
+                <input
+                  v-model.number="it.amount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  class="w-full bg-zinc-950 border border-zinc-800 rounded pl-6 pr-2.5 py-1.5 text-xs text-zinc-100 font-mono text-right focus:border-zinc-600 outline-none"
+                />
+              </div>
+              <button
+                type="button"
+                @click="removeFixedItem(idx)"
+                class="p-1.5 rounded text-zinc-500 hover:text-rose-400 hover:bg-zinc-800/80 transition-colors"
+                title="ลบรายการ"
+              >
+                <Trash2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              @click="addFixedItem"
+              class="text-[11px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors pt-1"
+            >
+              <Plus class="w-3 h-3" />
+              <span>+ เพิ่มรายการราคาคงที่</span>
+            </button>
+          </div>
+
+          <div class="border-t border-zinc-800/80"></div>
+
+          <!-- 2. Dynamic Items -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">กรอกยอดแต่ละรอบ</span>
+              <span class="text-[10px] text-zinc-500">กรอกราคาเมื่อชำระแต่ละรอบ</span>
+            </div>
+
+            <div v-if="dynamicItems.length === 0" class="text-[11px] text-zinc-500 italic py-1">
+              ไม่มีรายการที่ต้องกรอกยอดแต่ละรอบ
+            </div>
+
+            <div v-for="(it, idx) in dynamicItems" :key="it.id" class="flex items-center gap-2">
+              <input
+                v-model="it.name"
+                type="text"
+                placeholder="ชื่อรายการ"
+                class="flex-1 bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 focus:border-zinc-600 outline-none"
+              />
+              <span class="text-[11px] text-zinc-500 px-2 py-1 bg-zinc-950/60 rounded border border-zinc-800/60 whitespace-nowrap">
+                กรอกตอนชำระ
+              </span>
+              <button
+                type="button"
+                @click="removeDynamicItem(idx)"
+                class="p-1.5 rounded text-zinc-500 hover:text-rose-400 hover:bg-zinc-800/80 transition-colors"
+                title="ลบรายการ"
+              >
+                <Trash2 class="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <button
+              type="button"
+              @click="addDynamicItem"
+              class="text-[11px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors pt-1"
+            >
+              <Plus class="w-3 h-3" />
+              <span>+ เพิ่มรายการที่กรอกยอดแต่ละรอบ</span>
+            </button>
+          </div>
+
+          <!-- 3. Auto-calculated Summary -->
+          <div class="p-2.5 rounded bg-zinc-950/70 border border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]">
+            <div class="text-zinc-300">
+              รวมราคาคงที่: <span class="font-bold text-zinc-100 font-mono">{{ form.currency === 'USD' ? '$' : '฿' }}{{ formatNumber(itemizedFixedTotal) }}</span>
+            </div>
+            <div class="text-zinc-400">
+              มี <span class="font-bold text-amber-400">{{ dynamicItems.length }}</span> รายการที่กรอกยอดตอนชำระ
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Free Trial Amount (Standard) -->
+      <div v-else>
+        <label class="block text-xs font-mono text-zinc-400 mb-1.5">
+          Auto-Renew Cost <span class="text-rose-400">*</span>
+        </label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono text-zinc-500">
+            {{ form.currency === 'USD' ? '$' : (form.currency === 'THB' ? '฿' : '') }}
+          </span>
+          <input
+            v-model.number="form.amount"
+            type="number"
+            step="0.01"
             required
-            class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
-          >
-            <option value="" disabled>Select currency</option>
-            <option value="THB">THB (฿)</option>
-            <option value="USD">USD ($)</option>
-          </select>
+            placeholder="0.00"
+            class="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-7 pr-3 py-2 text-xs text-zinc-100 font-mono focus:border-zinc-600 outline-none transition-colors"
+          />
         </div>
       </div>
 
@@ -281,7 +434,9 @@ import {
   ArrowLeft,
   Repeat,
   ShieldAlert,
-  Check
+  Check,
+  Plus,
+  Trash2
 } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -297,6 +452,68 @@ onMounted(async () => {
 
 const isSubmitting = ref(false)
 const showAdvanced = ref(false)
+
+interface LineItemDraft {
+  id: string
+  name: string
+  type: 'FIXED' | 'DYNAMIC'
+  amount: number | null
+}
+
+const isItemized = ref(false)
+const fixedItems = ref<LineItemDraft[]>([])
+const dynamicItems = ref<LineItemDraft[]>([])
+
+function setPricingMode(itemized: boolean) {
+  if (itemized === isItemized.value) return
+  if (!itemized && (fixedItems.value.length > 0 || dynamicItems.value.length > 0)) {
+    if (!confirm('สลับเป็นแบบยอดเดียว? ข้อมูลรายการย่อยที่กรอกไว้จะถูกซ่อน')) {
+      return
+    }
+  }
+  isItemized.value = itemized
+  if (itemized && fixedItems.value.length === 0 && dynamicItems.value.length === 0) {
+    if (form.value.amount && form.value.amount > 0) {
+      fixedItems.value.push({
+        id: crypto.randomUUID(),
+        name: form.value.plan_name || form.value.title || 'ค่าบริการหลัก',
+        type: 'FIXED',
+        amount: Number(form.value.amount)
+      })
+    }
+  }
+}
+
+function addFixedItem() {
+  fixedItems.value.push({
+    id: crypto.randomUUID(),
+    name: '',
+    type: 'FIXED',
+    amount: null
+  })
+}
+
+function removeFixedItem(idx: number) {
+  fixedItems.value.splice(idx, 1)
+}
+
+function addDynamicItem() {
+  dynamicItems.value.push({
+    id: crypto.randomUUID(),
+    name: '',
+    type: 'DYNAMIC',
+    amount: null
+  })
+}
+
+function removeDynamicItem(idx: number) {
+  dynamicItems.value.splice(idx, 1)
+}
+
+const itemizedFixedTotal = computed(() => {
+  const sum = fixedItems.value.reduce((acc, it) => acc + (Number(it.amount) || 0), 0)
+  return Math.round((sum + Number.EPSILON) * 100) / 100
+})
 
 const form = ref({
   type: 'SUBSCRIPTION' as 'SUBSCRIPTION' | 'FREE_TRIAL',
@@ -316,7 +533,9 @@ const form = ref({
 })
 
 const computedMonthlyCost = computed(() => {
-  const amt = Number(form.value.amount || 0)
+  const amt = (isItemized.value && form.value.type === 'SUBSCRIPTION')
+    ? itemizedFixedTotal.value
+    : Number(form.value.amount || 0)
   if (!amt || !form.value.billing_cycle) return 0
   if (form.value.billing_cycle === 'YEARLY') return amt / 12
   if (form.value.billing_cycle === 'QUARTERLY') return amt / 3
@@ -331,10 +550,6 @@ function formatNumber(val: number): string {
 async function handleSubmit() {
   if (!form.value.title.trim()) {
     toast.error('Please enter a service name')
-    return
-  }
-  if (form.value.amount === null || form.value.amount === undefined || isNaN(Number(form.value.amount))) {
-    toast.error('Please enter an amount')
     return
   }
   if (!form.value.category) {
@@ -354,29 +569,78 @@ async function handleSubmit() {
     return
   }
 
+  const isSubItemized = (form.value.type === 'SUBSCRIPTION' && isItemized.value)
+
+  if (isSubItemized) {
+    const totalCount = fixedItems.value.length + dynamicItems.value.length
+    if (totalCount === 0) {
+      toast.error('กรุณาเพิ่มรายการค่าใช้จ่ายอย่างน้อย 1 รายการ')
+      return
+    }
+    for (const it of [...fixedItems.value, ...dynamicItems.value]) {
+      if (!it.name.trim()) {
+        toast.error('กรุณาระบุชื่อรายการให้ครบทุกรายการ')
+        return
+      }
+    }
+    for (const it of fixedItems.value) {
+      if (it.amount === null || it.amount === undefined || String(it.amount).trim() === '' || isNaN(Number(it.amount))) {
+        toast.error(`กรุณาระบุราคาสำหรับรายการ '${it.name || 'คงที่'}' (ห้ามเว้นว่าง)`)
+        return
+      }
+      const num = Number(it.amount)
+      if (!isFinite(num) || num < 0) {
+        toast.error(`ราคาสำหรับรายการ '${it.name}' ต้องเป็นตัวเลขที่ถูกต้องและไม่ติดลบ`)
+        return
+      }
+    }
+  } else {
+    if (form.value.amount === null || form.value.amount === undefined || String(form.value.amount).trim() === '' || isNaN(Number(form.value.amount))) {
+      toast.error('Please enter an amount')
+      return
+    }
+  }
+
   isSubmitting.value = true
   try {
     const billingDay = form.value.due_date ? new Date(form.value.due_date).getDate() : undefined
 
+    const finalAmount = isSubItemized ? itemizedFixedTotal.value : Number(form.value.amount || 0)
+
+    const metadataPayload: Record<string, any> = {
+      plan_name: form.value.plan_name.trim(),
+      billing_cycle: form.value.billing_cycle,
+      account_email: form.value.account_email.trim(),
+      payment_method: form.value.payment_method.trim(),
+      category: form.value.category,
+      cancel_url: form.value.cancel_url.trim(),
+      cancel_steps: form.value.cancel_steps.trim(),
+      alert_days_before: Number(form.value.alert_days_before || 3),
+      auto_renew_cost: finalAmount,
+      is_itemized: isSubItemized
+    }
+
+    if (isSubItemized) {
+      metadataPayload.items = [
+        ...fixedItems.value.map(it => ({
+          id: it.id,
+          name: it.name.trim(),
+          type: 'FIXED',
+          amount: Math.round((Number(it.amount) + Number.EPSILON) * 100) / 100
+        })),
+        ...dynamicItems.value.map(it => ({ id: it.id, name: it.name.trim(), type: 'DYNAMIC', amount: null }))
+      ]
+    }
+
     const payload = {
       title: form.value.title.trim(),
       type: form.value.type,
-      amount: Number(form.value.amount || 0),
+      amount: finalAmount,
       currency: form.value.currency,
       due_date: form.value.due_date,
       billing_day: billingDay,
       project: form.value.project,
-      metadata: {
-        plan_name: form.value.plan_name.trim(),
-        billing_cycle: form.value.billing_cycle,
-        account_email: form.value.account_email.trim(),
-        payment_method: form.value.payment_method.trim(),
-        category: form.value.category,
-        cancel_url: form.value.cancel_url.trim(),
-        cancel_steps: form.value.cancel_steps.trim(),
-        alert_days_before: Number(form.value.alert_days_before || 3),
-        auto_renew_cost: Number(form.value.amount || 0)
-      }
+      metadata: metadataPayload
     }
 
     const created = await createSubscription(payload)

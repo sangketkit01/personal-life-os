@@ -214,11 +214,13 @@ class DuplicatePayGuardTests(TelegramBotTestCase):
             metadata={'billing_cycle': 'MONTHLY'}
         )
 
-        first = await process_pay_callback(str(sub.id), 777001)
+        from apps.finance.strategies.subscription import SubscriptionStrategy
+        ck = SubscriptionStrategy.get_cycle_key(sub.due_date, 'MONTHLY')
+        first = await process_pay_callback(f"{sub.id}:{ck}", 777001)
         self.assertTrue(first['success'])
 
         # Simulates tapping the button on the OLD Telegram message again
-        second = await process_pay_callback(str(sub.id), 777001)
+        second = await process_pay_callback(f"{sub.id}:{ck}", 777001)
         self.assertFalse(second['success'])
         self.assertTrue(second.get('duplicate'))
         self.assertEqual(await PaymentHistory.objects.filter(obligation=sub).acount(), 1)
@@ -865,3 +867,67 @@ class WatchdogConcurrentScanTests(TransactionTestCase):
             await asset.arefresh_from_db()
             if asset.name in breaching:
                 self.assertEqual(asset.last_alerted_at is not None, True)
+
+
+class DispatcherSubscriptionCycleKeyButtonTests(TelegramBotTestCase):
+
+    async def test_ma_and_infra_buttons_include_cycle_key_and_pay(self):
+        """MA and Infra alerts build inline button with pay:<id>:<cycle_key> and settle cleanly."""
+        from datetime import date
+        from decimal import Decimal
+        from apps.finance.models import FinancialObligation, ObligationType, FlowDirection, PaymentHistory
+        from apps.bot.dispatcher import send_alert_for_obligation
+        from apps.bot.handlers.callbacks import process_pay_callback
+
+        self.user.telegram_chat_id = '909001'
+        await self.user.asave()
+
+        today = date.today()
+        # 1. MA Obligation (INFLOW)
+        ma_ob = await FinancialObligation.objects.acreate(
+            user=self.user,
+            title='MA Project Beta',
+            type=ObligationType.SUBSCRIPTION,
+            direction=FlowDirection.INFLOW,
+            amount=Decimal('5000.00'),
+            due_date=today,
+            metadata={'source_type': 'MA_CONTRACT', 'billing_cycle': 'MONTHLY', 'client_name': 'Client Beta'}
+        )
+
+        sent_messages = []
+        fake_bot = SimpleNamespace()
+        async def fake_send_message(chat_id, text, reply_markup=None, **kwargs):
+            sent_messages.append({'chat_id': chat_id, 'text': text, 'reply_markup': reply_markup})
+        fake_bot.send_message = fake_send_message
+
+        await send_alert_for_obligation(fake_bot, '909001', ma_ob)
+        self.assertEqual(len(sent_messages), 1)
+        kb = sent_messages[0]['reply_markup'].inline_keyboard
+        cb_data = kb[0][0].callback_data
+        self.assertTrue(cb_data.startswith(f"pay:{ma_ob.id}:"))
+        # Settle via callback
+        pay_res = await process_pay_callback(cb_data.replace('pay:', ''), 909001)
+        self.assertTrue(pay_res['success'])
+        ma_count = await PaymentHistory.objects.filter(obligation=ma_ob).acount()
+        self.assertEqual(ma_count, 1)
+
+        # 2. Infra Obligation (OUTFLOW)
+        infra_ob = await FinancialObligation.objects.acreate(
+            user=self.user,
+            title='VPS Prod Hosting',
+            type=ObligationType.SUBSCRIPTION,
+            amount=Decimal('1200.00'),
+            due_date=today,
+            metadata={'source_type': 'INFRA_ASSET', 'billing_cycle': 'MONTHLY'}
+        )
+        sent_messages.clear()
+        await send_alert_for_obligation(fake_bot, '909001', infra_ob)
+        self.assertEqual(len(sent_messages), 1)
+        kb2 = sent_messages[0]['reply_markup'].inline_keyboard
+        cb_data2 = kb2[0][0].callback_data
+        self.assertTrue(cb_data2.startswith(f"pay:{infra_ob.id}:"))
+        # Settle via callback
+        pay_res2 = await process_pay_callback(cb_data2.replace('pay:', ''), 909001)
+        self.assertTrue(pay_res2['success'])
+        infra_count = await PaymentHistory.objects.filter(obligation=infra_ob).acount()
+        self.assertEqual(infra_count, 1)

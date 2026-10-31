@@ -183,6 +183,7 @@ CORS_ALLOW_CREDENTIALS = True
 # Telegram Bot Configuration
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', '')
+APP_PUBLIC_URL = os.getenv('APP_PUBLIC_URL', '').rstrip('/')
 
 # Google Drive Storage Configuration
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')

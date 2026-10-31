@@ -233,7 +233,7 @@ def verify_ticker_exists(ticker_str: str) -> Optional[Dict[str, Any]]:
         snap = StockPriceSnapshot.objects.filter(ticker__iexact=clean).first()
         return {
             'ticker': snap.ticker,
-            'name': snap.ticker,
+            'name': snap.asset_name or snap.ticker,
             'asset_type': AssetType.CRYPTO if '-USD' in clean else AssetType.STOCK,
             'currency': snap.currency,
             'exchange': 'Market'

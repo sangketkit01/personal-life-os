@@ -129,7 +129,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     }
   }
 
+  let overviewRequest = 0
   async function fetchOverview(options?: { currency?: 'THB' | 'USD'; portfolioId?: string; assetType?: string }) {
+    const request = ++overviewRequest
+    const stateAtStart = { pf: selectedPortfolioId.value, type: selectedAssetType.value, curr: displayCurrency.value }
     try {
       const targetCurr = options?.currency || displayCurrency.value
       const targetPf = options?.portfolioId !== undefined ? options.portfolioId : selectedPortfolioId.value
@@ -146,7 +149,10 @@ export const usePortfolioStore = defineStore('portfolio', () => {
       }
 
       const res = await apiClient.get<PortfolioOverview>('/portfolio/overview/', { params })
+      if (request !== overviewRequest || selectedPortfolioId.value !== stateAtStart.pf || selectedAssetType.value !== stateAtStart.type || displayCurrency.value !== stateAtStart.curr) return res.data
       overview.value = res.data
+      const stamps = Object.values(res.data.quotes || {}).map(q => q.as_of).filter((x): x is string => !!x)
+      lastPriceSyncTime.value = stamps.length ? new Date(Math.min(...stamps.map(x => new Date(x).getTime()))) : null
       if (res.data.usd_to_thb_rate) {
         usdToThbRate.value = res.data.usd_to_thb_rate
       }
@@ -185,12 +191,16 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     ])
   }
 
-  async function fetchHoldings(options?: { portfolioId?: string; assetType?: string }) {
-    isLoading.value = true
+  let holdingsRequest = 0
+  let foregroundHoldingsRequests = 0
+  async function fetchHoldings(options?: { portfolioId?: string; assetType?: string; silent?: boolean }) {
+    const targetPf = options?.portfolioId !== undefined ? options.portfolioId : selectedPortfolioId.value
+    const targetType = options?.assetType !== undefined ? options.assetType : selectedAssetType.value
+    const request = targetPf === selectedPortfolioId.value && targetType === selectedAssetType.value ? ++holdingsRequest : 0
+    if (!options?.silent) foregroundHoldingsRequests++
+    if (!options?.silent) isLoading.value = true
     try {
       const params: Record<string, string> = {}
-      const targetPf = options?.portfolioId !== undefined ? options.portfolioId : selectedPortfolioId.value
-      const targetType = options?.assetType !== undefined ? options.assetType : selectedAssetType.value
 
       if (targetPf && targetPf !== 'ALL') {
         params.portfolio_id = targetPf
@@ -201,13 +211,13 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
       const res = await apiClient.get<{ results: StockHolding[] } | StockHolding[]>('/portfolio/holdings/', { params })
       const list = Array.isArray(res.data) ? res.data : res.data.results || []
-      holdings.value = list
+      if (request && request === holdingsRequest && targetPf === selectedPortfolioId.value && targetType === selectedAssetType.value) holdings.value = list
       return list
     } catch (err: any) {
-      error.value = err?.response?.data?.detail || 'Failed to load holdings'
+      if (request && request === holdingsRequest && targetPf === selectedPortfolioId.value && targetType === selectedAssetType.value) error.value = err?.response?.data?.detail || 'Failed to load holdings'
       throw err
     } finally {
-      isLoading.value = false
+      if (!options?.silent && --foregroundHoldingsRequests === 0) isLoading.value = false
     }
   }
 
@@ -234,8 +244,9 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     }
   }
 
-  async function fetchHoldingByTicker(ticker: string, options?: { holdingId?: string; portfolioId?: string }): Promise<StockHolding> {
+  async function fetchHoldingByTicker(ticker: string, options?: { holdingId?: string; portfolioId?: string; cached?: boolean }): Promise<StockHolding> {
     const params: Record<string, string> = {}
+    if (options?.cached) params.cached = 'true'
     if (options?.holdingId) params.holding_id = options.holdingId
     if (options?.portfolioId && options.portfolioId !== 'ALL') params.portfolio_id = options.portfolioId
 
@@ -465,6 +476,7 @@ export const usePortfolioStore = defineStore('portfolio', () => {
 
   async function refreshMarketPrices(force = false) {
     isRefreshing.value = true
+    const request = ++overviewRequest
     const requestedPf = selectedPortfolioId.value
     const requestedType = selectedAssetType.value
     const requestedCurr = displayCurrency.value
@@ -483,11 +495,12 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     try {
       const res = await apiClient.post<PortfolioOverview>('/portfolio/refresh/', payload)
       // Only update when filter state matches request to prevent fast-switching race condition
-      if (selectedPortfolioId.value === requestedPf && selectedAssetType.value === requestedType) {
+      if (request === overviewRequest && selectedPortfolioId.value === requestedPf && selectedAssetType.value === requestedType && displayCurrency.value === requestedCurr) {
         overview.value = res.data
-        lastPriceSyncTime.value = new Date()
+        const stamps = Object.values(res.data.quotes || {}).map(q => q.as_of).filter((x): x is string => !!x)
+        lastPriceSyncTime.value = stamps.length ? new Date(Math.min(...stamps.map(x => new Date(x).getTime()))) : null
       }
-      await fetchHoldings({ portfolioId: requestedPf, assetType: requestedType })
+      if (selectedPortfolioId.value === requestedPf && selectedAssetType.value === requestedType) await fetchHoldings({ portfolioId: requestedPf, assetType: requestedType })
       return res.data
     } catch (err: any) {
       error.value = err?.response?.data?.detail || 'Failed to refresh market prices'
@@ -622,7 +635,39 @@ export const usePortfolioStore = defineStore('portfolio', () => {
     }
   }
 
+  let quotePollUsers = 0
+  let quotePollTimer: ReturnType<typeof setTimeout> | null = null
+  let quotePolling = false
+  const pollCallbacks = new Set<() => void | Promise<void>>()
+  async function pollSnapshots() {
+    if (!quotePollUsers || quotePolling) return
+    quotePolling = true
+    try {
+      if (!isRefreshing.value && (typeof document === 'undefined' || !document.hidden)) {
+        await Promise.allSettled([fetchOverview(), fetchHoldings({ silent: true }), fetchWatchlist(), fetchMarketStatus()])
+        await Promise.allSettled([...pollCallbacks].map(fn => fn()))
+      }
+    } finally {
+      quotePolling = false
+      if (quotePollUsers) quotePollTimer = setTimeout(pollSnapshots, 60000)
+    }
+  }
+  function startQuotePolling(callback?: () => void | Promise<void>) {
+    quotePollUsers++
+    if (callback) pollCallbacks.add(callback)
+    if (quotePollUsers === 1) void pollSnapshots()
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      if (callback) pollCallbacks.delete(callback)
+      quotePollUsers = Math.max(0, quotePollUsers - 1)
+      if (!quotePollUsers && quotePollTimer) { clearTimeout(quotePollTimer); quotePollTimer = null }
+    }
+  }
+
   return {
+    startQuotePolling,
     overview,
     holdings,
     transactions,

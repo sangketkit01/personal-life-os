@@ -13,6 +13,8 @@ from .views import (
 )
 
 router = DefaultRouter()
+from .alert_api import PriceAlertViewSet
+router.register('price-alerts', PriceAlertViewSet, basename='price-alert')
 router.register('portfolios', InvestmentPortfolioViewSet, basename='investment-portfolio')
 router.register('holdings', StockHoldingViewSet, basename='holding')
 router.register('transactions', StockTransactionViewSet, basename='transaction')

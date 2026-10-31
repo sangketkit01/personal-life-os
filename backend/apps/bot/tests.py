@@ -460,6 +460,7 @@ class NewsHandlerRenderingTests(TelegramBotTestCase):
     async def _make_article(self, **kwargs):
         from apps.portfolio.models import StockNewsArticle
         defaults = dict(
+            relevance='ACCEPTED',  # Rendering fixture; identity validation has separate negative tests.
             ticker='ESC_TEST',
             title='Q1_Earnings Report',
             title_th='',

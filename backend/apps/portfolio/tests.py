@@ -498,6 +498,9 @@ class PortfolioEngineTestCase(TestCase):
         friend_client.cookies['access_token'] = friend_token
 
         # 3. Friend requests portfolio news (held_only=true)
+        # A holding record without units is not a current investment.
+        StockTransaction.objects.create(user=self.friend, holding=StockHolding.objects.get(user=self.friend, ticker='AAPL'),
+            transaction_type=TransactionType.BUY, shares=1, price_per_share=100, currency='USD', executed_at=timezone.now())
         res_friend_news = friend_client.get('/api/portfolio/news/?held_only=true')
         self.assertEqual(res_friend_news.status_code, status.HTTP_200_OK)
         articles = res_friend_news.data if isinstance(res_friend_news.data, list) else res_friend_news.data.get('results', [])

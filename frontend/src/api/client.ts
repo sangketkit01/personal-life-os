@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { safeReturnPath } from '../utils/returnPath'
 
 const apiClient = axios.create({
   baseURL: (import.meta as any).env?.PROD ? '/api' : ((import.meta as any).env?.VITE_API_URL || 'http://localhost:8000/api'),
@@ -72,7 +73,7 @@ apiClient.interceptors.response.use(
         // If refresh fails on a protected route, redirect to login (do not redirect away from /login or /register)
         const guestPaths = ['/login', '/register']
         if (!guestPaths.includes(window.location.pathname)) {
-          window.location.href = '/login'
+          window.location.href = '/login?redirect=' + encodeURIComponent(safeReturnPath(window.location.pathname + window.location.search + window.location.hash))
         }
         return Promise.reject(refreshError)
       } finally {

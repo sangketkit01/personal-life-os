@@ -63,12 +63,14 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
+import { safeReturnPath } from '../utils/returnPath'
 import { useAuthStore } from '../stores/auth'
 import { t } from '../i18n'
 import { Command } from 'lucide-vue-next'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const form = ref({
@@ -83,7 +85,7 @@ async function handleLogin() {
   isSubmitting.value = true
   try {
     await authStore.login(form.value)
-    router.push('/')
+    router.push(safeReturnPath(route.query.redirect))
   } catch (err: any) {
     const errorData = err.response?.data
     if (errorData) {

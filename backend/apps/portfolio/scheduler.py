@@ -3,12 +3,14 @@ from typing import Dict, Any
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from .news_service import ingest_news_for_ticker
+from apps.bot.leases import leased
 
 logger = logging.getLogger(__name__)
 
 _scheduler = None
 
 
+@leased('portfolio-news', seconds=3500, skipped={'status': 'already_running'})
 def sync_hourly_portfolio_news() -> Dict[str, Any]:
     """
     Hourly recurring job:
@@ -21,9 +23,10 @@ def sync_hourly_portfolio_news() -> Dict[str, Any]:
     from .models import StockHolding
 
     try:
-        distinct_tickers = list(
-            StockHolding.objects.values_list('ticker', flat=True).distinct()
-        )
+        from .identity import active_tickers, revalidate_stored_news
+        from .models import StockWatchlist
+        revalidate_stored_news(limit=1000)
+        distinct_tickers = sorted(active_tickers() | set(StockWatchlist.objects.values_list('ticker', flat=True)))
     except Exception as e:
         logger.warning(f"[Hourly News Sync] Database not ready or failed to list tickers: {e}")
         return {'status': 'skipped', 'reason': str(e)}
@@ -61,6 +64,8 @@ def start_portfolio_scheduler():
 
     try:
         _scheduler = BackgroundScheduler(timezone="Asia/Bangkok")
+        from .quotes import sync_tracked_prices
+        _scheduler.add_job(sync_tracked_prices, trigger=IntervalTrigger(seconds=60), id='portfolio_prices', replace_existing=True, coalesce=True, max_instances=1)
         # Run news sync every hour
         _scheduler.add_job(
             sync_hourly_portfolio_news,

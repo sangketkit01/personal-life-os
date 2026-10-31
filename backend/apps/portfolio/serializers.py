@@ -421,6 +421,7 @@ class StockNewsArticleSerializer(serializers.ModelSerializer):
 
 
 class StockWatchlistSerializer(serializers.ModelSerializer):
+    quote = serializers.SerializerMethodField()
     current_price = serializers.SerializerMethodField()
     change_amount = serializers.SerializerMethodField()
     change_pct = serializers.SerializerMethodField()
@@ -435,24 +436,35 @@ class StockWatchlistSerializer(serializers.ModelSerializer):
             'currency',
             'notes',
             'current_price',
+            'quote',
             'change_amount',
             'change_pct',
             'created_at'
         )
         read_only_fields = ('id', 'created_at')
 
+    def _snapshot(self, obj):
+        cache = self.context.setdefault('_watchlist_snapshots', {})
+        if obj.ticker not in cache:
+            cache[obj.ticker] = StockPriceSnapshot.objects.filter(ticker=obj.ticker).first()
+        return cache[obj.ticker]
+
     def get_current_price(self, obj):
         price_map = self.context.get('price_map', {})
         if obj.ticker in price_map and price_map[obj.ticker] is not None:
             return float(price_map[obj.ticker])
-        snapshot = StockPriceSnapshot.objects.filter(ticker=obj.ticker).first()
+        snapshot = self._snapshot(obj)
         return float(snapshot.price) if snapshot and snapshot.price else None
 
+    def get_quote(self, obj):
+        from .quotes import quote_metadata
+        return quote_metadata(self._snapshot(obj))
+
     def get_change_amount(self, obj):
-        snapshot = StockPriceSnapshot.objects.filter(ticker=obj.ticker).first()
-        return float(snapshot.change_amount) if snapshot and snapshot.change_amount else 0.0
+        snapshot = self._snapshot(obj)
+        return float(snapshot.change_amount) if snapshot and snapshot.change_amount is not None else None
 
     def get_change_pct(self, obj):
-        snapshot = StockPriceSnapshot.objects.filter(ticker=obj.ticker).first()
-        return float(snapshot.change_pct) if snapshot and snapshot.change_pct else 0.0
+        snapshot = self._snapshot(obj)
+        return float(snapshot.change_pct) if snapshot and snapshot.change_pct is not None else None
 

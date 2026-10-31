@@ -14,7 +14,7 @@ def get_market_category(ticker: str, asset_type: Optional[str] = None) -> str:
         return 'CRYPTO'
     if t.endswith('=X'):
         return 'FOREX'
-    if t.endswith('.BK') or asset_type == 'FUND':
+    if t.endswith('.BK'):
         return 'SET'
     return 'US'
 
@@ -50,13 +50,18 @@ def get_set_market_status(now_ict: Optional[datetime] = None) -> Dict[str, Any]:
             'hours_description': 'Mon-Fri 09:30 - 17:00 ICT'
         }
 
+    from .exchange_sessions import session
+    trading = session('SET', now_ict.date())
+    if not trading:
+        return {'market': 'SET', 'name': 'Stock Exchange of Thailand', 'is_open': False, 'session': 'Market Holiday', 'opens_at': 'Next trading session', 'current_time_local': now_ict.strftime('%H:%M ICT'), 'hours_description': 'Exchange calendar'}
+
     # Weekdays: Market session intervals
     t_pre_morning = dtime(9, 30)
     t_open_morning = dtime(10, 0)
-    t_close_morning = dtime(12, 30)
-    t_pre_afternoon = dtime(14, 0)
-    t_open_afternoon = dtime(14, 30)
-    t_close_day = dtime(17, 0)
+    from .exchange_sessions import SET_LUNCH_START, set_afternoon_times
+    t_close_morning = SET_LUNCH_START
+    t_pre_afternoon, t_open_afternoon = set_afternoon_times(now_ict.date())
+    t_close_day = trading['close'].astimezone(tz_ict).time()
 
     if current_time < t_pre_morning:
         return {
@@ -94,7 +99,7 @@ def get_set_market_status(now_ict: Optional[datetime] = None) -> Dict[str, Any]:
             'name': 'Stock Exchange of Thailand',
             'is_open': False,
             'session': 'Lunch Break',
-            'opens_at': 'Today 14:00 ICT (Pre-Open)',
+            'opens_at': f'Today {t_pre_afternoon:%H:%M} ICT (Pre-Open)',
             'current_time_local': now_ict.strftime('%H:%M ICT'),
             'hours_description': 'Mon-Fri 09:30 - 17:00 ICT'
         }
@@ -161,9 +166,14 @@ def get_us_market_status(now_et: Optional[datetime] = None) -> Dict[str, Any]:
             'hours_description': 'Mon-Fri 04:00 - 20:00 ET (Pre/Regular/After)'
         }
 
+    from .exchange_sessions import session
+    trading = session('US', now_et.date())
+    if not trading:
+        return {'market': 'US', 'name': 'US Markets', 'is_open': False, 'session': 'Market Holiday', 'opens_at': 'Next trading session', 'current_time_local': now_et.strftime('%H:%M ET'), 'hours_description': 'Exchange calendar'}
+
     t_pre = dtime(4, 0)
     t_open = dtime(9, 30)
-    t_close = dtime(16, 0)
+    t_close = trading['close'].astimezone(tz_et).time()
     t_after = dtime(20, 0)
 
     if current_time < t_pre:

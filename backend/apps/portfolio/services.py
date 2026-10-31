@@ -1,5 +1,5 @@
 import re
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone as dt_timezone
 from decimal import Decimal
 from typing import Dict, Any, List, Optional
 from django.utils import timezone
@@ -12,6 +12,7 @@ from .models import (
     InvestmentPortfolio
 )
 from .asset_catalog import search_market_assets, verify_ticker_exists
+from .quotes import quote_metadata, worker_health
 
 
 # Common Thai SET tickers (auto-appends .BK if omitted)
@@ -86,7 +87,7 @@ def _fetch_single_yf_quote(t: str) -> Optional[Dict[str, Any]]:
         # Fetch stock.info for US Pre-market and Post-market session quotes
         info = {}
         try:
-            info = stock.info or {}
+            info = stock.get_info() or {}
         except Exception:
             pass
 
@@ -167,7 +168,11 @@ def _fetch_single_yf_quote(t: str) -> Optional[Dict[str, Any]]:
                 'change_amount': change_amount_val,
                 'change_pct': change_pct_val,
                 'previous_close': previous_close_val,
-                'currency': 'THB' if t.endswith('.BK') else 'USD'
+                'currency': info.get('currency') or ('THB' if t.endswith('.BK') or t == 'USDTHB=X' else 'USD'),
+                'asset_name': str(info.get('longName') or info.get('shortName') or '')[:255],
+                'exchange': str(info.get('exchange') or '')[:40],
+                'quote_at': datetime.fromtimestamp(info['regularMarketTime'], tz=dt_timezone.utc) if info.get('regularMarketTime') else None,
+                'regular_quote_at': datetime.fromtimestamp(info['regularMarketTime'], tz=dt_timezone.utc) if info.get('regularMarketTime') else None
             }
         return None
     except Exception:
@@ -204,6 +209,9 @@ def fetch_and_cache_market_prices(
     missing_or_stale = []
     for t in tickers_to_fetch:
         snap = cached_snapshots.get(t)
+        if snap and snap.last_error and snap.last_attempt_at and not force and now - snap.last_attempt_at < timedelta(minutes=5):
+            prices[t] = snap.price
+            continue
 
         # If respecting trading hours and not forced (force=False)
         # Verify if market is currently open for trading
@@ -228,10 +236,13 @@ def fetch_and_cache_market_prices(
                 with ThreadPoolExecutor(max_workers=min(5, len(missing_or_stale))) as executor:
                     quotes = list(executor.map(_fetch_single_yf_quote, missing_or_stale))
 
-            for quote in quotes:
-                if quote is None:
+            for t, quote in zip(missing_or_stale, quotes):
+                if not quote or not Decimal(str(quote.get('price', 0))).is_finite() or Decimal(str(quote.get('price', 0))) <= 0:
+                    StockPriceSnapshot.objects.filter(ticker=t).update(last_attempt_at=now, last_error='No valid quote returned by provider')
                     continue
-                t = quote.pop('ticker')
+                quote = dict(quote)
+                quote.pop('ticker', None)
+                quote.update(last_attempt_at=now, last_error='')
                 StockPriceSnapshot.objects.update_or_create(ticker=t, defaults=quote)
                 prices[t] = quote['price']
         except ImportError:
@@ -439,6 +450,7 @@ def calculate_detailed_position(
         'extended_change': round(extended_change, 4) if extended_change else None,
         'extended_change_pct': round(extended_change_pct, 4) if extended_change_pct else None,
         'is_active': total_shares > Decimal('0'),
+        'quote': quote_metadata(snapshot),
         # Explicit THB values
         'avg_cost_thb': round(avg_cost_thb, 4),
         'current_price_thb': round(price_thb, 4),
@@ -461,32 +473,9 @@ def calculate_detailed_position(
 
 
 def get_usd_to_thb_rate() -> Decimal:
-    """
-    Fetch live USD/THB exchange rate
-    - Cache in StockPriceSnapshot for speed and network efficiency
-    - Fallback to USDTHB=X or default baseline if offline
-    """
+    """Read the shared FX snapshot. Background jobs own provider requests."""
     snap = StockPriceSnapshot.objects.filter(ticker='USDTHB=X').first()
-    if snap and (timezone.now() - snap.fetched_at).total_seconds() < 3600:
-        return snap.price
-
-    try:
-        import yfinance as yf
-        ticker = yf.Ticker('USDTHB=X')
-        price = ticker.fast_info.get('lastPrice') or ticker.fast_info.get('regularMarketPrice')
-        if price:
-            dec_price = Decimal(str(round(price, 4)))
-            StockPriceSnapshot.objects.update_or_create(
-                ticker='USDTHB=X',
-                defaults={'price': dec_price, 'currency': 'THB'}
-            )
-            return dec_price
-    except Exception:
-        pass
-
-    if snap:
-        return snap.price
-    return Decimal('34.50')
+    return snap.price if snap else Decimal('34.50')
 
 
 def get_portfolio_overview(
@@ -537,6 +526,8 @@ def get_portfolio_overview(
 
     # Batch fetch tickers quotes avoiding N+1 queries
     tickers = [h.ticker for h in holdings]
+    if tickers:
+        tickers.append('USDTHB=X')
     cached_snapshots = {
         s.ticker: s for s in StockPriceSnapshot.objects.filter(ticker__in=tickers)
     }
@@ -673,5 +664,8 @@ def get_portfolio_overview(
         'asset_allocation': active_summary['asset_allocation'],
         'summary_thb': summary_thb,
         'summary_usd': summary_usd,
-        'holdings': holdings_summary
+        'holdings': holdings_summary,
+        'quote_worker': worker_health(),
+        'quotes': {t: quote_metadata(s) for t, s in cached_snapshots.items()},
+        'quote_sync': {'stale_count': sum(quote_metadata(s)['state'] in ('STALE', 'UNKNOWN') for s in cached_snapshots.values()), 'missing_count': len(set(tickers) - set(cached_snapshots))}
     }

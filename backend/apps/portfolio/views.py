@@ -1,4 +1,5 @@
 from django.db.models import Prefetch
+from django.utils import timezone
 from rest_framework import viewsets, views, permissions, status, response, serializers
 from rest_framework.decorators import action
 from apps.accounts.services import log_activity
@@ -25,6 +26,7 @@ from .services import (
     get_usd_to_thb_rate
 )
 from .asset_catalog import verify_ticker_exists
+from .quotes import quote_metadata
 
 
 class InvestmentPortfolioViewSet(viewsets.ModelViewSet):
@@ -96,8 +98,9 @@ class PortfolioRefreshView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        holdings = StockHolding.objects.filter(user=request.user)
-        tickers = [h.ticker for h in holdings]
+        from .quotes import tracked_tickers, sync_result
+        started = timezone.now()
+        tickers = tracked_tickers(request.user)
         if 'USDTHB=X' not in tickers:
             tickers.append('USDTHB=X')
 
@@ -119,6 +122,7 @@ class PortfolioRefreshView(views.APIView):
             asset_type=asset_type
         )
         data['updated_prices'] = {t: float(p) for t, p in prices.items()}
+        data['sync'] = sync_result(tickers, started)
         return response.Response(data)
 
 
@@ -256,7 +260,8 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
         if not verified:
             return response.Response({'detail': f"Asset '{clean_ticker}' not found in financial markets."}, status=status.HTTP_404_NOT_FOUND)
 
-        fetch_and_cache_market_prices([clean_ticker])
+        if request.query_params.get('cached') != 'true':
+            fetch_and_cache_market_prices([clean_ticker])
         snapshot = StockPriceSnapshot.objects.filter(ticker=clean_ticker).first()
         current_price = float(snapshot.price) if snapshot and snapshot.price else 0.0
         change_amount = float(snapshot.change_amount) if snapshot and snapshot.change_amount else 0.0
@@ -276,6 +281,7 @@ class StockHoldingViewSet(viewsets.ModelViewSet):
                 'avg_cost': 0,
                 'total_invested': 0,
                 'current_price': current_price,
+                'quote': quote_metadata(snapshot),
                 'market_value': 0,
                 'unrealized_pnl': 0,
                 'unrealized_pnl_pct': 0,
@@ -650,7 +656,9 @@ class StockNewsViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = StockNewsArticle.objects.all()
+        from .identity import revalidate_stored_news, active_tickers
+        revalidate_stored_news()
+        qs = StockNewsArticle.objects.filter(relevance='ACCEPTED')
 
         ticker = self.request.query_params.get('ticker')
         today_only = self.request.query_params.get('today_only')
@@ -698,7 +706,7 @@ class StockNewsViewSet(viewsets.ReadOnlyModelViewSet):
             watch_tickers = StockWatchlist.objects.filter(user=self.request.user).values_list('ticker', flat=True)
             qs = qs.filter(ticker__in=watch_tickers)
         elif held_only and held_only.lower() == 'true':
-            held_tickers = StockHolding.objects.filter(user=self.request.user).values_list('ticker', flat=True)
+            held_tickers = active_tickers(self.request.user)
             qs = qs.filter(ticker__in=held_tickers)
 
         if today_only and today_only.lower() == 'true':

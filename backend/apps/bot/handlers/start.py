@@ -2,6 +2,8 @@ from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
+from django.utils import timezone
+from datetime import timedelta
 from apps.finance.services import get_financial_overview
 from apps.portfolio.services import get_portfolio_overview
 from apps.bot.i18n import bot_msg, currency_symbol
@@ -136,9 +138,11 @@ async def status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             text += (
                 f"  - {escape_md(item['title'])}: "
-                f"{currency_symbol(item.get('currency'))}{float(item['amount']):,.2f} ({when})\n"
+                f"{escape_md(__import__('apps.bot.dispatcher', fromlist=['billing_amount_text']).billing_amount_text(item))} ({when})\n"
             )
 
+    if overview.get('has_pending_dynamic'):
+        text += '\n⚠️ ยังมียอด Dynamic ที่รอกรอก; ยอดข้างต้นยังไม่ใช่ยอดทั้งหมด'
     await update.message.reply_text(text, parse_mode='Markdown')
 
 
@@ -188,6 +192,7 @@ async def portfolio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += bot_msg(
                 user, 'portfolio.holding_line',
                 ticker=escape_md(h['ticker']),
+                currency=currency_symbol(pos.get('currency') or h.get('currency')),
                 shares=f"{float(pos['shares']):,.2f}",
                 price=f"{float(pos['current_price']):,.2f}",
                 icon=item_icon, sign=item_sign, pnl=f"{item_pnl:,.2f}"
@@ -195,6 +200,13 @@ async def portfolio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         text += f"\n{bot_msg(user, 'portfolio.empty')}"
 
+    stamps = [h.get('position', {}).get('quote', {}).get('as_of') for h in active_holdings]
+    stamps = [x for x in stamps if x]
+    if stamps:
+        text += '\nPrice as of: ' + escape_md(min(stamps))
+    sync = overview.get('quote_sync', {})
+    if sync.get('stale_count', 0) or sync.get('missing_count', 0) or (active_holdings and not stamps):
+        text += '\nPrice data is stale, incomplete, or has no verified timestamp.'
     await update.message.reply_text(text, parse_mode='Markdown')
 
 
@@ -310,7 +322,16 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = await get_user_by_chat_id(update.effective_chat.id) if update.effective_chat else None
-    await update.message.reply_text(bot_msg(user, 'help.body'), parse_mode='Markdown')
+    body = bot_msg(user, 'help.body').split('⏰')[0]
+    if user:
+        from apps.bot.delivery import preferences
+        pref = await sync_to_async(preferences)(user)
+        clock = pref.briefing_time.strftime('%H:%M')
+        if getattr(user, 'preferred_language', 'en') == 'th':
+            body += f'⏰ *การแจ้งเตือนอัตโนมัติ*\n• สรุปเช้า {clock} ({escape_md(pref.timezone)})\n• บิล งาน และรายการค้าง ตั้งแต่ 10:00 ตามเขตเวลาที่เลือก\n• สรุปพอร์ตหลังตลาดปิด SET/US และเตือนราคาที่ตั้งเอง\n• เลือกหมวด ช่วงเงียบ และเปิดปิดฟีเจอร์ได้ใน Settings → Telegram'
+        else:
+            body += f'⏰ *Automated notifications*\n• Briefing at {clock} ({escape_md(pref.timezone)})\n• Bills, tasks and overdue digests from 10:00 local time\n• SET/US market-close reports and your one-shot price rules\n• Configure categories, quiet hours and enabled features in Settings → Telegram'
+    await update.message.reply_text(body, parse_mode='Markdown')
 
 
 async def brief_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -342,6 +363,7 @@ async def news_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     from apps.portfolio.models import StockNewsArticle, StockHolding
     from apps.portfolio.services import normalize_ticker
+    from apps.portfolio.identity import active_tickers, revalidate_stored_news
 
     args = context.args
     target_ticker = None
@@ -351,11 +373,12 @@ async def news_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _send_typing(context, chat_id)
     @sync_to_async
     def get_news(ticker=None):
-        qs = StockNewsArticle.objects.all()
+        revalidate_stored_news()
+        qs = StockNewsArticle.objects.filter(relevance='ACCEPTED', published_at__gte=timezone.now()-timedelta(hours=48))
         if ticker:
             qs = qs.filter(ticker__iexact=ticker)
         else:
-            held = StockHolding.objects.filter(user=user).values_list('ticker', flat=True)
+            held = active_tickers(user)
             qs = qs.filter(ticker__in=held)
         return list(qs.order_by('-published_at')[:4])
 
@@ -370,14 +393,16 @@ async def news_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     is_th = getattr(user, 'preferred_language', 'en') == 'th'
     lines = [bot_msg(user, 'news.title')]
+    from apps.bot.message_chunks import split_plain_text, pack_blocks
     for a in articles:
         headline = (a.title_th or a.title) if is_th else (a.title or a.title_th)
         summary_text = (a.summary_th or a.summary) if is_th else (a.summary or a.summary_th)
         sent_icon = "🟢" if a.sentiment == 'BULLISH' else ("🔴" if a.sentiment == 'BEARISH' else "⚪")
         lines.append(f"\n{sent_icon} *[{escape_md(a.ticker)}]* [{escape_md(a.source)}]\n*{escape_md(headline)}*")
         if summary_text:
-            lines.append(f"_{escape_md(summary_text)}_")
+            lines.extend(f"_{escape_md(part)}_" for part in split_plain_text(summary_text))
         if a.url:
             lines.append(f"[{bot_msg(user, 'news.read_more')}]({a.url})")
 
-    await update.message.reply_text("\n".join(lines), parse_mode='Markdown', disable_web_page_preview=True)
+    for text in pack_blocks(lines):
+        await update.message.reply_text(text, parse_mode='Markdown', disable_web_page_preview=True)

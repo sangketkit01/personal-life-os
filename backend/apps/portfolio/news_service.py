@@ -10,6 +10,8 @@ from typing import List, Dict, Any, Optional
 from django.conf import settings
 from .models import StockHolding, StockNewsArticle
 from .services import normalize_ticker
+from .identity import asset_identity, news_query, classify_news, canonical_url, revalidate_stored_news
+from apps.bot.leases import leased
 
 
 def clean_ticker_for_search(ticker: str) -> str:
@@ -213,7 +215,7 @@ def fetch_from_yahoo_finance(ticker: str, limit: int = 3) -> List[Dict[str, Any]
     clean_search = clean_ticker_for_search(ticker)
     try:
         import yfinance as yf
-        search_target = clean_search if (ticker.endswith('.BK') or ticker.endswith('-USD')) else ticker
+        search_target = asset_identity(ticker)['name']
         search_res = yf.Search(search_target, news_count=limit)
         news_items = getattr(search_res, 'news', []) or []
 
@@ -244,7 +246,8 @@ def fetch_from_yahoo_finance(ticker: str, limit: int = 3) -> List[Dict[str, Any]
                 'url': url.strip(),
                 'published_at': pub_date,
                 'thumbnail_url': thumb_url,
-                'summary': ''
+                'summary': '',
+                'related_tickers': item.get('relatedTickers', [])
             })
     except Exception as e:
         print(f"Warning: Failed to fetch Yahoo Finance news for {ticker}: {e}")
@@ -267,6 +270,7 @@ def fetch_from_google_news(ticker: str, limit: int = 3) -> List[Dict[str, Any]]:
         query = f"{ticker} stock when:3d"
         hl, gl, ceid = "en-US", "US", "US:en"
 
+    query = news_query(ticker)
     encoded_q = urllib.parse.quote(query)
     rss_url = f"https://news.google.com/rss/search?q={encoded_q}&hl={hl}&gl={gl}&ceid={ceid}"
 
@@ -771,92 +775,57 @@ def translate_and_enrich_article(
     return translate_with_fallback(title, ticker, lead, content)
 
 
+@leased(lambda ticker, *args, **kwargs: 'news:' + ticker.upper(), skipped=0)
 def ingest_news_for_ticker(ticker: str, limit_per_source: int = 3) -> int:
-    """Fetches news from multiple sources for 1 ticker with scraping and translation."""
+    """Accept identity-verified articles before translating or publishing them."""
     clean_tick = normalize_ticker(ticker)
-
-    # 1. Aggregate news from Yahoo Finance and Google News
-    yahoo_articles = fetch_from_yahoo_finance(clean_tick, limit=limit_per_source)
-    google_articles = fetch_from_google_news(clean_tick, limit=limit_per_source)
-    combined = yahoo_articles + google_articles
-
-    # 2. Filter duplicate news by URL
-    seen_urls = set()
-    new_articles_count = 0
-
+    combined = fetch_from_yahoo_finance(clean_tick, limit=limit_per_source) + fetch_from_google_news(clean_tick, limit=limit_per_source)
+    seen = set()
+    count = 0
     for item in combined:
-        url = item['url']
-        if url in seen_urls:
+        url = canonical_url(item['url'])
+        if not url or url in seen:
             continue
-        seen_urls.add(url)
-
-    # Check if already exists in database
-        existing_this = StockNewsArticle.objects.filter(ticker=clean_tick, url=url).first()
-        if existing_this:
-    # If already exists for this ticker without body, backfill
-            if not existing_this.content or not existing_this.content_th:
-                enrich_article_if_empty(existing_this)
+        seen.add(url)
+        existing = StockNewsArticle.objects.filter(ticker=clean_tick, canonical_url=url).first() or StockNewsArticle.objects.filter(ticker=clean_tick, url=item['url']).first()
+        if existing and existing.relevance in ('ACCEPTED', 'REJECTED'):
+            if existing.relevance == 'ACCEPTED' and not existing.title_th:
+                enrich_article_if_empty(existing)
             continue
-
-    # Check if article was already scraped for another ticker (reuse)
-        existing_other = StockNewsArticle.objects.filter(url=url).first()
-        if existing_other:
-            try:
-                StockNewsArticle.objects.create(
-                    ticker=clean_tick,
-                    title=existing_other.title,
-                    title_th=existing_other.title_th,
-                    summary=existing_other.summary,
-                    summary_th=existing_other.summary_th,
-                    content=existing_other.content,
-                    content_th=existing_other.content_th,
-                    source=existing_other.source,
-                    url=url,
-                    published_at=existing_other.published_at,
-                    sentiment=existing_other.sentiment,
-                    thumbnail_url=existing_other.thumbnail_url
-                )
-                new_articles_count += 1
-                continue
-            except Exception as e:
-                print(f"Warning: Failed to duplicate existing article for {clean_tick}: {e}")
-                continue
-
-        # 3. Scrape full news content
-        scraped = scrape_article_content(url, timeout=8)
-        resolved_url = scraped.get('resolved_url') or url
-        raw_lead = scraped.get('lead', '')
-        raw_content = scraped.get('full_text', '')
-
-    # 3. Generate Executive Summary as 3 bullet points
-        trans_data = translate_and_enrich_article(
-            title=item['title'],
-            ticker=clean_tick,
-            lead=raw_lead,
-            content=raw_content
-        )
-
-        # 5. Persist to database
-        try:
-            StockNewsArticle.objects.create(
-                ticker=clean_tick,
-                title=item['title'],
-                title_th=trans_data['title_th'],
-                summary=raw_lead or item.get('summary', ''),
-                summary_th=trans_data['summary_th'],
-                content=raw_content,
-                content_th=trans_data['content_th'],
-                source=item['source'],
-                url=url,
-                published_at=item['published_at'],
-                sentiment=trans_data['sentiment'],
-                thumbnail_url=item.get('thumbnail_url', '')
-            )
-            new_articles_count += 1
-        except Exception as e:
-            print(f"Warning: Failed to save news article {url}: {e}")
-
-    return new_articles_count
+        shared = StockNewsArticle.objects.filter(canonical_url=url).exclude(content='').first()
+        scraped = {'lead': shared.summary, 'full_text': shared.content} if shared else scrape_article_content(item['url'], timeout=8)
+        resolved = canonical_url(scraped.get('resolved_url') or item['url'])
+        if not resolved or (resolved != url and resolved in seen):
+            continue
+        duplicates = StockNewsArticle.objects.filter(ticker=clean_tick, canonical_url=resolved)
+        if existing:
+            duplicates = duplicates.exclude(pk=existing.pk)
+        if duplicates.exists():
+            continue
+        seen.add(resolved)
+        url = resolved
+        lead, content = scraped.get('lead', ''), scraped.get('full_text', '')
+        relevance, reason = classify_news(clean_tick, item['title'], lead + ' ' + content, item.get('related_tickers'))
+        translated = translate_and_enrich_article(item['title'], clean_tick, lead, content) if relevance == 'ACCEPTED' else {}
+        from django.utils import timezone as django_timezone
+        values = {
+            'title': item['title'], 'title_th': translated.get('title_th', ''),
+            'summary': lead, 'summary_th': translated.get('summary_th', ''),
+            'content': content, 'content_th': translated.get('content_th', ''),
+            'source': item['source'], 'published_at': item['published_at'],
+            'sentiment': translated.get('sentiment', 'NEUTRAL'),
+            'thumbnail_url': item.get('thumbnail_url', ''),
+            'relevance': relevance, 'relevance_reason': reason, 'canonical_url': url,
+            'relevance_checked_at': django_timezone.now(),
+        }
+        if existing:
+            for field, value in values.items():
+                setattr(existing, field, value)
+            existing.save(update_fields=list(values))
+        else:
+            StockNewsArticle.objects.create(ticker=clean_tick, url=item['url'], **values)
+        count += int(relevance == 'ACCEPTED')
+    return count
 
 
 def is_article_incomplete(article: StockNewsArticle) -> bool:
@@ -953,17 +922,20 @@ def enrich_article_if_empty(article: StockNewsArticle, force: bool = False) -> S
     return article
 
 
+@leased('portfolio-news', seconds=3500, skipped={'status': 'already_running'})
 def sync_all_portfolio_news(user=None) -> Dict[str, Any]:
     """Crawls news and translates automatically for all portfolio & watchlist tickers via background worker."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from .models import StockWatchlist
+    revalidate_stored_news(limit=1000)
     holding_qs = StockHolding.objects.all()
     watch_qs = StockWatchlist.objects.all()
     if user:
         holding_qs = holding_qs.filter(user=user)
         watch_qs = watch_qs.filter(user=user)
 
-    holding_tickers = set(holding_qs.values_list('ticker', flat=True).distinct())
+    from .identity import active_tickers
+    holding_tickers = active_tickers(user)
     watch_tickers = set(watch_qs.values_list('ticker', flat=True).distinct())
     distinct_tickers = sorted(list(holding_tickers | watch_tickers))
     total_new = 0

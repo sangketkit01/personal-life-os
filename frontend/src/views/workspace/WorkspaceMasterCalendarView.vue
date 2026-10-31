@@ -90,7 +90,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import apiClient from '../../api/client'
+import { useToastStore } from '../../stores/toast'
 import { Plus } from 'lucide-vue-next'
 import { useWorkspaceStore } from '../../stores/workspace'
 import WorkspaceCalendarGrid from '../../components/workspace/WorkspaceCalendarGrid.vue'
@@ -101,6 +104,8 @@ import CalendarEventModal from '../../components/workspace/CalendarEventModal.vu
 import type { CalendarEvent, TaskDocument } from '../../types/workspace'
 
 const workspaceStore = useWorkspaceStore()
+const route = useRoute()
+const toast = useToastStore()
 
 const filterProject = ref('')
 const filterPriority = ref('')
@@ -116,7 +121,23 @@ const selectedEvent = ref<CalendarEvent | null>(null)
 
 onMounted(async () => {
   await refreshData()
+  await openLinkedItem()
 })
+
+let linkedRequest = 0
+async function openLinkedItem() {
+  const request = ++linkedRequest
+  const taskId = typeof route.query.task_id === 'string' ? route.query.task_id : ''
+  const eventId = typeof route.query.event_id === 'string' ? route.query.event_id : ''
+  if (!taskId && !eventId) return
+  try {
+    const { data } = await apiClient.get(`/workspace/${taskId ? 'tasks' : 'events'}/${encodeURIComponent(taskId || eventId)}/`)
+    if (request !== linkedRequest) return
+    if (taskId) openDrawer(data)
+    else openEventModal(data)
+  } catch { if (request === linkedRequest) toast.error('Unable to open this item') }
+}
+watch(() => [route.query.task_id, route.query.event_id], () => { void openLinkedItem() })
 
 async function refreshData() {
   const params: Record<string, string> = {}

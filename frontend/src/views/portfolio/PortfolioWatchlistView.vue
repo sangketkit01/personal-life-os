@@ -115,7 +115,9 @@
 
               <!-- 3. Current Price -->
               <td class="py-3.5 px-4 text-right font-mono tabular-nums font-semibold text-zinc-100">
-                {{ (item.currency || 'USD').toUpperCase() === 'USD' ? '$' : '฿' }}{{ formatPrice(item.current_price) }}
+                <template v-if="item.current_price !== undefined && item.current_price !== null">{{ (item.currency || 'USD').toUpperCase() === 'USD' ? '$' : '฿' }}{{ formatPrice(item.current_price) }}</template>
+                <span v-else class="text-zinc-500">—</span>
+                <QuoteFreshness :quote="item.quote" />
               </td>
 
               <!-- 4. 24h Change -->
@@ -216,10 +218,13 @@
       @close="showAddModal = false"
       @saved="handleTradeSaved"
     />
+    <PriceAlertsPanel />
   </div>
 </template>
 
 <script setup lang="ts">
+import QuoteFreshness from '../../components/portfolio/QuoteFreshness.vue'
+import PriceAlertsPanel from '../../components/portfolio/PriceAlertsPanel.vue'
 import SkeletonLoader from '../../components/common/SkeletonLoader.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'

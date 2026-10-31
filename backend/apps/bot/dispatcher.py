@@ -15,6 +15,8 @@ from apps.workspace.models import (
 )
 from .i18n import bot_msg, currency_symbol
 from .markdown_utils import escape_md
+from .delivery import AutomatedBot, preferences
+from apps.portfolio.identity import active_tickers, revalidate_stored_news, story_keys
 
 User = get_user_model()
 
@@ -22,6 +24,53 @@ User = get_user_model()
 EXPIRY_NOTICE_DAYS = (30, 14, 7, 3, 1, 0)
 # Minimum gap between repeated watchdog alerts for the same asset.
 WATCHDOG_COOLDOWN = timedelta(hours=2)
+
+
+def billing_summary(ob):
+    from apps.finance.strategies import ObligationStrategyFactory
+    summary = ObligationStrategyFactory.get_strategy(ob.type).get_summary(ob)
+    pending = summary.get('pending_dynamic_count', 0)
+    amount = summary.get('total_bill_amount') if summary.get('is_itemized') else ob.amount
+    if ob.subtype == 'BNPL_ACCOUNT':
+        amount = summary.get('current_bill_amount', ob.amount)
+    elif ob.type == 'DEBT':
+        amount = summary.get('remaining_balance', ob.amount)
+    return {'id': str(ob.id), 'title': ob.title, 'currency': ob.currency, 'direction': ob.direction, 'path': obligation_path(ob), 'due_date': ob.due_date.isoformat() if ob.due_date else None,
+            'amount': amount, 'known_amount': summary.get('fixed_total', ob.amount),
+            'pending_dynamic_count': pending, 'summary': summary}
+
+
+def billing_amount_text(bill):
+    summary = bill.get('summary', {})
+    pending = bill.get('pending_dynamic_count', summary.get('pending_dynamic_count', 0))
+    cur = currency_symbol(bill.get('currency'))
+    if pending:
+        known = bill.get('known_amount', summary.get('fixed_total', 0))
+        return f'{cur}{float(known):,.2f} + รอกรอก {pending} รายการ'
+    amount = bill.get('amount')
+    return f'{cur}{float(amount or 0):,.2f}'
+
+
+def obligation_path(ob):
+    section = 'bnpl' if ob.subtype == 'BNPL_ACCOUNT' else {'SUBSCRIPTION': 'subscriptions', 'FREE_TRIAL': 'subscriptions', 'DEBT': 'debts'}.get(ob.type, 'installments')
+    return f'/finance/{section}/{ob.id}'
+
+
+def brief_links(data):
+    from django.conf import settings
+    if not settings.APP_PUBLIC_URL.startswith(('https://', 'http://')):
+        return None
+    rows = []
+    for item in data.get('bills', []):
+        if item.get('id') and item.get('path'):
+            rows.append([InlineKeyboardButton(item['title'][:45], url=settings.APP_PUBLIC_URL + item['path'])])
+    for item in data.get('tasks', [])[:2]:
+        if item.get('id'):
+            rows.append([InlineKeyboardButton(item['title'][:45], url=f'{settings.APP_PUBLIC_URL}/workspace/calendar?task_id={item["id"]}')])
+    for item in data.get('events', [])[:1]:
+        if item.get('id'):
+            rows.append([InlineKeyboardButton(item['title'][:45], url=f'{settings.APP_PUBLIC_URL}/workspace/calendar?event_id={item["id"]}')])
+    return InlineKeyboardMarkup(rows) if rows else None
 
 
 @sync_to_async
@@ -32,30 +81,26 @@ def get_users_with_telegram() -> List[Any]:
 
 @sync_to_async
 def get_due_tomorrow_obligations_for_user(user, target_date: date = None) -> List[Any]:
-    """Retrieve obligations due tomorrow (1-day advance notice) and today."""
+    """Retrieve due/overdue obligations within each configured notice window."""
     if target_date is None:
-        target_date = timezone.localdate()
+        from zoneinfo import ZoneInfo
+        target_date = timezone.localdate(timezone=ZoneInfo(preferences(user).timezone))
 
-    tomorrow = target_date + timedelta(days=1)
-
-    return list(
-        FinancialObligation.objects.filter(
-            user=user,
-            status=ObligationStatus.ACTIVE,
-            due_date__in=[target_date, tomorrow]
-        ).select_related('user').order_by('due_date')
-    )
+    rows = FinancialObligation.objects.filter(user=user, parent__isnull=True, status=ObligationStatus.ACTIVE,
+        due_date__lte=target_date + timedelta(days=30)).select_related('user').order_by('due_date')
+    return [ob for ob in rows if (ob.due_date - target_date).days <= max(0, min(30, int((ob.metadata or {}).get('alert_days_before', 1))))]
 
 
 @sync_to_async
 def get_due_tasks_for_user(user, target_date: date = None) -> List[Any]:
-    """Retrieve pending tasks/documents due tomorrow and today."""
+    """Retrieve pending tasks through the end of the user's tomorrow, including backlog."""
+    from zoneinfo import ZoneInfo
+    zone = ZoneInfo(preferences(user).timezone)
     if target_date is None:
-        target_date = timezone.localdate()
+        target_date = timezone.localdate(timezone=zone)
 
     tomorrow = target_date + timedelta(days=1)
-    now = timezone.now()
-    tomorrow_end = timezone.make_aware(timezone.datetime.combine(tomorrow, timezone.datetime.max.time()))
+    tomorrow_end = timezone.make_aware(timezone.datetime.combine(tomorrow, timezone.datetime.max.time()), zone)
 
     return list(
         TaskDocument.objects.filter(
@@ -65,7 +110,6 @@ def get_due_tasks_for_user(user, target_date: date = None) -> List[Any]:
                 'DRAFTING', 'WAITING',  # legacy aliases, kept for old rows
             ],
             deadline__lte=tomorrow_end,
-            deadline__gte=now - timedelta(days=1)
         ).select_related('project', 'user').order_by('deadline')
     )
 
@@ -73,7 +117,9 @@ def get_due_tasks_for_user(user, target_date: date = None) -> List[Any]:
 async def send_alert_for_task(bot: Bot, chat_id: str, task: TaskDocument):
     """Send alert message for upcoming task / document deadline"""
     user = task.user
-    deadline_str = task.deadline.strftime('%d/%m/%Y %H:%M') if task.deadline else ''
+    from zoneinfo import ZoneInfo
+    pref = await sync_to_async(preferences)(user)
+    deadline_str = task.deadline.astimezone(ZoneInfo(pref.timezone)).strftime('%d/%m/%Y %H:%M') if task.deadline else ''
     project_str = f"[{escape_md(task.project.name)}] " if task.project else ""
 
     text = (
@@ -100,18 +146,42 @@ async def send_alert_for_task(bot: Bot, chat_id: str, task: TaskDocument):
 async def send_alert_for_obligation(bot: Bot, chat_id: str, ob: FinancialObligation):
     """Format and send notification message with inline action buttons"""
     strategy = ObligationStrategyFactory.get_strategy(ob.type)
-    summary = strategy.get_summary(ob)
+    summary = await sync_to_async(strategy.get_summary)(ob)
+    if isinstance(bot, AutomatedBot):
+        bot.reference = {**(bot.reference or {}), 'obligation_id': str(ob.id),
+            'due_date': ob.due_date.isoformat() if ob.due_date else None,
+            'cycle_key': summary.get('cycle_key'), 'path': obligation_path(ob)}
     user = ob.user
     today = timezone.localdate()
     is_today = ob.due_date == today
+    reference = getattr(bot, 'reference', None)
+    if isinstance(reference, dict) and reference.get('date'):
+        today = date.fromisoformat(reference['date'])
+        is_today = ob.due_date == today
     day_label = bot_msg(user, 'alert.today') if is_today else bot_msg(user, 'alert.tomorrow')
+    days_left = (ob.due_date - today).days if ob.due_date else 0
+    if days_left not in (0, 1):
+        if getattr(user, 'preferred_language', 'en') == 'th':
+            day_label = f'เกินกำหนด {abs(days_left)} วัน' if days_left < 0 else f'อีก {days_left} วัน'
+        else:
+            day_label = f'{abs(days_left)} days overdue' if days_left < 0 else f'in {days_left} days'
 
     formatted_due = ob.due_date.strftime('%d/%m/%Y') if ob.due_date else ''
     meta = ob.metadata or {}
     cur = currency_symbol(ob.currency)
 
+    # A revolving credit limit is not its current statement balance.
+    if ob.subtype == 'BNPL_ACCOUNT':
+        bill = summary.get('current_statement') or {}
+        amount = bill.get('total_due', summary.get('current_bill_amount', 0))
+        if not amount or float(amount) <= 0:
+            return
+        text = f"{escape_md(ob.title)} · {escape_md(day_label)}\nStatement: {escape_md(str(bill.get('statement_month', '')))}\n{cur}{float(amount):,.2f}\n{formatted_due}"
+        from django.conf import settings
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton('เปิดบิลและชำระ', url=settings.APP_PUBLIC_URL + obligation_path(ob))]]) if settings.APP_PUBLIC_URL else None
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown', reply_markup=markup)
     # 1. Installment
-    if ob.type == ObligationType.INSTALLMENT:
+    elif ob.type == ObligationType.INSTALLMENT:
         next_term = int(summary.get('current_term', 0)) + 1
         total_terms = summary.get('total_terms', 0)
         lender = summary.get('lender', '')
@@ -198,24 +268,6 @@ async def send_alert_for_obligation(bot: Bot, chat_id: str, ob: FinancialObligat
         cur_ck = summary.get('cycle_key') or (meta.get('current_cycle') or {}).get('cycle_key') or (strategy.get_cycle_key(ob.due_date, meta.get('billing_cycle', 'MONTHLY')) if ob.due_date else '')
         cb_data = f"pay:{ob.id}:{cur_ck}" if cur_ck else f"pay:{ob.id}"
         keyboard = [[InlineKeyboardButton(bot_msg(user, 'billing.infra_button'), callback_data=cb_data)]]
-        await bot.send_message(
-            chat_id=chat_id,
-            text=text,
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-
-    # 3c. BNPL revolving statement
-    elif ob.type == ObligationType.SUBSCRIPTION and ob.subtype == 'BNPL_ACCOUNT':
-        statement = summary.get('current_statement') or {}
-        total_due = float(statement.get('total_due', ob.amount) or 0)
-        month_key = statement.get('statement_month', '')
-        text = (
-            f"{bot_msg(user, 'alert.bnpl.title', day=day_label)}\n\n"
-            f"{bot_msg(user, 'alert.bnpl.body', account=escape_md(ob.title), statement=escape_md(str(month_key)), amount=f'{cur}{total_due:,.2f}', due=formatted_due)}"
-            f"{bot_msg(user, 'alert.bnpl.footer')}"
-        )
-        keyboard = [[InlineKeyboardButton(bot_msg(user, 'alert.bnpl.paid_btn'), callback_data=f"pay:{ob.id}")]]
         await bot.send_message(
             chat_id=chat_id,
             text=text,
@@ -465,6 +517,12 @@ async def send_watchdog_alert(bot: Bot, item: Dict[str, Any]):
     if not chat_id:
         return
 
+    bot = AutomatedBot(bot, user, 'infrastructure', f'watchdog:{item["asset_id"]}:{item.get("recovered", False)}:{timezone.now().strftime("%Y%m%d%H%M")}',
+        {'watchdog_asset_id': str(item['asset_id']), 'recovered': bool(item.get('recovered'))})
+    await render_watchdog_alert(bot, chat_id, user, item)
+
+
+async def render_watchdog_alert(bot, chat_id, user, item):
     if item['recovered']:
         lines = [bot_msg(user, 'watchdog.recovered', name=escape_md(item['name']))]
     else:
@@ -512,7 +570,7 @@ async def dispatch_vps_watchdog_alerts(bot: Bot):
 # Scheduled dispatchers
 # ---------------------------------------------------------------------------
 
-async def dispatch_daily_alerts(bot: Bot):
+async def dispatch_daily_alerts(bot: Bot, users=None):
     """
     Daily task at 10:00 AM.
     Scan all users and dispatch notifications for financial obligations,
@@ -520,38 +578,49 @@ async def dispatch_daily_alerts(bot: Bot):
     """
     close_old_connections()
     try:
-        users = await get_users_with_telegram()
+        if users is None:
+            users = await get_users_with_telegram()
         for user in users:
             chat_id = user.telegram_chat_id
             if not chat_id:
                 continue
+            from zoneinfo import ZoneInfo
+            pref = await sync_to_async(preferences)(user)
+            local_day = timezone.localdate(timezone=ZoneInfo(pref.timezone))
 
             # 1. Alert for financial obligations (incl. MA inflow / infra bills)
-            due_items = await get_due_tomorrow_obligations_for_user(user)
+            due_items = await get_due_tomorrow_obligations_for_user(user, target_date=local_day)
             for ob in due_items:
+                if ob.due_date < local_day:
+                    continue
                 try:
-                    await send_alert_for_obligation(bot, chat_id, ob)
+                    await send_alert_for_obligation(AutomatedBot(bot, user, 'bills', f'bill:{ob.id}:{local_day}', {'obligation_id': str(ob.id), 'cycle_key': (ob.metadata or {}).get('current_cycle', {}).get('cycle_key'), 'date': local_day.isoformat(), 'path': obligation_path(ob)}), chat_id, ob)
                 except Exception as e:
                     print(f"Error sending financial alert to {user.username}: {e}")
 
             # 2. Alert for pending tasks/documents
             due_tasks = await get_due_tasks_for_user(user)
             for task in due_tasks:
+                if task.deadline.astimezone(ZoneInfo(pref.timezone)).date() < local_day:
+                    continue
                 try:
-                    await send_alert_for_task(bot, chat_id, task)
+                    await send_alert_for_task(AutomatedBot(bot, user, 'tasks', f'task:{task.id}:{task.deadline.isoformat()}:{local_day}', {'date': local_day.isoformat(), 'task_id': str(task.id), 'deadline': task.deadline.isoformat(), 'path': f'/workspace/calendar?task_id={task.id}'}), chat_id, task)
                 except Exception as e:
                     print(f"Error sending task alert to {user.username}: {e}")
+
+            for category in ('bills', 'tasks'):
+                await send_overdue_digest(AutomatedBot(bot, user, category, f'overdue:{category}:{local_day}', {'date': local_day.isoformat(), 'render_overdue': category}), chat_id, user, category)
 
             # 3. MA contract + domain/server expiry reminders
             ma_projects, expiring_assets = await get_expiring_items_for_user(user)
             for project in ma_projects:
                 try:
-                    await send_ma_expiry_alert(bot, chat_id, user, project)
+                    await send_ma_expiry_alert(AutomatedBot(bot, user, 'infrastructure', f'ma-expiry:{project.id}:{local_day}'), chat_id, user, project)
                 except Exception as e:
                     print(f"Error sending MA expiry alert to {user.username}: {e}")
             for asset in expiring_assets:
                 try:
-                    await send_asset_expiry_alert(bot, chat_id, user, asset)
+                    await send_asset_expiry_alert(AutomatedBot(bot, user, 'infrastructure', f'asset-expiry:{asset.id}:{local_day}'), chat_id, user, asset)
                 except Exception as e:
                     print(f"Error sending asset expiry alert to {user.username}: {e}")
     finally:
@@ -565,9 +634,13 @@ def get_morning_briefing_data(user):
     from apps.portfolio.services import get_portfolio_overview
     from django.utils import timezone
 
-    today = timezone.localdate()
-    today_start = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.min.time()))
-    today_end = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.max.time()))
+    from zoneinfo import ZoneInfo
+    pref = preferences(user)
+    local_zone = ZoneInfo(pref.timezone)
+    today = timezone.localdate(timezone=local_zone)
+    today_start = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.min.time()), local_zone)
+    today_end = timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.max.time()), local_zone)
+    revalidate_stored_news()
 
     # 1. Tasks due today
     today_tasks = list(TaskDocument.objects.filter(
@@ -576,29 +649,46 @@ def get_morning_briefing_data(user):
             TaskStatus.TODO, TaskStatus.DOING,
             'DRAFTING', 'WAITING',  # legacy aliases
         ],
-        deadline__range=[today_start, today_end]
-    ).values('title', 'priority')[:3])
+        deadline__lte=today_end
+    ).order_by('deadline').values('id', 'title', 'priority')[:3])
 
     # 2. Bills due today
     today_bills = list(FinancialObligation.objects.filter(
         user=user,
+        parent__isnull=True,
         status=ObligationStatus.ACTIVE,
-        due_date=today
-    ).values('title', 'amount', 'currency')[:3])
+        due_date__lte=today
+    ).order_by('-due_date', 'title'))
+    from apps.finance.strategies import ObligationStrategyFactory
+    today_bills = [billing_summary(ob) for ob in today_bills]
 
     # 3. Calendar events today (standalone schedule)
     today_events = list(CalendarEvent.objects.filter(
         user=user,
         start_at__range=[today_start, today_end]
-    ).values('title', 'start_at')[:5])
+    ).order_by('start_at').values('id', 'title', 'start_at')[:5])
 
     # 4. Portfolio & market news
     portfolio = get_portfolio_overview(user)
     held_tickers = [h['ticker'] for h in portfolio.get('holdings', []) if h['position']['is_active']]
+    if pref.watchlist_news:
+        from apps.portfolio.models import StockWatchlist
+        held_tickers += list(StockWatchlist.objects.filter(user=user).values_list('ticker', flat=True))
 
     top_news = list(StockNewsArticle.objects.filter(
-        ticker__in=held_tickers
-    ).order_by('-published_at').values('ticker', 'title_th', 'title', 'sentiment')[:2])
+        ticker__in=held_tickers, relevance='ACCEPTED', published_at__gte=timezone.now() - timedelta(hours=48)
+    ).order_by('-published_at').values('id', 'ticker', 'title_th', 'title', 'sentiment', 'canonical_url', 'url')[:20])
+    from .models import NotificationDelivery
+    sent_news = set()
+    for refs in NotificationDelivery.objects.filter(user=user, status__in=['SENT', 'PENDING'], created_at__gte=timezone.now()-timedelta(days=7)).values_list('reference', flat=True):
+        sent_news.update(refs.get('news_urls', []))
+    selected, seen = [], set(sent_news)
+    for item in top_news:
+        keys = story_keys(item)
+        if not keys.intersection(seen):
+            selected.append(item)
+            seen.update(keys)
+    top_news = selected[:2] if pref.portfolio_news else []
 
     # 5. Infrastructure fleet & MA/domain expiry snapshot (next 7 days)
     total_servers = InfrastructureAsset.objects.filter(user=user).count()
@@ -620,19 +710,24 @@ def get_morning_briefing_data(user):
 
     return {
         'today': today.strftime('%d/%m/%Y'),
-        'tasks': today_tasks,
-        'bills': today_bills,
-        'events': today_events,
-        'infra': {
+        'timezone': pref.timezone,
+        'as_of': timezone.now().isoformat(),
+        'tasks': today_tasks if pref.tasks else [],
+        'bills': today_bills[:3] if pref.bills else [],
+        'bills_total': len(today_bills) if pref.bills else 0,
+        'events': today_events if pref.calendar else [],
+        'infra': ({
             'total': total_servers,
             'online': online_servers,
             'unhealthy': unhealthy_servers,
             'expiring_soon_count': expiring_soon_count
-        },
+        } if pref.infrastructure else {}),
         'portfolio_val': float(portfolio.get('total_market_value', 0)),
         'unrealized_pnl': float(portfolio.get('total_unrealized_pnl', 0)),
         'unrealized_pct': float(portfolio.get('total_unrealized_pnl_pct', 0)),
-        'news': top_news
+        'news': top_news,
+        'quote_sync': portfolio.get('quote_sync', {}),
+        'news_urls': list(set().union(*(story_keys(n) for n in top_news))) if top_news else []
     }
 
 
@@ -657,7 +752,10 @@ async def send_morning_briefing(bot: Bot, chat_id: str, user):
     if data['bills']:
         lines.append(bot_msg(user, 'brief.bills_today'))
         for b in data['bills']:
-            lines.append(f"  - {escape_md(b['title'])}: {currency_symbol(b.get('currency'))}{float(b['amount']):,.2f}")
+            due = f" ({b['due_date']})" if b.get('due_date') else ''
+            lines.append('  - ' + escape_md(b['title'][:180]) + ': ' + escape_md(billing_amount_text(b) + due))
+        if data.get('bills_total', len(data['bills'])) > len(data['bills']):
+            lines.append(f"  + {data['bills_total'] - len(data['bills'])} more")
         lines.append("")
     else:
         lines.append(bot_msg(user, 'brief.bills_none'))
@@ -667,7 +765,7 @@ async def send_morning_briefing(bot: Bot, chat_id: str, user):
     if data['tasks']:
         lines.append(bot_msg(user, 'brief.tasks_today'))
         for t in data['tasks']:
-            lines.append(f"  - {escape_md(t['title'])} [{t['priority']}]")
+            lines.append(f"  - {escape_md(t['title'][:180])} [{t['priority']}]")
         lines.append("")
     else:
         lines.append(bot_msg(user, 'brief.tasks_none'))
@@ -677,8 +775,9 @@ async def send_morning_briefing(bot: Bot, chat_id: str, user):
     if data['events']:
         lines.append(bot_msg(user, 'brief.events'))
         for ev in data['events']:
-            time_str = timezone.localtime(ev['start_at']).strftime('%H:%M') if ev['start_at'] else ''
-            lines.append(f"  - {time_str} {escape_md(ev['title'])}")
+            from zoneinfo import ZoneInfo
+            time_str = ev['start_at'].astimezone(ZoneInfo(data.get('timezone', 'Asia/Bangkok'))).strftime('%H:%M') if ev['start_at'] else ''
+            lines.append(f"  - {time_str} {escape_md(ev['title'][:180])}")
         lines.append("")
     else:
         lines.append(bot_msg(user, 'brief.no_events'))
@@ -704,10 +803,46 @@ async def send_morning_briefing(bot: Bot, chat_id: str, user):
         for n in data['news']:
             headline = (n['title_th'] or n['title']) if is_th else (n['title'] or n['title_th'])
             sent_icon = "\U0001F7E2" if n['sentiment'] == 'BULLISH' else ("\U0001F534" if n['sentiment'] == 'BEARISH' else "\u26aa")
-            lines.append(f"  {sent_icon} *[{escape_md(n['ticker'])}]* {escape_md(headline)}")
+            lines.append(f"  {sent_icon} *[{escape_md(n['ticker'])}]* {escape_md(headline[:240])}")
 
+    if data.get('quote_sync', {}).get('stale_count', 0) or data.get('quote_sync', {}).get('missing_count', 0):
+        lines.append('⚠️ Portfolio contains stale or unavailable quotes. /portfolio')
     text = "\n".join(lines)
-    await bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
+    if isinstance(bot, AutomatedBot):
+        bot.reference = {**(bot.reference or {}), 'news_urls': data.get('news_urls', [])}
+    await bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown', reply_markup=brief_links(data))
+    return {'news_urls': data.get('news_urls', [])}
+
+
+@sync_to_async
+def overdue_data(user, category):
+    from zoneinfo import ZoneInfo
+    zone = ZoneInfo(preferences(user).timezone)
+    day = timezone.localdate(timezone=zone)
+    if category == 'bills':
+        rows = FinancialObligation.objects.filter(user=user, parent__isnull=True, status='ACTIVE', due_date__lt=day).order_by('due_date')
+        return rows.count(), [billing_summary(ob) for ob in rows[:5]]
+    start = timezone.make_aware(timezone.datetime.combine(day, timezone.datetime.min.time()), zone)
+    rows = TaskDocument.objects.filter(user=user, deadline__lt=start, status__in=['TODO', 'DOING', 'DRAFTING', 'WAITING']).order_by('deadline')
+    return rows.count(), [{'id': str(task.id), 'title': task.title, 'path': f'/workspace/calendar?task_id={task.id}'} for task in rows[:5]]
+
+
+async def send_overdue_digest(bot, chat_id, user, category):
+    count, rows = await overdue_data(user, category)
+    if not count:
+        return
+    th = getattr(user, 'preferred_language', 'en') == 'th'
+    title = ('บิลค้างชำระ' if category == 'bills' else 'งานเลยกำหนด') if th else ('Overdue bills' if category == 'bills' else 'Overdue tasks')
+    lines = [f'⏰ {title}: {count}']
+    for row in rows:
+        text = row['title'][:160]
+        if category == 'bills':
+            text += ': ' + billing_amount_text(row)
+        lines.append(text)
+    if count > len(rows):
+        lines.append(f'+ {count - len(rows)} more')
+    markup = brief_links({'bills': rows, 'tasks': [], 'events': []})
+    await bot.send_message(chat_id=chat_id, text='\n'.join(lines), reply_markup=markup)
 
 
 async def dispatch_morning_briefings(bot: Bot):
@@ -718,7 +853,7 @@ async def dispatch_morning_briefings(bot: Bot):
         for user in users:
             if user.telegram_chat_id:
                 try:
-                    await send_morning_briefing(bot, user.telegram_chat_id, user)
+                    await send_morning_briefing(AutomatedBot(bot, user, 'briefing', f'brief:{timezone.localdate()}', {'date': timezone.localdate().isoformat(), 'render_brief': True}), user.telegram_chat_id, user)
                 except Exception as e:
                     print(f"Error sending morning briefing to {user.username}: {e}")
     finally:

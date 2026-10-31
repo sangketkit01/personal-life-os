@@ -1,6 +1,5 @@
 import sys
 import datetime
-from zoneinfo import ZoneInfo
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from telegram import BotCommand
@@ -18,8 +17,6 @@ from apps.bot.handlers.start import (
 from apps.bot.handlers.callbacks import callback_query_handler
 from apps.bot.handlers.messages import text_message_handler
 from apps.bot.dispatcher import (
-    dispatch_daily_alerts,
-    dispatch_morning_briefings,
     dispatch_vps_watchdog_alerts
 )
 
@@ -41,18 +38,6 @@ async def post_init_commands(application):
         print(f"[WARN] Could not register Telegram bot commands: {exc}")
 
 
-async def scheduled_morning_briefing(context):
-    """Job queue callback for 08:30 AM Morning Executive Briefing."""
-    print(f"[{datetime.datetime.now()}] Running 08:30 AM Morning Executive Briefing...")
-    await dispatch_morning_briefings(context.bot)
-
-
-async def scheduled_daily_job(context):
-    """Job queue callback for 10:00 AM daily alerts (bills and task deadlines)."""
-    print(f"[{datetime.datetime.now()}] Running 10:00 AM daily alert check...")
-    await dispatch_daily_alerts(context.bot)
-
-
 async def scheduled_vps_watchdog(context):
     """Job queue callback for the 15-minute VPS watchdog sweep."""
     print(f"[{datetime.datetime.now()}] Running VPS Watchdog sweep...")
@@ -64,7 +49,7 @@ async def scheduled_hourly_news_sync(context):
     from asgiref.sync import sync_to_async
     from apps.portfolio.news_service import sync_all_portfolio_news
     print(f"[{datetime.datetime.now()}] Running Hourly Portfolio News Sync & Translation...")
-    await sync_to_async(sync_all_portfolio_news)()
+    await sync_to_async(sync_all_portfolio_news, thread_sensitive=False)()
 
 
 class Command(BaseCommand):
@@ -101,17 +86,14 @@ class Command(BaseCommand):
         # 4. Register Scheduled Alerts & Hourly Ingestion (Bangkok Time)
         job_queue = app.job_queue
         if job_queue:
-            bangkok_tz = ZoneInfo("Asia/Bangkok")
             
-            # 08:30 AM Morning Briefing
-            brief_time = datetime.time(hour=8, minute=30, second=0, tzinfo=bangkok_tz)
-            job_queue.run_daily(scheduled_morning_briefing, time=brief_time, name="daily_830am_briefing")
-            self.stdout.write(self.style.SUCCESS("[OK] 08:30 AM Morning Briefing Scheduler registered (Asia/Bangkok)"))
+            from apps.bot.automation import scheduled_prices, scheduled_notifications
+            job_queue.run_repeating(scheduled_prices, interval=60, first=1, name='portfolio_prices', job_kwargs={'max_instances': 1, 'coalesce': True})
+            job_queue.run_repeating(scheduled_notifications, interval=60, first=20, name='notification_dispatch', job_kwargs={'max_instances': 1, 'coalesce': True})
+            self.stdout.write(self.style.SUCCESS("[OK] Configurable briefing and notification dispatcher registered"))
 
-            # 10:00 AM Daily Alerts
-            alert_time = datetime.time(hour=10, minute=0, second=0, tzinfo=bangkok_tz)
-            job_queue.run_daily(scheduled_daily_job, time=alert_time, name="daily_10am_alert")
-            self.stdout.write(self.style.SUCCESS("[OK] 10:00 AM Daily Alert Scheduler registered (Asia/Bangkok)"))
+            # The minute dispatcher catches up after restarts and deduplicates each local-day event.
+            self.stdout.write(self.style.SUCCESS("[OK] Local-day due reminders and restart catch-up enabled"))
 
             # Hourly News Ingestion & Translation
             job_queue.run_repeating(scheduled_hourly_news_sync, interval=3600, first=10, name="hourly_news_sync")

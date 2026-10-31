@@ -242,6 +242,7 @@
                   </td>
                   <td class="py-3 text-right font-medium text-zinc-200 tabular-nums">
                     {{ curSymbol }}{{ Number(h.position?.current_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) }}
+                <QuoteFreshness :quote="h.position?.quote" />
                   </td>
                   <td class="py-3 text-right font-semibold text-zinc-100 tabular-nums">
                     {{ curSymbol }}{{ Number(h.position?.market_value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}
@@ -472,6 +473,7 @@
 </template>
 
 <script setup lang="ts">
+import QuoteFreshness from '../../components/portfolio/QuoteFreshness.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { usePortfolioStore } from '../../stores/portfolio'

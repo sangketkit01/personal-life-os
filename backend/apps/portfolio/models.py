@@ -254,6 +254,12 @@ class StockPriceSnapshot(models.Model):
         verbose_name="Extended Change %"
     )
     fetched_at = models.DateTimeField(auto_now=True, verbose_name="Last Fetched At")
+    quote_at = models.DateTimeField(null=True, blank=True)
+    regular_quote_at = models.DateTimeField(null=True, blank=True)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=250, blank=True, default='')
+    asset_name = models.CharField(max_length=255, blank=True, default='')
+    exchange = models.CharField(max_length=40, blank=True, default='')
 
     class Meta:
         db_table = 'stock_price_snapshots'
@@ -265,6 +271,11 @@ class StockPriceSnapshot(models.Model):
 
 
 class StockNewsArticle(models.Model):
+    relevance = models.CharField(max_length=12, default='PENDING', db_index=True,
+                                 choices=[('PENDING', 'Pending'), ('ACCEPTED', 'Accepted'), ('REJECTED', 'Rejected'), ('UNKNOWN', 'Unknown')])
+    relevance_reason = models.CharField(max_length=250, blank=True, default='')
+    relevance_checked_at = models.DateTimeField(null=True, blank=True)
+    canonical_url = models.URLField(max_length=1000, blank=True, default='', db_index=True)
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     ticker = models.CharField(max_length=30, db_index=True, verbose_name="Ticker")
     title = models.CharField(max_length=500, verbose_name="News Headline (EN)")
@@ -329,3 +340,6 @@ class StockWatchlist(models.Model):
     def __str__(self):
         return f"{self.user.username} watching {self.ticker}"
 
+
+# Register automation models in Django's model module.
+from .automation_models import PriceAlert, MarketCloseReport  # noqa: E402,F401

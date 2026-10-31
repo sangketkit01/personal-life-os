@@ -152,6 +152,7 @@
         </div>
       </div>
 
+      <QuoteFreshness :quote="holding?.position?.quote" />
       <!-- Interactive Dime-Style Stock Price Chart -->
       <StockPriceChart
         :ticker="holding?.ticker || tickerParam"
@@ -563,11 +564,14 @@
         </div>
       </div>
     </div>
+    <PriceAlertsPanel v-if="holding" :ticker="holding.ticker" :currency="holding.currency" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import QuoteFreshness from '../components/portfolio/QuoteFreshness.vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import PriceAlertsPanel from '../components/portfolio/PriceAlertsPanel.vue'
 import { useRoute, useRouter } from 'vue-router'
 import { t } from '../i18n'
 import { usePortfolioStore, isTickerMatch } from '../stores/portfolio'
@@ -893,7 +897,10 @@ async function handleSyncThisAsset() {
   }
 }
 
+let assetRequest = 0
 async function loadAssetData() {
+  const request = ++assetRequest
+  errorMessage.value = ''
   const ticker = tickerParam.value
   if (!ticker) return
 
@@ -905,6 +912,7 @@ async function loadAssetData() {
     // 1. Fetch holding info with holdingId/portfolioId filter
     const fetchedHolding = await portfolioStore.fetchHoldingByTicker(ticker, { holdingId, portfolioId })
 
+    if (request !== assetRequest) return
     // Check if user mutated watchlist during in-flight fetch
     const lastMutation = portfolioStore.getWatchlistMutationTime(ticker)
     if (lastMutation >= requestStartedAt) {
@@ -934,6 +942,7 @@ async function loadAssetData() {
         holdingId: fetchedHolding.id,
         portfolioId: fetchedHolding.portfolio
       })
+      if (request !== assetRequest) return
       assetTransactions.value = txList
     } else {
       assetTransactions.value = []
@@ -941,20 +950,32 @@ async function loadAssetData() {
 
     // 3. Fetch news for this ticker (with On-demand ingestion)
     const newsList = await portfolioStore.fetchNews({ ticker })
+    if (request !== assetRequest) return
     assetNews.value = newsList
   } catch (err: any) {
+    if (request !== assetRequest) return
     errorMessage.value = err?.response?.data?.detail || `Asset quote unavailable for ${ticker} in market feed`
   }
 }
 
 watch(
-  () => [route.query.holding_id, route.query.portfolio_id],
+  () => [route.params.ticker, route.query.holding_id, route.query.portfolio_id],
   () => {
     loadAssetData()
   }
 )
 
+let stopQuotePolling: (() => void) | undefined
+async function refreshAssetSnapshot() {
+  if (!holding.value) return
+  const ticker = tickerParam.value
+  const id = holding.value.id
+  const result = await portfolioStore.fetchHoldingByTicker(ticker, { holdingId: id || undefined, portfolioId: holding.value.portfolio, cached: true })
+  if (tickerParam.value === ticker && holding.value?.id === id) holding.value = result
+}
+onUnmounted(() => stopQuotePolling?.())
 onMounted(async () => {
+  stopQuotePolling = portfolioStore.startQuotePolling(refreshAssetSnapshot)
   isLoading.value = true
   try {
     await Promise.all([

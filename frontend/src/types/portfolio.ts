@@ -1,7 +1,9 @@
+export interface QuoteMetadata { state: 'CURRENT' | 'CLOSED' | 'STALE' | 'UNKNOWN' | 'MISSING'; as_of: string | null; fetched_at: string | null; error?: string }
 export type AssetType = 'STOCK' | 'CRYPTO' | 'FUND' | 'OTHER'
 export type TransactionType = 'BUY' | 'SELL' | 'DIVIDEND'
 
 export interface PositionSummary {
+  quote?: QuoteMetadata
   shares: number
   avg_cost: number
   total_invested: number
@@ -106,6 +108,7 @@ export interface StockHolding {
 }
 
 export interface StockWatchlistItem {
+  quote?: QuoteMetadata
   id: string
   ticker: string
   name: string
@@ -177,6 +180,10 @@ export interface PortfolioSummaryCurrency {
 }
 
 export interface PortfolioOverview {
+  quote_worker?: { healthy: boolean; started_at: string | null; finished_at: string | null }
+  quotes?: Record<string, QuoteMetadata>
+  quote_sync?: { stale_count: number; missing_count: number }
+  sync?: { refreshed: string[]; cached: string[]; failed: string[]; quotes: Record<string, QuoteMetadata> }
   base_currency?: 'THB' | 'USD'
   usd_to_thb_rate?: number
   selected_portfolio_id?: string

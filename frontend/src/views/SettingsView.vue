@@ -170,6 +170,8 @@
       </div>
     </div>
 
+    <NotificationSettings v-if="authStore.user?.is_telegram_connected" />
+
     <!-- 2. Google Drive Cloud Storage (Zero-Disk Storage Backend) -->
     <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
       <div class="p-4 border-b border-zinc-800/80 flex items-center justify-between">
@@ -525,6 +527,7 @@
 </template>
 
 <script setup lang="ts">
+import NotificationSettings from '../components/settings/NotificationSettings.vue'
 import { ref, reactive, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { locale, setLocale, t, formatLocaleDate } from '../i18n'

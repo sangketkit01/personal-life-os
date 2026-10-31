@@ -304,6 +304,7 @@
               <!-- 4. Price -->
               <td class="py-3.5 px-4 text-right font-mono tabular-nums text-zinc-200">
                 {{ currSymbol }}{{ formatHoldingPrice(holding, 'current_price') }}
+                <QuoteFreshness :quote="holding.position?.quote" />
               </td>
 
               <!-- 5. Market Value -->
@@ -456,6 +457,7 @@
 </template>
 
 <script setup lang="ts">
+import QuoteFreshness from '../../components/portfolio/QuoteFreshness.vue'
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { usePortfolioStore } from '../../stores/portfolio'

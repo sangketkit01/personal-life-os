@@ -74,22 +74,23 @@
     <!-- Right: Real-time Polling Status, Last Synced & Refresh Trigger -->
     <div class="flex flex-wrap items-center justify-between sm:justify-end gap-2.5 w-full lg:w-auto lg:self-center">
       <div
-        v-if="portfolioStore.marketStatus?.should_poll_realtime"
+        v-if="portfolioStore.overview?.quote_worker?.healthy"
         class="flex items-center gap-1.5 text-[10px] text-zinc-300 bg-zinc-900/60 border border-zinc-800 px-2 py-0.5 rounded"
       >
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span>1m Sync</span>
+        <span>อัปเดตเบื้องหลัง</span>
       </div>
       <div
         v-else
         class="flex items-center gap-1.5 text-[10px] text-zinc-500 bg-zinc-950 border border-zinc-900 px-2 py-0.5 rounded"
       >
         <span class="w-1.5 h-1.5 rounded-full bg-zinc-700"></span>
-        <span>Sync Paused</span>
+        <span>รอการอัปเดตราคา</span>
       </div>
 
+      <span v-if="(portfolioStore.overview?.quote_sync?.stale_count || 0) + (portfolioStore.overview?.quote_sync?.missing_count || 0) > 0" class="text-amber-400 text-[10px]">มีราคาที่เก่าหรือยังไม่ทราบเวลาอ้างอิง</span>
       <div v-if="formattedLastSyncTime" class="text-[10px] text-zinc-500 hidden sm:block">
-        Synced: <span class="text-zinc-400 font-mono">{{ formattedLastSyncTime }}</span>
+        ราคาอ้างอิง: <span class="text-zinc-400 font-mono">{{ formattedLastSyncTime }}</span>
       </div>
 
       <button
@@ -107,24 +108,28 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { usePortfolioStore } from '../../stores/portfolio'
 import { useToastStore } from '../../stores/toast'
 import { RefreshCw } from 'lucide-vue-next'
 
 const portfolioStore = usePortfolioStore()
 const toast = useToastStore()
+let stopPolling: (() => void) | undefined
+onMounted(() => { stopPolling = portfolioStore.startQuotePolling() })
+onUnmounted(() => stopPolling?.())
 
 const formattedLastSyncTime = computed(() => {
   if (!portfolioStore.lastPriceSyncTime) return ''
-  return portfolioStore.lastPriceSyncTime.toLocaleTimeString('en-GB')
+  return portfolioStore.lastPriceSyncTime.toLocaleString('th-TH')
 })
 
 async function handleRefreshPrices() {
   try {
-    await portfolioStore.refreshMarketPrices(true)
+    const result = await portfolioStore.refreshMarketPrices(true)
     await portfolioStore.fetchMarketStatus()
-    toast.success('Market quotes and USD/THB rate refreshed')
+    if (result.sync?.failed.length) toast.error(`ดึงราคาไม่สำเร็จ: ${result.sync.failed.join(', ')} · ใช้ข้อมูลล่าสุดที่มี`)
+    else toast.success(`อัปเดตราคาแล้ว ${result.sync?.refreshed.length || 0} สินทรัพย์`)
   } catch {
     toast.error('Failed to refresh market quotes')
   }

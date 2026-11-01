@@ -87,6 +87,9 @@ class InfraAssetType(models.TextChoices):
     OTHER = 'OTHER', 'Other Infrastructure'
 
 
+# Server inventory is narrower than compute resources (managed DB/PaaS are not servers).
+SERVER_ASSET_TYPES = {InfraAssetType.VPS, InfraAssetType.DEDICATED}
+
 # Compute assets carry SSH/telemetry; everything else is a subscription-style
 # service (SaaS, domain, API, storage, license...).
 COMPUTE_ASSET_TYPES = {

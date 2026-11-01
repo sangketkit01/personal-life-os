@@ -4,14 +4,14 @@ from typing import List, Dict, Any, Optional
 from telegram import Bot, InlineKeyboardMarkup, InlineKeyboardButton
 from asgiref.sync import sync_to_async
 from django.db import close_old_connections
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from apps.finance.models import FinancialObligation, ObligationStatus, ObligationType, FlowDirection
 from apps.finance.strategies import ObligationStrategyFactory
 from apps.workspace.models import (
     TaskDocument, TaskStatus, CalendarEvent,
-    WorkspaceProject, ProjectType, InfrastructureAsset
+    WorkspaceProject, ProjectType, InfrastructureAsset, SERVER_ASSET_TYPES
 )
 from .i18n import bot_msg, currency_symbol
 from .markdown_utils import escape_md
@@ -691,12 +691,10 @@ def get_morning_briefing_data(user):
     top_news = selected[:2] if pref.portfolio_news else []
 
     # 5. Infrastructure fleet & MA/domain expiry snapshot (next 7 days)
-    total_servers = InfrastructureAsset.objects.filter(user=user).count()
-    online_servers = InfrastructureAsset.objects.filter(
-        user=user, health_status='ONLINE'
-    ).count()
-    unhealthy_servers = list(InfrastructureAsset.objects.filter(
-        user=user, health_status__in=['WARNING', 'OFFLINE']
+    servers = InfrastructureAsset.objects.filter(user=user, asset_type__in=SERVER_ASSET_TYPES)
+    server_counts = servers.aggregate(total=Count('pk'), online=Count('pk', filter=Q(health_status='ONLINE')))
+    unhealthy_servers = list(servers.filter(
+        health_status__in=['WARNING', 'OFFLINE']
     ).values('name', 'health_status')[:5])
     window_end = today + timedelta(days=7)
     expiring_soon_count = (
@@ -717,8 +715,8 @@ def get_morning_briefing_data(user):
         'bills_total': len(today_bills) if pref.bills else 0,
         'events': today_events if pref.calendar else [],
         'infra': ({
-            'total': total_servers,
-            'online': online_servers,
+            'total': server_counts['total'],
+            'online': server_counts['online'],
             'unhealthy': unhealthy_servers,
             'expiring_soon_count': expiring_soon_count
         } if pref.infrastructure else {}),

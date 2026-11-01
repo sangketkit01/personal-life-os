@@ -212,9 +212,9 @@ async def portfolio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @sync_to_async
 def get_user_servers(user):
-    """List infrastructure assets with the latest telemetry snapshot."""
-    from apps.workspace.models import InfrastructureAsset
-    return list(InfrastructureAsset.objects.filter(user=user).order_by('name'))
+    """List VPS/dedicated servers with their latest stored telemetry snapshot."""
+    from apps.workspace.models import InfrastructureAsset, SERVER_ASSET_TYPES
+    return list(InfrastructureAsset.objects.filter(user=user, asset_type__in=SERVER_ASSET_TYPES).order_by('name'))
 
 
 @sync_to_async
@@ -230,7 +230,7 @@ def get_user_ma_contracts(user):
 
 
 async def servers_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler for /servers: list servers & infrastructure with live status."""
+    """Handler for /servers: list VPS/dedicated servers with latest stored status."""
     if not update.effective_chat or not update.message:
         return
 

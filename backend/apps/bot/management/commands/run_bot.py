@@ -28,7 +28,7 @@ async def post_init_commands(application):
         BotCommand("status", "Monthly Burn Rate & upcoming bills"),
         BotCommand("portfolio", "Investment portfolio & PnL overview"),
         BotCommand("news", "Latest market & asset news"),
-        BotCommand("servers", "Servers & infrastructure live status"),
+        BotCommand("servers", "VPS and dedicated server status"),
         BotCommand("ma", "MA contracts, expiry & next billing"),
         BotCommand("help", "Show available commands & guide"),
     ]

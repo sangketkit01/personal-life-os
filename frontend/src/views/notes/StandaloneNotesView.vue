@@ -547,7 +547,7 @@ import {
 import ConfirmModal from '../../components/common/ConfirmModal.vue'
 import NoteEditorCanvas from '../../components/notes/NoteEditorCanvas.vue'
 import { onBeforeRouteLeave } from 'vue-router'
-import { t } from '../../i18n'
+import { t, locale } from '../../i18n'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useToastStore } from '../../stores/toast'
 import { stripHtml } from '../../utils/richText'
@@ -930,12 +930,15 @@ async function executePermanentDelete() {
   isDeletingNotePermanently.value = true
   deleteNotePermanentlyError.value = ''
   try {
-    await workspaceStore.permanentDeleteNote(note.id)
+    const result = await workspaceStore.permanentDeleteNote(note.id)
     if (activeNoteId.value === note.id) {
       activeNoteId.value = null
       showGridEditor.value = false
     }
     toast.info(t('nt.notePermanentlyDeleted'))
+    if (result.retained_files) toast.info(locale.value === 'th'
+      ? `ยังลบไฟล์บน Drive ไม่สำเร็จ ${result.retained_files} ไฟล์ ตรวจรายการไฟล์ใน Settings หลังเชื่อมต่อ Drive`
+      : `${result.retained_files} Drive file(s) could not be removed. Review files in Settings after reconnecting Drive.`)
     noteToDeletePermanently.value = null
   } catch (err: any) {
     deleteNotePermanentlyError.value = err?.response?.data?.error || err?.message || 'Failed to delete note'
@@ -951,6 +954,9 @@ async function emptyTrash() {
     const res = await workspaceStore.emptyTrash()
     showEmptyTrashConfirm.value = false
     toast.info(`Deleted ${res.deleted} note${res.deleted === 1 ? '' : 's'} permanently`)
+    if (res.retained_files) toast.info(locale.value === 'th'
+      ? `ยังลบไฟล์บน Drive ไม่สำเร็จ ${res.retained_files} ไฟล์ ตรวจรายการไฟล์ใน Settings หลังเชื่อมต่อ Drive`
+      : `${res.retained_files} Drive file(s) could not be removed. Review files in Settings after reconnecting Drive.`)
   } catch (err: any) {
     emptyTrashError.value = err?.response?.data?.error || err?.message || 'Failed to empty trash'
   } finally {

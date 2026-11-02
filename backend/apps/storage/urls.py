@@ -9,7 +9,8 @@ from .views import (
     DriveFileListView,
     DriveFileDetailView,
     DriveFileStreamView,
-    DriveFileByDriveIdView
+    DriveFileByDriveIdView,
+    DriveOrganizationView,
 )
 
 urlpatterns = [
@@ -21,6 +22,7 @@ urlpatterns = [
     path('disconnect/', DisconnectGoogleDriveView.as_view(), name='storage-disconnect'),
     path('files/', DriveFileListView.as_view(), name='storage-file-list'),
     path('files/<uuid:pk>/', DriveFileDetailView.as_view(), name='storage-file-detail'),
+    path('files/<uuid:pk>/organization/', DriveOrganizationView.as_view(), name='storage-file-organization'),
     path('files/<str:drive_file_id>/stream/', DriveFileStreamView.as_view(), name='storage-file-stream'),
     path('files/by-drive-id/<str:drive_file_id>/', DriveFileByDriveIdView.as_view(), name='storage-file-by-drive-id'),
 ]

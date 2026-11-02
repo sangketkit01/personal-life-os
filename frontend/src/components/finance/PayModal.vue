@@ -323,6 +323,7 @@ const paidAmount = ref('')
 const selectedAccountId = ref('')
 const note = ref('')
 const selectedFile = ref<File | null>(null)
+const stagedSlip = ref<{ file: File; obligationId: string; upload: Awaited<ReturnType<typeof storageStore.uploadDirect>> } | null>(null)
 const isSubmitting = ref(false)
 const errorMessage = ref('')
 
@@ -497,6 +498,7 @@ watch(() => [props.isOpen, props.obligation, props.initialAmount, props.statemen
   note.value = props.initialNote || ''
   selectedAccountId.value = ''
   selectedFile.value = null
+  stagedSlip.value = null
 
   if (!ob) return
 
@@ -588,7 +590,13 @@ async function handlePay() {
 
     // Direct Google Drive upload (Zero-Disk)
     if (selectedFile.value) {
-      const uploaded = await storageStore.uploadDirect(selectedFile.value, 'finance')
+      let uploaded = stagedSlip.value?.file === selectedFile.value && stagedSlip.value.obligationId === props.obligation.id
+        ? stagedSlip.value.upload : null
+      if (!uploaded) {
+        uploaded = await storageStore.uploadDirect(selectedFile.value, 'finance', props.obligation.id,
+          undefined, { category: 'SLIP', defer_attachment: true })
+        stagedSlip.value = { file: selectedFile.value, obligationId: props.obligation.id, upload: uploaded }
+      }
       driveFileId = uploaded.drive_file_id
       driveViewLink = uploaded.web_view_link
       driveDownloadLink = uploaded.web_content_link

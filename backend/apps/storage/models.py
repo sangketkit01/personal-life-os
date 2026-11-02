@@ -157,6 +157,13 @@ class DriveFile(models.Model):
         verbose_name="Domain Target Reference ID"
     )
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    target_type = models.CharField(max_length=32, blank=True, default='')
+    category = models.CharField(max_length=20, default='OTHER')
+    payment_history_id = models.CharField(max_length=128, blank=True, default='')
+    parent_folder_id = models.CharField(max_length=128, blank=True, default='')
+    folder_path = models.JSONField(default=list, blank=True)
+    google_email = models.EmailField(blank=True, default='')
+    pending_payment = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'storage_drive_files'

@@ -11,7 +11,8 @@ import {
   deleteFileByDriveId,
   getFileByDriveId,
   type GoogleDriveStatus,
-  type DriveFileItem
+  type DriveFileItem,
+  type UploadOptions,
 } from '../api/storage'
 import { useToastStore } from './toast'
 
@@ -95,7 +96,8 @@ export const useStorageStore = defineStore('storage', () => {
     file: File,
     domain: 'ledger' | 'finance' | 'portfolio' | 'workspace' | 'note' | 'general' = 'general',
     targetId?: string,
-    onProgress?: (pct: number) => void
+    onProgress?: (pct: number) => void,
+    options: UploadOptions = {},
   ): Promise<DriveFileItem> {
     if (!status.value) {
       await fetchStatus()
@@ -110,6 +112,8 @@ export const useStorageStore = defineStore('storage', () => {
       // Step 1: Initiate session with Google Drive through backend
       const session = await initiateResumableUpload({
         domain,
+        target_id: targetId,
+        ...options,
         file_name: file.name,
         file_type: file.type || 'application/octet-stream',
         file_size: file.size
@@ -129,6 +133,8 @@ export const useStorageStore = defineStore('storage', () => {
           savedFile = await completeResumableUpload({
             drive_file_id: gdriveResult.id,
             domain,
+            ...options,
+            upload_token: session.upload_token,
             target_id: targetId,
             file_name: file.name,
             file_type: file.type || 'application/octet-stream',
@@ -145,22 +151,30 @@ export const useStorageStore = defineStore('storage', () => {
 
       if (!savedFile) {
         // Double-check if the file was actually registered on the backend (e.g. response dropped)
-        const existingFile = await getFileByDriveId(gdriveResult.id)
-        if (existingFile && existingFile.id) {
+        const existingFile = await getFileByDriveId(gdriveResult.id).catch(() => null)
+        if (existingFile && existingFile.id && existingFile.domain === domain
+            && existingFile.target_id === (targetId || '')
+            && existingFile.category === (options.category || 'OTHER')
+            && existingFile.payment_history_id === (options.payment_history_id || '')
+            && existingFile.pending_payment === !!options.defer_attachment) {
           uploadProgress.value = null
           return existingFile
         }
 
         // Step 3 failed after retries and file is not registered: compensate to prevent orphan file on Google Drive
+        let cleanedUp = false
         try {
-          await deleteFileByDriveId(gdriveResult.id)
+          await deleteFileByDriveId(gdriveResult.id, session.upload_token)
+          cleanedUp = true
         } catch (cleanupErr) {
           console.warn('Failed to clean up orphaned Drive file:', cleanupErr)
         }
         throw new Error(
           registerError?.response?.data?.error ||
           registerError?.message ||
-          'Upload to Google Drive completed, but backend registration failed. The upload was safely rolled back.'
+          (cleanedUp
+            ? 'Could not register this upload. The uploaded file was removed.'
+            : 'Could not register this upload. The file may remain in Google Drive; review it before uploading again.')
         )
       }
 

@@ -301,8 +301,15 @@ class NoteViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='empty-trash')
     def empty_trash(self, request):
         """Permanently delete every trashed note of the current user."""
-        deleted, _ = Note.objects.filter(user=request.user, is_trashed=True).delete()
-        return response.Response({'deleted': deleted})
+        from apps.storage.organization import file_ids
+        from apps.storage.services import cleanup_note_files
+        notes = Note.objects.filter(user=request.user, is_trashed=True)
+        ids = set()
+        for note in notes:
+            ids.update(file_ids(note.blocks) | file_ids(note.attachments))
+        deleted, _ = notes.delete()
+        retained = cleanup_note_files(request.user, ids)
+        return response.Response({'deleted': deleted, 'retained_files': retained})
 
     @action(detail=True, methods=['post', 'delete'], url_path='permanent')
     def permanent(self, request, pk=None):
@@ -312,9 +319,13 @@ class NoteViewSet(viewsets.ModelViewSet):
         if not note:
             return response.Response({'error': 'Note not found in trash.'}, status=status.HTTP_404_NOT_FOUND)
         title = note.title
+        from apps.storage.organization import file_ids
+        from apps.storage.services import cleanup_note_files
+        ids = file_ids(note.blocks) | file_ids(note.attachments)
         note.delete()
+        retained = cleanup_note_files(request.user, ids)
         log_activity(request.user, 'WORKSPACE', 'PERMANENT_DELETE_NOTE', f'Permanently deleted note "{title}"', request=request)
-        return response.Response({'deleted': True, 'id': str(note_id)})
+        return response.Response({'deleted': True, 'id': str(note_id), 'retained_files': retained})
 
     @action(detail=True, methods=['post'], url_path='set-lock')
     def set_lock(self, request, pk=None):
@@ -499,18 +510,11 @@ class ProjectAttachmentViewSet(
         """Delete attachment record and remove the underlying file from Google Drive."""
         attachment = self.get_object()
 
-        from apps.storage.models import DriveFile
-        from apps.storage import services as storage_services
-
-        drive_file = DriveFile.objects.filter(
-            drive_file_id=attachment.drive_file_id,
-            user=request.user
-        ).first()
-        if drive_file:
-            # delete_file_from_drive tolerates remote failures (already-deleted files)
-            storage_services.delete_file_from_drive(request.user, drive_file)
-
-        attachment.delete()
+        from apps.storage.services import delete_attachment
+        try:
+            delete_attachment(request.user, attachment, 'workspace')
+        except ValueError as exc:
+            return response.Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
         return response.Response(status=status.HTTP_204_NO_CONTENT)
 
 

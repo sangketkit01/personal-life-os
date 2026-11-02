@@ -15,6 +15,14 @@ export interface InitiateUploadResponse {
   file_type: string
   file_size: number
   parent_folder_id: string
+  upload_token: string
+}
+
+export interface UploadOptions {
+  category?: 'CONTRACT' | 'SLIP' | 'STATEMENT' | 'SCREENSHOT' | 'DOCUMENT' | 'OTHER'
+  target_type?: '' | 'transaction' | 'obligation' | 'project' | 'task' | 'note' | 'portfolio'
+  payment_history_id?: string
+  defer_attachment?: boolean
 }
 
 export interface DriveFileItem {
@@ -29,6 +37,13 @@ export interface DriveFileItem {
   domain: string
   target_id: string
   uploaded_at: string
+  target_type: string
+  category: string
+  payment_history_id: string
+  pending_payment: boolean
+  folder_path: string[]
+  parent_folder_id: string
+  google_email: string
 }
 
 export async function getGoogleAuthUrl(): Promise<{ auth_url: string }> {
@@ -56,7 +71,8 @@ export async function initiateResumableUpload(payload: {
   file_name: string
   file_type: string
   file_size: number
-}): Promise<InitiateUploadResponse> {
+  target_id?: string
+} & UploadOptions): Promise<InitiateUploadResponse> {
   const res = await apiClient.post('/storage/initiate-upload/', payload)
   return res.data
 }
@@ -108,7 +124,8 @@ export async function completeResumableUpload(payload: {
   file_name: string
   file_type?: string
   file_size?: number
-}): Promise<DriveFileItem> {
+  upload_token?: string
+} & UploadOptions): Promise<DriveFileItem> {
   const res = await apiClient.post('/storage/complete-upload/', payload)
   return res.data
 }
@@ -144,6 +161,6 @@ export async function getFileByDriveId(driveFileId: string): Promise<DriveFileIt
 }
 
 /** Idempotent DELETE of a Drive file by its Google Drive file id. */
-export async function deleteFileByDriveId(driveFileId: string): Promise<void> {
-  await apiClient.delete(`/storage/files/by-drive-id/${driveFileId}/`)
+export async function deleteFileByDriveId(driveFileId: string, uploadToken?: string): Promise<void> {
+  await apiClient.delete(`/storage/files/by-drive-id/${driveFileId}/`, { data: { upload_token: uploadToken } })
 }

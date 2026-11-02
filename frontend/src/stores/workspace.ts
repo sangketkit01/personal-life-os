@@ -341,14 +341,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function emptyTrash() {
-    const res = await apiClient.post<{ deleted: number }>('/workspace/notes/empty-trash/')
+    const res = await apiClient.post<{ deleted: number; retained_files: number }>('/workspace/notes/empty-trash/')
     trashedNotes.value = []
     standaloneNotes.value = standaloneNotes.value.filter(n => !n.is_trashed)
     return res.data
   }
 
   async function permanentDeleteNote(id: string) {
-    const res = await apiClient.delete<{ deleted: boolean; id: string }>(`/workspace/notes/${id}/permanent/`)
+    const res = await apiClient.delete<{ deleted: boolean; id: string; retained_files: number }>(`/workspace/notes/${id}/permanent/`)
     trashedNotes.value = trashedNotes.value.filter(n => n.id !== id)
     return res.data
   }

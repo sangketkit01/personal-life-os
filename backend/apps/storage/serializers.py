@@ -26,6 +26,11 @@ class InitiateUploadSerializer(serializers.Serializer):
     file_name = serializers.CharField(max_length=255)
     file_type = serializers.CharField(max_length=100, default='application/octet-stream')
     file_size = serializers.IntegerField(min_value=1, max_value=52428800)  # max 50MB per single attachment
+    target_id = serializers.CharField(max_length=128, required=False, allow_blank=True, default='')
+    target_type = serializers.ChoiceField(choices=['', 'transaction', 'obligation', 'project', 'task', 'note', 'portfolio'], default='')
+    category = serializers.ChoiceField(choices=['CONTRACT', 'SLIP', 'STATEMENT', 'SCREENSHOT', 'DOCUMENT', 'OTHER'], default='OTHER')
+    payment_history_id = serializers.CharField(max_length=128, required=False, allow_blank=True, default='')
+    defer_attachment = serializers.BooleanField(default=False)
 
 
 class CompleteUploadSerializer(serializers.Serializer):
@@ -43,11 +48,15 @@ class CompleteUploadSerializer(serializers.Serializer):
     file_name = serializers.CharField(max_length=255)
     file_type = serializers.CharField(max_length=100, required=False, allow_blank=True, default='')
     category = serializers.ChoiceField(
-        choices=['CONTRACT', 'SLIP', 'STATEMENT', 'SCREENSHOT', 'OTHER'],
+        choices=['CONTRACT', 'SLIP', 'STATEMENT', 'SCREENSHOT', 'DOCUMENT', 'OTHER'],
         required=False,
         default='OTHER'
     )
     file_size = serializers.IntegerField(min_value=0, default=0)
+    target_type = serializers.ChoiceField(choices=['', 'transaction', 'obligation', 'project', 'task', 'note', 'portfolio'], default='')
+    payment_history_id = serializers.CharField(max_length=128, required=False, allow_blank=True, default='')
+    defer_attachment = serializers.BooleanField(default=False)
+    upload_token = serializers.CharField(required=False, allow_blank=True, default='')
 
 
 class DriveFileSerializer(serializers.ModelSerializer):
@@ -64,6 +73,7 @@ class DriveFileSerializer(serializers.ModelSerializer):
             'thumbnail_link',
             'domain',
             'target_id',
-            'uploaded_at'
+            'uploaded_at', 'target_type', 'category', 'payment_history_id', 'parent_folder_id',
+            'folder_path', 'google_email', 'pending_payment',
         ]
         read_only_fields = fields

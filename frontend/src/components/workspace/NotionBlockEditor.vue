@@ -1063,7 +1063,7 @@ function handleTailClick() {
 
 function removeBlock(index: number) {
   const block = props.modelValue[index]
-  // Deleting a media/file block also deletes its Google Drive file
+  // Removing a reference must preserve shared files and editor undo history.
   if (block?.drive_file_id) {
     deleteBlockDriveFile(block)
   }
@@ -1082,7 +1082,7 @@ function deleteBlockDriveFile(block: NoteBlock) {
     URL.revokeObjectURL(url)
     blobUrls.delete(id)
   }
-  storageStore.deleteFileByDriveId(id).catch(() => {})
+  // Unreferenced files can be reviewed and deleted from Drive file management.
 }
 
 function moveBlock(index: number, direction: -1 | 1) {
@@ -2297,13 +2297,12 @@ async function onImageCropped(croppedFile: File) {
   await uploadMediaToBlock(blockId, croppedFile)
   const newDriveId = props.modelValue.find(b => b.id === blockId)?.drive_file_id
   if (oldDriveId && oldDriveId !== newDriveId) {
-    // No orphan files: delete the uncropped original from Google Drive
+    // Keep the original for other notes and undo; file management can clean it up later.
     const oldUrl = blobUrls.get(oldDriveId)
     if (oldUrl) {
       URL.revokeObjectURL(oldUrl)
       blobUrls.delete(oldDriveId)
     }
-    storageStore.deleteFileByDriveId(oldDriveId).catch(() => {})
   }
 }
 

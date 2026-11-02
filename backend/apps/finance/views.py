@@ -2,7 +2,7 @@ import datetime
 from decimal import Decimal
 from django.db import models, transaction as db_transaction
 from django.utils import timezone
-from rest_framework import viewsets, views, permissions, status, response
+from rest_framework import viewsets, views, permissions, status, response, exceptions
 from rest_framework.decorators import action
 from apps.accounts.services import log_activity
 from .models import FinancialObligation, ObligationType, ObligationStatus, ObligationAttachment, PaymentHistory
@@ -122,6 +122,14 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
         drive_file_id = serializer.validated_data.get('drive_file_id', '')
         drive_view_link = serializer.validated_data.get('drive_view_link', '')
         drive_download_link = serializer.validated_data.get('drive_download_link', '')
+        if drive_file_id:
+            from apps.storage.models import DriveFile
+            registered = DriveFile.objects.filter(drive_file_id=drive_file_id).first()
+            if registered and (registered.user_id != request.user.pk or registered.domain != 'finance'
+                               or registered.target_id not in ('', str(obligation.pk))):
+                return response.Response({'detail': 'The uploaded slip does not belong to this obligation.'}, status=400)
+            if registered and registered.payment_history_id:
+                return response.Response({'detail': 'This slip is already linked to a payment. Check payment history before retrying.'}, status=400)
 
         # Validate legacy file upload if present
         if slip_file:
@@ -336,6 +344,12 @@ class FinancialObligationViewSet(viewsets.ModelViewSet):
                     file_type='SLIP',
                     file_size=serializer.validated_data.get('file_size') or getattr(slip_file, 'size', 0)
                 )
+                if drive_file_id:
+                    from apps.storage.models import DriveFile
+                    DriveFile.objects.filter(user=request.user, drive_file_id=drive_file_id).update(
+                        domain='finance', target_id=str(locked_ob.pk), target_type='obligation',
+                        category='SLIP', payment_history_id=str(payment_record.pk), pending_payment=False,
+                    )
 
             # Sync to Cash Flow Ledger if account was selected and actual_paid > 0
             ledger_tx = None
@@ -795,15 +809,13 @@ class ObligationAttachmentViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         """Remove file attachment record and corresponding storage metadata."""
+        if instance.drive_file_id:
+            from apps.storage.services import delete_attachment
+            try:
+                delete_attachment(self.request.user, instance, 'finance')
+            except ValueError as exc:
+                raise exceptions.ValidationError({'detail': str(exc)})
+            return
         if instance.file:
             instance.file.delete(save=False)
-        if instance.drive_file_id:
-            try:
-                from apps.storage.models import DriveFile
-                from apps.storage.services import delete_file_from_drive
-                df = DriveFile.objects.filter(drive_file_id=instance.drive_file_id, user=self.request.user).first()
-                if df:
-                    delete_file_from_drive(self.request.user, df)
-            except Exception:
-                pass
         instance.delete()

@@ -1,11 +1,15 @@
 import json
 import logging
 import urllib.parse
+import uuid
 from datetime import timedelta
 import requests
 from django.conf import settings
 from django.utils import timezone
+from django.core import signing
+from django.db import transaction
 from .models import GoogleDriveConnection, DriveFile, StorageDomain
+from .organization import resolve_context, file_references
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +105,7 @@ def refresh_access_token_if_needed(connection: GoogleDriveConnection) -> str:
     return connection.get_access_token()
 
 
-def _find_or_create_folder(access_token: str, folder_name: str, parent_id: str = None) -> str:
+def _find_or_create_folder(access_token: str, folder_name: str, parent_id: str = None, folder_key: str = '') -> str:
     """
     Finds an existing folder by name (and optional parent) or creates it in Google Drive.
     """
@@ -111,24 +115,50 @@ def _find_or_create_folder(access_token: str, folder_name: str, parent_id: str =
     }
 
     # Query for existing non-trashed folder
+    safe_name = folder_name.replace('\\', '\\\\').replace("'", "\\'")
     query_parts = [
-        f"name = '{folder_name}'",
         "mimeType = 'application/vnd.google-apps.folder'",
         "trashed = false"
     ]
-    if parent_id:
-        query_parts.append(f"'{parent_id}' in parents")
+    query_parts.append(f"'{parent_id or 'root'}' in parents")
+    # Private, stable IDs survive application title changes.
+    keyed_query = f"appProperties has {{ key='plos_folder' and value='{folder_key}' }}"
+    query_parts.append(keyed_query if folder_key else f"name = '{safe_name}'")
 
     params = {
         'q': ' and '.join(query_parts),
         'fields': 'files(id, name)',
-        'spaces': 'drive'
+        'spaces': 'drive', 'pageSize': 2
     }
     resp = requests.get(GOOGLE_DRIVE_FILES_URL, headers=headers, params=params, timeout=15)
-    if resp.status_code == 200:
+    if resp.status_code != 200:
+        raise ValueError(f'Could not look up Drive folder (HTTP {resp.status_code}).')
+    files = resp.json().get('files', [])
+    if files:
+        if len(files) > 1 or resp.json().get('nextPageToken'):
+            raise ValueError(f'Multiple Drive folders named {folder_name!r}. Resolve duplicates before retrying.')
+        if folder_key and not folder_key.startswith(('root:', 'domain:')) and files[0].get('name') != folder_name:
+            renamed = requests.patch(f"{GOOGLE_DRIVE_FILES_URL}/{files[0]['id']}", headers=headers,
+                                     json={'name': folder_name}, timeout=15)
+            if renamed.status_code != 200:
+                raise ValueError('Could not update the Drive folder name.')
+        return files[0]['id']
+    if not files and folder_key:
+        # Adopt an existing legacy folder, but never guess between duplicates.
+        params['q'] = ' and '.join(query_parts[:-1] + [f"name = '{safe_name}'"])
+        resp = requests.get(GOOGLE_DRIVE_FILES_URL, headers=headers, params=params, timeout=15)
+        if resp.status_code != 200:
+            raise ValueError(f'Could not look up Drive folder (HTTP {resp.status_code}).')
         files = resp.json().get('files', [])
-        if files:
-            return files[0]['id']
+    if len(files) > 1:
+        raise ValueError(f'Multiple Drive folders named {folder_name!r}. Select a single folder before retrying.')
+    if files:
+        if folder_key:
+            patched = requests.patch(f"{GOOGLE_DRIVE_FILES_URL}/{files[0]['id']}", headers=headers,
+                                     json={'appProperties': {'plos_folder': folder_key}}, timeout=15)
+            if patched.status_code != 200:
+                raise ValueError('Could not identify the existing Drive folder.')
+        return files[0]['id']
 
     # Create new folder if not found
     body = {
@@ -137,6 +167,8 @@ def _find_or_create_folder(access_token: str, folder_name: str, parent_id: str =
     }
     if parent_id:
         body['parents'] = [parent_id]
+    if folder_key:
+        body['appProperties'] = {'plos_folder': folder_key}
 
     create_resp = requests.post(GOOGLE_DRIVE_FILES_URL, headers=headers, json=body, timeout=15)
     if create_resp.status_code in (200, 201):
@@ -146,36 +178,59 @@ def _find_or_create_folder(access_token: str, folder_name: str, parent_id: str =
     raise ValueError(f"Failed to create folder '{folder_name}' in Google Drive")
 
 
+def _valid_folder(token, folder_id, parent_id=None, expected_name=None):
+    if not folder_id:
+        return False
+    response = requests.get(f'{GOOGLE_DRIVE_FILES_URL}/{folder_id}',
+                            headers={'Authorization': f'Bearer {token}'},
+                            params={'fields': 'id,name,mimeType,trashed,parents'}, timeout=15)
+    if response.status_code == 404:
+        return False
+    if response.status_code != 200:
+        raise ValueError(f'Could not verify Drive folder (HTTP {response.status_code}).')
+    meta = response.json()
+    valid = (not meta.get('trashed') and meta.get('mimeType') == 'application/vnd.google-apps.folder'
+             and (not parent_id or parent_id in meta.get('parents', [])))
+    if valid and expected_name and meta.get('name') != expected_name:
+        response = requests.patch(f'{GOOGLE_DRIVE_FILES_URL}/{folder_id}',
+            headers={'Authorization': f'Bearer {token}'}, json={'name': expected_name}, timeout=15)
+        if response.status_code != 200:
+            raise ValueError('Could not update the Drive folder name.')
+    return valid
+
+
 def ensure_folder_structure(connection: GoogleDriveConnection) -> dict:
-    """
-    Ensures that the root 'Personal Life OS' directory and all domain subfolders
-    (Ledger, Finance, Portfolio, Workspace) exist in Google Drive.
-    """
+    """Validate the saved root. Domain and entity folders are created lazily."""
     access_token = refresh_access_token_if_needed(connection)
-
-    # 1. Root folder
-    root_id = _find_or_create_folder(access_token, "Personal Life OS")
+    root_id = connection.root_folder_id
+    if not _valid_folder(access_token, root_id):
+        root_id = _find_or_create_folder(access_token, 'Personal Life OS', folder_key=f'root:{connection.user_id}')
+        if root_id != connection.root_folder_id:
+            connection.subfolder_ids = {}
     connection.root_folder_id = root_id
-
-    # 2. Domain subfolders
-    subfolders = {}
-    domain_folder_names = {
-        StorageDomain.LEDGER: "Ledger",
-        StorageDomain.FINANCE: "Finance",
-        StorageDomain.PORTFOLIO: "Portfolio",
-        StorageDomain.WORKSPACE: "Workspace",
-        StorageDomain.NOTE: "Notes"
-    }
-    for domain_key, folder_name in domain_folder_names.items():
-        sub_id = _find_or_create_folder(access_token, folder_name, parent_id=root_id)
-        subfolders[domain_key] = sub_id
-
-    connection.subfolder_ids = subfolders
     connection.save(update_fields=['root_folder_id', 'subfolder_ids'])
-    return {
-        'root_folder_id': root_id,
-        'subfolders': subfolders
-    }
+    return {'root_folder_id': root_id, 'subfolders': connection.subfolder_ids}
+
+
+def folder_for_context(connection, context):
+    # Serialize folder creation per connection to avoid duplicate folders on parallel uploads.
+    with transaction.atomic():
+        connection = GoogleDriveConnection.objects.select_for_update().get(pk=connection.pk)
+        root = ensure_folder_structure(connection)['root_folder_id']
+        token = refresh_access_token_if_needed(connection)
+        parent = root
+        for index, segment in enumerate(context['segments']):
+            cached = connection.subfolder_ids.get(segment['key'])
+            if index == 0:
+                cached = cached or connection.subfolder_ids.get(segment['key'].removeprefix('domain:'))
+            expected_name = None if segment['key'].startswith('domain:') else segment['name']
+            if _valid_folder(token, cached, parent, expected_name):
+                parent = cached
+            else:
+                parent = _find_or_create_folder(token, segment['name'], parent, segment['key'])
+            connection.subfolder_ids[segment['key']] = parent
+        connection.save(update_fields=['subfolder_ids'])
+        return parent
 
 
 def initiate_resumable_upload(
@@ -184,7 +239,9 @@ def initiate_resumable_upload(
     file_name: str,
     file_type: str,
     file_size: int,
-    origin: str = None
+    origin: str = None,
+    target_id: str = '', category: str = 'OTHER', payment_history_id: str = '',
+    target_type: str = '', defer_attachment: bool = False,
 ) -> dict:
     """
     Initiates a Google Drive Resumable Upload session for Option B.
@@ -194,13 +251,11 @@ def initiate_resumable_upload(
     if not connection.is_connected:
         raise ValueError("Google Drive is not connected for this account.")
 
+    context = resolve_context(connection.user, domain, target_id, category,
+                              payment_history_id, target_type, defer_attachment)
+    folder_id = folder_for_context(connection, context)
     access_token = refresh_access_token_if_needed(connection)
-
-    # Determine parent folder (re-ensure hierarchy when the domain subfolder is new)
-    folder_id = connection.subfolder_ids.get(domain)
-    if not folder_id:
-        folder_info = ensure_folder_structure(connection)
-        folder_id = folder_info['subfolders'].get(domain, folder_info['root_folder_id'])
+    nonce = uuid.uuid4().hex
 
     headers = {
         'Authorization': f'Bearer {access_token}',
@@ -213,7 +268,8 @@ def initiate_resumable_upload(
 
     body = {
         'name': file_name,
-        'parents': [folder_id]
+        'parents': [folder_id],
+        'appProperties': {'plos_upload': nonce, 'plos_user': str(connection.user_id)},
     }
 
     resp = requests.post(
@@ -233,7 +289,10 @@ def initiate_resumable_upload(
         'file_name': file_name,
         'file_type': file_type,
         'file_size': file_size,
-        'parent_folder_id': folder_id
+        'parent_folder_id': folder_id,
+        'upload_token': signing.dumps(dict(user_id=str(connection.user_id),
+            google_email=connection.google_email, context=context, parent=folder_id,
+            nonce=nonce, file_size=file_size), salt='drive-upload', compress=True),
     }
 
 
@@ -244,14 +303,33 @@ def complete_resumable_upload(
     target_id: str,
     file_name: str,
     file_type: str,
-    file_size: int
+    file_size: int,
+    category: str = 'OTHER', payment_history_id: str = '', target_type: str = '',
+    defer_attachment: bool = False, upload_token: str = '',
 ) -> DriveFile:
     """
     Registers metadata of an uploaded file into the database.
     Queries Google Drive API to fetch canonical URLs (view link, download link, thumbnail).
     Zero file bytes are written to server disk.
     """
+    context = resolve_context(user, domain, target_id, category, payment_history_id,
+                              target_type, defer_attachment)
     connection = getattr(user, 'google_drive_connection', None)
+    existing = DriveFile.objects.filter(user=user, drive_file_id=drive_file_id).first()
+    if existing and file_references(user, drive_file_id) and (
+        existing.domain != domain or existing.target_id != str(target_id or '')
+    ):
+        raise ValueError('A referenced file cannot be reassigned to a different item.')
+    if existing and existing.google_email and connection and existing.google_email != connection.google_email:
+        raise ValueError('This file belongs to a different connected Google account.')
+    proof = None
+    if upload_token:
+        proof = signing.loads(upload_token, salt='drive-upload', max_age=86400)
+        if (proof['user_id'] != str(user.pk) or proof['context'] != context
+                or proof['google_email'] != connection.google_email):
+            raise ValueError('Upload context or connected Google account changed. Please upload again.')
+    if DriveFile.objects.filter(drive_file_id=drive_file_id).exclude(user=user).exists():
+        raise ValueError('This file is already registered to another user.')
     web_view_link = ''
     web_content_link = ''
     thumbnail_link = ''
@@ -259,11 +337,17 @@ def complete_resumable_upload(
     if connection and connection.is_connected:
         try:
             token = refresh_access_token_if_needed(connection)
-            fields_url = f"{GOOGLE_DRIVE_FILES_URL}/{drive_file_id}?fields=id,name,mimeType,size,webViewLink,webContentLink,thumbnailLink"
+            fields_url = f"{GOOGLE_DRIVE_FILES_URL}/{drive_file_id}?fields=id,name,mimeType,size,webViewLink,webContentLink,thumbnailLink,parents,appProperties,trashed"
             headers = {'Authorization': f'Bearer {token}'}
             resp = requests.get(fields_url, headers=headers, timeout=10)
             if resp.status_code == 200:
                 meta = resp.json()
+                if meta.get('trashed'):
+                    raise ValueError('Uploaded file is in Drive trash.')
+                if proof and (meta.get('appProperties', {}).get('plos_upload') != proof['nonce']
+                              or proof['parent'] not in meta.get('parents', [])
+                              or int(meta.get('size', -1)) != proof['file_size']):
+                    raise ValueError('Uploaded file does not match this upload session.')
                 file_name = meta.get('name') or file_name
                 file_type = meta.get('mimeType') or file_type
                 file_size = int(meta.get('size') or file_size)
@@ -291,7 +375,12 @@ def complete_resumable_upload(
             'web_content_link': web_content_link,
             'thumbnail_link': thumbnail_link,
             'domain': domain,
-            'target_id': target_id or ''
+            'target_id': target_id or '',
+            'target_type': context['target_type'], 'category': category,
+            'payment_history_id': payment_history_id, 'pending_payment': defer_attachment,
+            'google_email': connection.google_email if connection else '',
+            'parent_folder_id': proof['parent'] if proof else '',
+            'folder_path': [s['name'] for s in context['segments']] if proof else [],
         }
     )
     return drive_file
@@ -305,6 +394,8 @@ def stream_file_from_drive(user, drive_file: DriveFile):
     """
     connection = getattr(user, 'google_drive_connection', None)
     if not connection or not connection.is_connected:
+        return None
+    if drive_file.google_email and drive_file.google_email != connection.google_email:
         return None
     try:
         token = refresh_access_token_if_needed(connection)
@@ -330,14 +421,22 @@ def stream_file_from_drive(user, drive_file: DriveFile):
         return None
 
 
-def delete_file_from_drive_by_id(user, drive_file_id: str) -> bool:
+def delete_file_from_drive_by_id(user, drive_file_id: str, exclude_reference=None) -> bool:
     """
     Deletes the raw file directly from Google Drive by its Google Drive file ID,
     and removes any matching local DriveFile metadata records.
     Returns True if deletion succeeded or file was already absent (404).
     Returns False if Drive is disconnected, token fails, or remote delete fails (5xx, 4xx).
     """
+    refs = file_references(user, drive_file_id)
+    if exclude_reference:
+        refs = [r for r in refs if (r['kind'], r['id']) != exclude_reference]
+    if refs:
+        raise ValueError('File is still used by another item. Remove its references before deleting it.')
     connection = getattr(user, 'google_drive_connection', None)
+    row = DriveFile.objects.filter(user=user, drive_file_id=drive_file_id).first()
+    if row and row.google_email and connection and row.google_email != connection.google_email:
+        raise ValueError('This file belongs to a different connected Google account.')
     if not connection or not connection.is_connected:
         logger.warning(
             "Cannot delete file %s from Google Drive: User %s is not connected to Google Drive.",
@@ -372,6 +471,35 @@ def delete_file_from_drive(user, drive_file: DriveFile) -> bool:
     preserves the local record so that the file is not orphaned on Google Drive without metadata.
     """
     return delete_file_from_drive_by_id(user, drive_file.drive_file_id)
+
+
+def delete_attachment(user, attachment, kind):
+    """Detach a shared file, or delete an exclusive file only after remote success."""
+    refs = file_references(user, attachment.drive_file_id) if attachment.drive_file_id else []
+    others = [r for r in refs if (r['kind'], r['id']) != (kind, str(attachment.pk))]
+    if attachment.drive_file_id and not others:
+        if not delete_file_from_drive_by_id(user, attachment.drive_file_id, (kind, str(attachment.pk))):
+            raise ValueError('Could not delete the Drive file. The attachment has been kept; please retry.')
+    attachment.delete()
+    if kind == 'workspace' and getattr(attachment, 'task_id', None):
+        from apps.workspace.models import TaskDocument, ProjectAttachment
+        latest = ProjectAttachment.objects.filter(task_id=attachment.task_id).first()
+        TaskDocument.objects.filter(pk=attachment.task_id, user=user).update(
+            file_url=(latest.drive_view_link or latest.drive_download_link) if latest else '')
+
+
+def cleanup_note_files(user, ids):
+    """Keep shared files and preserve metadata when disconnected/remote deletion fails."""
+    retained = 0
+    for drive_id in ids:
+        if file_references(user, drive_id):
+            continue
+        try:
+            if not delete_file_from_drive_by_id(user, drive_id):
+                retained += 1
+        except ValueError:
+            retained += 1
+    return retained
 
 
 def revoke_and_disconnect(user) -> bool:

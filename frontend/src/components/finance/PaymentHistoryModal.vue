@@ -155,6 +155,15 @@
                 <option value="SCREENSHOT">Screenshot</option>
                 <option value="OTHER">Other Document</option>
               </select>
+              <label v-if="uploadDocType === 'SLIP'" class="mt-2 block text-zinc-400">
+                {{ locale === 'th' ? 'ประวัติการจ่าย' : 'Payment record' }}
+                <select v-model="uploadPaymentId" class="mt-1 w-full rounded border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-zinc-300">
+                  <option value="" disabled>{{ locale === 'th' ? 'เลือกการจ่าย' : 'Select payment' }}</option>
+                  <option v-for="hist in sortedHistories" :key="hist.id" :value="hist.id">
+                    {{ new Date(hist.paid_at).toLocaleDateString('en-GB') }} · {{ hist.paid_amount }} {{ obligation.currency }}
+                  </option>
+                </select>
+              </label>
             </div>
             <div class="sm:col-span-2 flex items-center gap-2">
               <label class="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded bg-zinc-900 border border-dashed border-zinc-700 hover:border-zinc-500 cursor-pointer text-xs text-zinc-400 transition-colors truncate">
@@ -253,7 +262,8 @@
 
 <script setup lang="ts">
 import { currencySymbol } from '../../utils/currency'
-import { ref, computed } from 'vue'
+import { locale } from '../../i18n'
+import { ref, computed, watch } from 'vue'
 import { useFinanceStore } from '../../stores/finance'
 import { useStorageStore } from '../../stores/storage'
 import { useToastStore } from '../../stores/toast'
@@ -278,7 +288,9 @@ const toast = useToastStore()
 
 const activeTab = ref<'TRANSACTIONS' | 'DOCUMENTS'>('TRANSACTIONS')
 const uploadDocType = ref<AttachmentType>('CONTRACT')
+const uploadPaymentId = ref('')
 const pendingDocFile = ref<File | null>(null)
+watch(() => props.obligation?.id, () => { uploadPaymentId.value = ''; pendingDocFile.value = null })
 const isUploading = ref(false)
 
 const sortedHistories = computed(() => {
@@ -302,6 +314,10 @@ function handleDocFileChange(event: Event) {
 
 async function handleUploadDoc() {
   if (!props.obligation || !pendingDocFile.value) return
+  if (uploadDocType.value === 'SLIP' && !uploadPaymentId.value) {
+    toast.error(locale.value === 'th' ? 'เลือกประวัติการจ่ายของสลิปนี้ก่อน' : 'Select the payment record for this slip.')
+    return
+  }
   if (!storageStore.isConnected) {
     toast.error('Google Drive connection is required.')
     return
@@ -312,7 +328,9 @@ async function handleUploadDoc() {
     await storageStore.uploadDirect(
       pendingDocFile.value,
       'finance',
-      props.obligation.id
+      props.obligation.id,
+      undefined,
+      { category: uploadDocType.value, payment_history_id: uploadDocType.value === 'SLIP' ? uploadPaymentId.value : undefined },
     )
     pendingDocFile.value = null
     await financeStore.fetchObligations()

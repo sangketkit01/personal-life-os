@@ -1073,7 +1073,9 @@ async function handleUploadDocument() {
     await storageStore.uploadDirect(
       selectedDocumentFile.value,
       'finance',
-      contract.value.id
+      contract.value.id,
+      undefined,
+      { category: 'CONTRACT' },
     )
     toast.success('Document uploaded to Google Drive vault')
     showUploadModal.value = false

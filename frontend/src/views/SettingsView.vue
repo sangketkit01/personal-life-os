@@ -246,6 +246,10 @@
       </div>
     </div>
 
+    <div v-if="storageStore.isConnected" class="rounded-lg border border-zinc-800 bg-zinc-900/30 p-4">
+      <DriveFileManager :key="storageStore.googleEmail" />
+    </div>
+
     <!-- 3. Password & Account Security -->
     <div class="rounded-lg bg-zinc-900/30 border border-zinc-800/80">
       <div class="p-4 border-b border-zinc-800/80 flex items-center justify-between">
@@ -538,6 +542,7 @@ import { useToastStore } from '../stores/toast'
 import apiClient from '../api/client'
 import type { UserDeviceSession, InviteCode, ActivityLog } from '../types'
 import ConfirmModal from '../components/common/ConfirmModal.vue'
+import DriveFileManager from '../components/settings/DriveFileManager.vue'
 import {
   Languages,
   Moon,

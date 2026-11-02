@@ -53,7 +53,8 @@ class StorageGoogleDriveTests(TestCase):
         self.assertEqual(resp.data.get('code'), 'GDRIVE_NOT_CONNECTED')
 
     @patch('requests.post')
-    def test_initiate_upload_with_connected_drive(self, mock_post):
+    @patch('apps.storage.services.folder_for_context', return_value='folder_ledger_456')
+    def test_initiate_upload_with_connected_drive(self, mock_folder, mock_post):
         """
         When connected, backend calls Google Drive API and returns Resumable Upload URL
         for direct frontend-to-cloud upload (Zero-Disk).
@@ -86,6 +87,8 @@ class StorageGoogleDriveTests(TestCase):
         self.assertIn('upload_url', resp.data)
         self.assertEqual(resp.data['upload_url'], 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=mock_session_xyz')
         self.assertEqual(resp.data['parent_folder_id'], 'folder_ledger_456')
+        self.assertIn('upload_token', resp.data)
+        self.assertEqual(mock_folder.call_args.args[1]['domain'], 'ledger')
 
     @patch('requests.get')
     def test_complete_upload_and_ledger_hook(self, mock_get):

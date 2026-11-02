@@ -1,7 +1,9 @@
 import logging
+import requests
 from datetime import timedelta
 from django.utils import timezone
 from django.core import signing
+from django.db import transaction
 from rest_framework import permissions, status
 from django.http import StreamingHttpResponse
 from rest_framework.views import APIView
@@ -78,6 +80,10 @@ class GoogleAuthCallbackView(APIView):
 
             # Create or update connection
             connection, _ = GoogleDriveConnection.objects.get_or_create(user=request.user)
+            if connection.google_email and google_email and connection.google_email != google_email:
+                connection.root_folder_id = ''
+                connection.subfolder_ids = {}
+                connection.refresh_token = ''
             connection.set_tokens(access_token=access_token, refresh_token=refresh_token if refresh_token else None)
             connection.token_expiry = token_expiry
             connection.google_email = google_email
@@ -148,9 +154,12 @@ class InitiateUploadView(APIView):
                 file_name=data['file_name'],
                 file_type=data['file_type'],
                 file_size=data['file_size'],
-                origin=origin
+                origin=origin,
+                **{key: data[key] for key in ('target_id', 'target_type', 'category', 'payment_history_id', 'defer_attachment')},
             )
             return Response(upload_session)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.exception("Error initiating resumable upload")
             return Response(
@@ -166,6 +175,7 @@ class CompleteUploadView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request):
         connection = getattr(request.user, 'google_drive_connection', None)
         if not connection or not connection.is_connected:
@@ -179,6 +189,7 @@ class CompleteUploadView(APIView):
         data = serializer.validated_data
 
         try:
+            GoogleDriveConnection.objects.select_for_update().get(pk=connection.pk)
             drive_file = services.complete_resumable_upload(
                 user=request.user,
                 drive_file_id=data['drive_file_id'],
@@ -186,7 +197,8 @@ class CompleteUploadView(APIView):
                 target_id=data.get('target_id', ''),
                 file_name=data['file_name'],
                 file_type=data.get('file_type', ''),
-                file_size=data.get('file_size', 0)
+                file_size=data.get('file_size', 0),
+                **{key: data[key] for key in ('target_type', 'category', 'payment_history_id', 'defer_attachment', 'upload_token')},
             )
 
             # Domain-specific attachment hooks
@@ -197,10 +209,7 @@ class CompleteUploadView(APIView):
                 from apps.ledger.models import Transaction, TransactionAttachment
                 tx = Transaction.objects.filter(id=target_id, account__user=request.user).first()
                 if not tx:
-                    return Response(
-                        {'error': f"Ledger transaction '{target_id}' not found or does not belong to user."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+                    raise ValueError('Ledger transaction no longer exists or does not belong to user.')
                 if not TransactionAttachment.objects.filter(transaction=tx, drive_file_id=drive_file.drive_file_id).exists():
                     TransactionAttachment.objects.create(
                         transaction=tx,
@@ -213,19 +222,18 @@ class CompleteUploadView(APIView):
                         slip_reference=''
                     )
 
-            elif domain == 'finance' and target_id:
+            elif domain == 'finance' and target_id and not data['defer_attachment']:
                 from apps.finance.models import FinancialObligation, ObligationAttachment
                 obl = FinancialObligation.objects.filter(id=target_id, user=request.user).first()
                 if not obl:
-                    return Response(
-                        {'error': f"Financial obligation '{target_id}' not found or does not belong to user."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                if not ObligationAttachment.objects.filter(obligation=obl, drive_file_id=drive_file.drive_file_id).exists():
+                    raise ValueError('Financial obligation no longer exists or does not belong to user.')
+                if not ObligationAttachment.objects.filter(obligation=obl, drive_file_id=drive_file.drive_file_id,
+                                                           payment_history_id=data['payment_history_id'] or None).exists():
                     file_type_choice = data.get('category', 'OTHER')
                     ObligationAttachment.objects.create(
                         user=request.user,
                         obligation=obl,
+                        payment_history_id=data['payment_history_id'] or None,
                         file_name=drive_file.file_name,
                         file_size=drive_file.file_size,
                         file_type=file_type_choice,
@@ -241,17 +249,11 @@ class CompleteUploadView(APIView):
                 try:
                     note_uuid = uuid_lib.UUID(str(target_id))
                 except (ValueError, AttributeError, TypeError):
-                    return Response(
-                        {'error': f"Invalid note target id '{target_id}'."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+                    raise ValueError('Invalid note target ID.')
 
                 note = Note.objects.filter(id=note_uuid, user=request.user).first()
                 if not note:
-                    return Response(
-                        {'error': f"Note '{target_id}' not found or does not belong to user."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+                    raise ValueError('Note no longer exists or does not belong to user.')
 
                 # Inline blocks (image/audio/file) are the single source of truth for
                 # note media. Only opt-in legacy callers duplicate into note.attachments.
@@ -278,10 +280,7 @@ class CompleteUploadView(APIView):
                 try:
                     target_uuid = uuid_lib.UUID(str(target_id))
                 except (ValueError, AttributeError, TypeError):
-                    return Response(
-                        {'error': f"Invalid workspace target id '{target_id}'."},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+                    raise ValueError('Invalid workspace target ID.')
 
                 project = WorkspaceProject.objects.filter(id=target_uuid, user=request.user).first()
                 if project:
@@ -301,10 +300,7 @@ class CompleteUploadView(APIView):
                 else:
                     task = TaskDocument.objects.filter(id=target_uuid, user=request.user).select_related('project').first()
                     if not task:
-                        return Response(
-                            {'error': f"Workspace target '{target_id}' not found or does not belong to user."},
-                            status=status.HTTP_400_BAD_REQUEST
-                        )
+                        raise ValueError('Workspace target no longer exists or does not belong to user.')
                     task.file_url = drive_file.web_view_link or drive_file.web_content_link
                     task.save(update_fields=['file_url'])
                     # Always register the attachment, even for tasks without a project
@@ -326,12 +322,14 @@ class CompleteUploadView(APIView):
                 DriveFileSerializer(drive_file).data,
                 status=status.HTTP_201_CREATED
             )
-        except ValueError as e:
+        except (ValueError, signing.BadSignature) as e:
+            transaction.set_rollback(True)
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
+            transaction.set_rollback(True)
             logger.exception("Error completing upload")
             return Response(
                 {'error': f"Failed to register uploaded file: {str(e)}"},
@@ -361,7 +359,31 @@ class DriveFileByDriveIdView(APIView):
         if DriveFile.objects.filter(drive_file_id=drive_file_id).exclude(user=request.user).exists():
             return Response(status=status.HTTP_204_NO_CONTENT)
 
-        success = services.delete_file_from_drive_by_id(request.user, drive_file_id)
+        row = DriveFile.objects.filter(user=request.user, drive_file_id=drive_file_id).first()
+        if not row:
+            # Unknown IDs must never allow deletion of arbitrary files accessible to the app.
+            upload_token = request.data.get('upload_token')
+            if not upload_token:
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            try:
+                proof = signing.loads(upload_token, salt='drive-upload', max_age=86400)
+                connection = request.user.google_drive_connection
+                if proof['user_id'] != str(request.user.pk) or proof['google_email'] != connection.google_email:
+                    raise ValueError('Upload owner does not match.')
+                token = services.refresh_access_token_if_needed(connection)
+                meta = requests.get(f'{services.GOOGLE_DRIVE_FILES_URL}/{drive_file_id}',
+                    headers={'Authorization': f'Bearer {token}'}, params={'fields': 'appProperties'}, timeout=15)
+                if meta.status_code == 404:
+                    return Response(status=status.HTTP_204_NO_CONTENT)
+                if meta.status_code != 200 or meta.json().get('appProperties', {}).get('plos_upload') != proof['nonce']:
+                    raise ValueError('File does not belong to this upload session.')
+            except (ValueError, signing.BadSignature, requests.RequestException) as exc:
+                return Response({'error': str(exc)}, status=400)
+
+        try:
+            success = services.delete_file_from_drive_by_id(request.user, drive_file_id)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_409_CONFLICT)
         if not success:
             return Response(
                 {'error': 'Failed to delete file from Google Drive.'},
@@ -428,6 +450,17 @@ class DriveFileListView(APIView):
         if target_id:
             qs = qs.filter(target_id=target_id)
 
+        # Keep the array response for legacy clients; the file manager opts into pagination.
+        if request.query_params.get('page') is not None:
+            from .maintenance import describe
+            try:
+                page = max(1, int(request.query_params['page']))
+            except (ValueError, TypeError):
+                return Response({'error': 'Invalid page.'}, status=400)
+            count = qs.count()
+            rows = list(qs[(page - 1) * 20:page * 20])
+            return Response({'count': count, 'page': page, 'page_size': 20,
+                'results': [dict(DriveFileSerializer(row).data, **describe(request.user, row)) for row in rows]})
         return Response(DriveFileSerializer(qs, many=True).data)
 
 
@@ -442,10 +475,38 @@ class DriveFileDetailView(APIView):
         if not drive_file:
             return Response({'error': 'File not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        success = services.delete_file_from_drive(request.user, drive_file)
+        try:
+            success = services.delete_file_from_drive(request.user, drive_file)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_409_CONFLICT)
         if not success:
             return Response(
                 {'error': 'Failed to delete file from Google Drive. Metadata has been preserved.'},
                 status=status.HTTP_502_BAD_GATEWAY
             )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DriveOrganizationView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        from .maintenance import preview
+        row = DriveFile.objects.filter(user=request.user, pk=pk).first()
+        if not row:
+            return Response({'error': 'File not found.'}, status=404)
+        try:
+            return Response(preview(request.user, row))
+        except (ValueError, requests.RequestException) as exc:
+            return Response({'error': str(exc)}, status=400)
+
+    def post(self, request, pk):
+        from .maintenance import apply_move
+        row = DriveFile.objects.filter(user=request.user, pk=pk).first()
+        if not row:
+            return Response({'error': 'File not found.'}, status=404)
+        try:
+            row = apply_move(request.user, row, request.data.get('move_token', ''))
+            return Response(DriveFileSerializer(row).data)
+        except (ValueError, signing.BadSignature, requests.RequestException) as exc:
+            return Response({'error': str(exc)}, status=409)

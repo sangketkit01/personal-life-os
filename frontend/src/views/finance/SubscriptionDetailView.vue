@@ -1023,7 +1023,7 @@ async function handleFileUpload(e: Event) {
 
   isUploading.value = true
   try {
-    await storageStore.uploadDirect(file, 'finance', subscriptionId.value)
+    await storageStore.uploadDirect(file, 'finance', subscriptionId.value, undefined, { category: 'CONTRACT' })
     toast.success('Document uploaded to Google Drive vault')
     target.value = ''
     await fetchSubscription(subscriptionId.value)
